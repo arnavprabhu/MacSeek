@@ -62,6 +62,7 @@ static void usage() {
         "  --topk K          store top-K + logsumexp per position instead of full logits (0 = full, default)\n"
         "  --last N          only store the last N positions (default: all)\n"
         "  --gen N           greedy-generate N tokens after the prompt, print them (stderr+json)\n"
+        "  --ignore-eos      keep generating past end-of-generation tokens (decode speed measurement)\n"
         "  --tokenize-only   load vocab only, tokenize, write --dump-ids, exit\n"
         "  --ctx N           context size (default n_tokens + gen + 16)\n"
         "  --batch N / --ubatch N   (default 2048 / 512)\n"
@@ -88,6 +89,7 @@ int main(int argc, char **argv) {
     int topk = 0, last = -1, gen = 0, ctx = 0, nbatch = 2048, nubatch = 512, threads = 6, ngl = 99;
     bool cpu_moe = true, use_mmap = true, tok_only = false, have_prompt = false;
     int swa_full = -1;  // -1 = library default
+    bool ignore_eos = false;
     std::string fa = "auto";
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -113,6 +115,7 @@ int main(int argc, char **argv) {
         else if (a == "--quiet") g_quiet = true;
         else if (a == "--list") list_path = next();
         else if (a == "--swa-full") swa_full = atoi(next().c_str());
+        else if (a == "--ignore-eos") ignore_eos = true;
         else if (a == "--json") json_path = next();
         else usage();
     }
@@ -286,7 +289,7 @@ int main(int argc, char **argv) {
             gen_ids.push_back(best);
             char buf[256]; int k = llama_token_to_piece(vocab, best, buf, sizeof buf, 0, true);
             if (k > 0) { gen_text.append(buf, k); fwrite(buf, 1, k, stderr); fflush(stderr); }
-            if (llama_vocab_is_eog(vocab, best)) break;
+            if (llama_vocab_is_eog(vocab, best) && !ignore_eos) break;
             batch.n_tokens = 1;
             batch.token[0] = best; batch.pos[0] = pos++; batch.n_seq_id[0] = 1; batch.seq_id[0][0] = 0; batch.logits[0] = 1;
             if (llama_decode(lctx, batch) != 0) die("decode (gen) failed");
