@@ -95,6 +95,12 @@ void encode_matvec(Enc& e, QType t, const Buffer& W, int rows, int cols, const B
 void encode_matvec_n(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& X, const Buffer& Y, int n,
                      bool accumulate, int groups) {
   if (n == 1) { encode_matvec(e, t, W, rows, cols, X, Y, accumulate, groups); return; }
+  // n >= 8: FP32 ALU work (n FMAs per weight) exceeds the weight-streaming time; the tensor-API tile path wins
+  static const long mm_min = env_int("MACSEEK_MVN_MM_MIN", 8);
+  if (mm_min > 0 && n >= mm_min && groups == 1 && cols % 128 == 0 && kname(t)) {
+    encode_matmul(e, t, W, rows, cols, X, Y, n, accumulate);
+    return;
+  }
   const char* kn = kname(t);
   if (!kn || n < 1 || n > 16 || cols % gpu_qk(t) != 0 || groups < 1 || rows % groups != 0) die("matvec_n", t, rows, cols);
   const int nt = n <= 2 ? 2 : n <= 4 ? 4 : n <= 8 ? 8 : 16;
@@ -116,15 +122,20 @@ void encode_matvec_n(Enc& e, QType t, const Buffer& W, int rows, int cols, const
 }
 
 // ---------------------------------------------------------------- prefill matmul
+void encode_matmul(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& X, const Buffer& Y, int n,
+                   bool accumulate);
 namespace {
 struct QMmArgs { uint32_t n, rows, cols, row_bytes, x_stride, y_stride, accumulate; };
 struct MmTile { int tm, tn, nsg, nbuf; };
 // fused dequant-tile kernel shape: 64-token tiles for small n, 128-token tiles otherwise (bench_qmatmul)
 MmTile mm_tile(int n) {
   static const std::string env = env_str("MACSEEK_MM_TILE", "");
-  MmTile r = n <= 96 ? MmTile{64, 64, 4, 2} : MmTile{128, 64, 4, 2};
-  if (!env.empty() && sscanf(env.c_str(), "%dx%d_b%d", &r.tm, &r.tn, &r.nbuf) == 3)
+  MmTile r = n <= 32 ? MmTile{32, 64, 4, 2} : n <= 96 ? MmTile{64, 64, 4, 2} : MmTile{128, 64, 4, 2};
+  if (!env.empty() && sscanf(env.c_str(), "%dx%d_b%d", &r.tm, &r.tn, &r.nbuf) == 3) {
     r.nsg = (r.tm == 128 && r.tn == 128) ? 8 : 4;
+    int sg = 0;
+    if (sscanf(env.c_str(), "%*dx%*d_b%*d_s%d", &sg) == 1) r.nsg = sg;
+  }
   return r;
 }
 Buffer& mm_scratch(size_t bytes) {
@@ -182,7 +193,8 @@ void encode_matmul_h(Enc& e, QType t, const Buffer& W, int rows, int cols, const
   } else {
     MmTile mt = mm_tile(n);
     tm = mt.tm; tn = mt.tn; nsg = mt.nsg;
-    fn = std::string("q_mm_") + kn + "_" + std::to_string(tm) + "x" + std::to_string(tn) + "_b" + std::to_string(mt.nbuf);
+    fn = std::string("q_mm_") + kn + "_" + std::to_string(tm) + "x" + std::to_string(tn) + "_b" + std::to_string(mt.nbuf) +
+         (nsg == 4 || (tm == 128 && tn == 128) ? "" : "_s" + std::to_string(nsg));
     e.set_pipeline(fn.c_str());
     e.set_threadgroup_memory(0, sizeof(uint16_t) * tn * 128 * mt.nbuf);
   }

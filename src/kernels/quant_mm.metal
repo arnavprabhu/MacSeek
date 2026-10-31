@@ -163,9 +163,13 @@ Q_DEQ_INST(QB_IQ2XXS, "iq2_xxs")
 #define Q_MM_INST1(Q, name, TM, TN, NSG, NBUF)                                                                   \
   template [[host_name("q_mm_" name "_" #TM "x" #TN "_b" #NBUF)]] kernel void q_mm<Q, TM, TN, NSG, NBUF>(      \
       device const uchar*, device const half*, device float*, constant QMmArgs&, threadgroup half*, uint2, ushort);
+#define Q_MM_INST1S(Q, name, TM, TN, NSG, NBUF)                                                                  \
+  template [[host_name("q_mm_" name "_" #TM "x" #TN "_b" #NBUF "_s" #NSG)]] kernel void q_mm<Q, TM, TN, NSG, NBUF>( \
+      device const uchar*, device const half*, device float*, constant QMmArgs&, threadgroup half*, uint2, ushort);
 #define Q_MM_INST(Q, name) \
   Q_MM_INST1(Q, name, 64, 64, 4, 2) Q_MM_INST1(Q, name, 128, 64, 4, 2) Q_MM_INST1(Q, name, 64, 128, 4, 1) \
-  Q_MM_INST1(Q, name, 128, 128, 8, 1) Q_MM_INST1(Q, name, 32, 64, 4, 2)
+  Q_MM_INST1(Q, name, 128, 128, 8, 1) Q_MM_INST1(Q, name, 32, 64, 4, 2) Q_MM_INST1(Q, name, 16, 64, 4, 2) \
+  Q_MM_INST1(Q, name, 16, 32, 4, 1) Q_MM_INST1(Q, name, 32, 32, 4, 1) Q_MM_INST1S(Q, name, 16, 64, 2, 1) Q_MM_INST1(Q, name, 32, 64, 4, 1)
 
 Q_MM_INST(QB_Q8_0, "q8_0")
 Q_MM_INST(QB_Q5K, "q5_k")

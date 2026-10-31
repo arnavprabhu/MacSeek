@@ -1,6 +1,6 @@
 // matvec_n (n = 2..16 activation columns, one weight read) vs CPU reference, all types, incl. block-diagonal + acc.
 // The kernel stages x in threadgroup memory as half: checked tightly against a reference with x rounded to half,
-// and loosely (documented error) against the pure F32 reference.
+// and loosely (documented error) against the pure F32 reference. n >= 8 uses the matmul tile path (half weights too).
 #include <cstdio>
 #include <vector>
 #include "quant_test_util.hpp"
@@ -40,7 +40,9 @@ int main() {
         if (hv) err = std::max(err, e); else errf = std::max(errf, e);
       }
     }
-    bool ok = err <= 2e-6 && errf <= 2e-4;
+    // n >= 8 (groups == 1) is routed to the tensor-API tile path, which also stages weights as half
+    const bool mm_path = c.n >= 8 && c.groups == 1;
+    bool ok = err <= (mm_path ? 1e-4 : 2e-6) && errf <= 2e-4;
     printf("  %-8s [%5d -> %5d] g%d n=%-2d %s err(x half) %.2e  err(vs F32) %.2e %s\n", ms::q::type_name(c.t), c.cols,
            c.rows, c.groups, c.n, c.acc ? "acc" : "   ", err, errf, ok ? "ok" : "FAIL");
     fails += !ok;
