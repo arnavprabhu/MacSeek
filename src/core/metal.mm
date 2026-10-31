@@ -113,6 +113,12 @@ Enc::Enc() : p(new Impl) {
   p->cb = [q commandBufferWithUnretainedReferences];
   p->ce = [p->cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent];
 }
+Enc::Enc(bool open_encoder) : p(new Impl) {
+  id<MTLCommandQueue> q = (__bridge id<MTLCommandQueue>)Device::get().queue();
+  p->cb = [q commandBufferWithUnretainedReferences];
+  p->ce = open_encoder ? [p->cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent] : nil;
+}
+void Enc::enqueue() { [p->cb enqueue]; }
 Enc::~Enc() { if (!p->waited) wait(); delete p; }
 void Enc::set_pipeline(const char* fn) { set_pipeline(Device::get().pipeline(fn)); }
 void Enc::set_pipeline(void* pso) { [p->ce setComputePipelineState:(__bridge id<MTLComputePipelineState>)pso]; }

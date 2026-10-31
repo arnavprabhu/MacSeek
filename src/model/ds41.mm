@@ -235,74 +235,152 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     e->barrier();
   }
 
-  for (int l = 0; l < cfg_.n_layers; l++) {
+  // Attention side of layer l for this call: hc boundary (+engram), attention, hc boundary into the FFN, router,
+  // and zeroing of `sub` (the MoE accumulates into it). Encodes into E; no commit.
+  auto encode_attn_side = [&](Enc& E, int l) {
     LayerW& L = P.L[l];
-    Timer tenc;
     // ---- hyper-connection boundary into attention (+ engram) ----
     if (cfg_.is_engram(l)) {
       arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixF; a.n = n;
-      arch::encode_hc_step(*e, a, P.asc); e->barrier();
+      arch::encode_hc_step(E, a, P.asc); E.barrier();
       Buffer kvb = l == cfg_.engram_layers[0] ? ekv_l[0] : ekv_l[1];
-      arch::encode_engram_gate(*e, h, kvb, L.engram_gate.b, n, P.asc); e->barrier();
+      arch::encode_engram_gate(E, h, kvb, L.engram_gate.b, n, P.asc); E.barrier();
       arch::HcStep c; c.h_in = h; c.h_out = h; c.mix_prev = P.mixF; c.fn = L.hc_attn_fn.b; c.scale = L.hc_attn_scale.b;
       c.base = L.hc_attn_base.b; c.mix_out = P.mixA; c.norm_w = L.attn_norm.b; c.x_out = P.x; c.n = n;
-      arch::encode_hc_step(*e, c, P.asc); e->barrier();
+      arch::encode_hc_step(E, c, P.asc); E.barrier();
     } else {
       arch::HcStep a; a.h_in = h; a.h_out = h; if (l > 0) a.x_sub = P.sub; a.mix_prev = P.mixF;
       a.fn = L.hc_attn_fn.b; a.scale = L.hc_attn_scale.b; a.base = L.hc_attn_base.b; a.mix_out = P.mixA;
       a.norm_w = L.attn_norm.b; a.x_out = P.x; a.n = n;
-      arch::encode_hc_step(*e, a, P.asc); e->barrier();
+      arch::encode_hc_step(E, a, P.asc); E.barrier();
     }
     // ---- attention projections ----
-    linear(*e, L.q_a, P.x, P.qa, n);
-    linear(*e, L.kv, P.x, P.kv, n);
+    linear(E, L.q_a, P.x, P.qa, n);
+    linear(E, L.kv, P.x, P.kv, n);
     const bool kvsrc = cfg_.is_kv_source(l), idxsrc = cfg_.is_index_source(l);
-    if (kvsrc) { linear(*e, L.c_kv, P.x, P.ckv, n); if (L.c_gate) linear(*e, L.c_gate, P.x, P.cgate, n); }
-    if (idxsrc) linear(*e, L.idx_proj, P.x, P.iw, n);
-    e->barrier();
-    arch::encode_rmsnorm(*e, P.qa, L.q_a_norm.b, P.qrn, n, 1280, cfg_.norm_eps); e->barrier();
-    linear(*e, L.q_b, P.qrn, P.q, n);
-    if (idxsrc) linear(*e, L.idx_qb, P.qrn, P.iq, n);
-    e->barrier();
+    if (kvsrc) { linear(E, L.c_kv, P.x, P.ckv, n); if (L.c_gate) linear(E, L.c_gate, P.x, P.cgate, n); }
+    if (idxsrc) linear(E, L.idx_proj, P.x, P.iw, n);
+    E.barrier();
+    arch::encode_rmsnorm(E, P.qa, L.q_a_norm.b, P.qrn, n, 1280, cfg_.norm_eps); E.barrier();
+    linear(E, L.q_b, P.qrn, P.q, n);
+    if (idxsrc) linear(E, L.idx_qb, P.qrn, P.iq, n);
+    E.barrier();
     attn::LayerIO io; io.layer = l; io.q = P.q; io.kv = P.kv; io.kv_norm = L.kv_norm.b; io.sinks = L.sinks.b; io.out = P.aout;
     if (kvsrc) { io.c_kv = P.ckv; io.c_gate = L.c_gate ? P.cgate : Buffer{}; io.c_norm = L.c_norm.b; io.idx_wk = L.idx_k.b; io.idx_knorm = L.idx_knorm.b; }
     if (idxsrc) { io.idx_q = P.iq; io.idx_w = P.iw; }
-    attn::encode_layer(*e, P.ast, io, start, n);
-    if (o_.actq_out) { attn::encode_quant_sim(*e, P.aout, (uint32_t)(n * 32768), 0); e->barrier(); }
+    attn::encode_layer(E, P.ast, io, start, n);
+    if (o_.actq_out) { attn::encode_quant_sim(E, P.aout, (uint32_t)(n * 32768), 0); E.barrier(); }
     // wo_a (block-diagonal, 8 groups) then wo_b
     if (n <= 16) {
-      if (n == 1) q::encode_matvec(*e, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, false, 8);
-      else q::encode_matvec_n(*e, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, n, false, 8);
-      e->barrier();
+      if (n == 1) q::encode_matvec(E, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, false, 8);
+      else q::encode_matvec_n(E, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, n, false, 8);
+      E.barrier();
     } else {
-      q::encode_f32_to_f16(*e, P.aout, P.aout16, (size_t)n * 32768); e->barrier();
+      q::encode_f32_to_f16(E, P.aout, P.aout16, (size_t)n * 32768); E.barrier();
       const size_t rb = (size_t)L.o_a.b.size / 8192;  // bytes per weight row
       for (int g = 0; g < 8; g++)
-        q::encode_matmul_h(*e, L.o_a.t, L.o_a.b.sub((size_t)g * 1024 * rb, 1024 * rb), 1024, 4096,
+        q::encode_matmul_h(E, L.o_a.t, L.o_a.b.sub((size_t)g * 1024 * rb, 1024 * rb), 1024, 4096,
                            P.aout16.sub((size_t)g * 4096 * 2, (size_t)n * 32768 * 2 - (size_t)g * 4096 * 2),
                            P.otmp.sub((size_t)g * n * 1024 * 4, (size_t)n * 1024 * 4), n, false, 32768);
-      e->barrier();
+      E.barrier();
       uint32_t a4[4] = {(uint32_t)n, 8, 1024 / 4, 0};
       e->set_pipeline("m_ungroup"); e->set_buffer(0, P.otmp); e->set_buffer(1, P.oa); e->set_bytes(2, a4, sizeof a4);
       e->dispatch_threads(1024 / 4, n, 8, 64, 1, 1);
-      e->barrier();
+      E.barrier();
     }
-    linear(*e, L.o_b, P.oa, P.sub, n); e->barrier();
+    linear(E, L.o_b, P.oa, P.sub, n); E.barrier();
     // ---- hyper-connection boundary into the FFN ----
     {
       arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixA;
       a.fn = L.hc_ffn_fn.b; a.scale = L.hc_ffn_scale.b; a.base = L.hc_ffn_base.b; a.mix_out = P.mixF;
       a.norm_w = L.ffn_norm.b; a.x_out = P.x; a.n = n;
-      arch::encode_hc_step(*e, a, P.asc); e->barrier();
+      arch::encode_hc_step(E, a, P.asc); E.barrier();
     }
     // ---- router ----
-    if (dec) arch::encode_router_fused(*e, P.x, L.gate_inp.b, L.bias.b, P.rids, P.rw, P.asc);
+    if (dec) arch::encode_router_fused(E, P.x, L.gate_inp.b, L.bias.b, P.rids, P.rw, P.asc);
     else {
-      linear(*e, L.gate_inp, P.x, P.rlog, n); e->barrier();
-      arch::encode_router_topk(*e, P.rlog, L.bias.b, P.rids, P.rw, n);
+      linear(E, L.gate_inp, P.x, P.rlog, n); E.barrier();
+      arch::encode_router_topk(E, P.rlog, L.bias.b, P.rids, P.rw, n);
     }
-    e->barrier();
-    fill(*e, P.sub, (size_t)n * 5120);  // MoE accumulates into sub (sub was consumed by the hc step above)
+    E.barrier();
+    fill(E, P.sub, (size_t)n * 5120);  // MoE accumulates into sub (sub was consumed by the hc step above)
+  };
+
+  const bool pipe = dec && env_int("MACSEEK_DEC_PIPE", 0) != 0;
+  if (pipe) {
+    // Pipelined decode (docs/integration.md): GPU-ordered chain att(0) moe(0) att(1) ... ; att(l+1) is encoded and
+    // committed while att(l) runs; moe(l) is reserved in the queue before att(l+1) and encoded once the router ids are
+    // known. Ordering via an MTLEvent (embed signals c0+1, att(l) c0+2+2l, moe(l) c0+3+2l); router readiness via an
+    // MTLSharedEvent the CPU spins on.
+    id<MTLDevice> dev = (__bridge id<MTLDevice>)Device::get().device();
+    static id<MTLEvent> chain = [dev newEvent];
+    static id<MTLSharedEvent> rdy = [dev newSharedEvent];
+    static uint64_t base = 0, rbase = 0;
+    const uint64_t c0 = base, r0 = rbase;
+    e->between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:chain value:c0 + 1]; });
+    e->commit();
+    std::vector<std::unique_ptr<Enc>> keep;
+    keep.push_back(std::move(e));
+    auto make_att = [&](int l) {
+      auto E = std::make_unique<Enc>(false);
+      E->enqueue();
+      const uint64_t wv = c0 + 1 + 2 * (uint64_t)l, sv = wv + 1;
+      E->between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeWaitForEvent:chain value:wv]; });
+      Timer tenc;
+      encode_attn_side(*E, l);
+      prof_.encode_ms += tenc.ms();
+      E->between([&](void* cb) {
+        [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:chain value:sv];
+        [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:rdy value:r0 + 1 + (uint64_t)l];
+      });
+      E->commit();
+      return E;
+    };
+    std::unique_ptr<Enc> att = make_att(0);
+    for (int l = 0; l < cfg_.n_layers; l++) {
+      LayerW& L = P.L[l];
+      auto moe = std::make_unique<Enc>(false);
+      moe->enqueue();
+      std::unique_ptr<Enc> next_att;
+      if (l + 1 < cfg_.n_layers) next_att = make_att(l + 1);
+      else { next_att = std::make_unique<Enc>(false); next_att->enqueue(); }   // reserved head CB
+      Timer tw;
+      while (rdy.signaledValue < r0 + 1 + (uint64_t)l) { }
+      wait_ms += tw.ms();
+      Timer tx;
+      const int* ids = (const int*)P.rids.cpu();
+      ExpertLease lease = cache_->ensure(l, ids, 6);
+      const uint64_t wv = c0 + 2 + 2 * (uint64_t)l, sv = wv + 1;
+      moe->between([&](void* cb) {
+        [(__bridge id<MTLCommandBuffer>)cb encodeWaitForEvent:chain value:wv];
+        lease.encode_wait(cb);
+      });
+      q::MoeDecodeArgs m;
+      m.t_gate_up = (QType)(int)lease.views[0].type[0]; m.t_down = (QType)(int)lease.views[0].type[2];
+      m.n_routed = 6;
+      for (int k = 0; k < 6; k++) m.slot[k] = q::ExpertSlot{lease.views[k].mat[0], lease.views[k].mat[1], lease.views[k].mat[2]};
+      m.weights = P.rw; m.has_shared = true; m.t_shared = L.sh_gate.t;
+      m.shared = q::ExpertSlot{L.sh_gate.b, L.sh_up.b, L.sh_down.b};
+      m.x = P.x; m.y = P.sub; m.scratch = P.moe_dec_scratch;
+      q::encode_moe_decode(*moe, m);
+      moe->between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:chain value:sv]; });
+      lease.release_after(moe->cmdbuf());
+      moe->commit();
+      exp_ms += tx.ms();
+      keep.push_back(std::move(att));
+      keep.push_back(std::move(moe));
+      att = std::move(next_att);
+    }
+    e = std::move(att);
+    const uint64_t wv = c0 + 1 + 2 * (uint64_t)cfg_.n_layers;
+    e->between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeWaitForEvent:chain value:wv]; });
+    base = wv; rbase = r0 + cfg_.n_layers;
+    for (auto& k : keep) { k->wait(); gpu_ms += k->gpu_ms(); }
+  } else
+  for (int l = 0; l < cfg_.n_layers; l++) {
+    LayerW& L = P.L[l];
+    Timer tenc;
+    encode_attn_side(*e, l);
     prof_.encode_ms += tenc.ms();
     Timer tw;
     e->wait();

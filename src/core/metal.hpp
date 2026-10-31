@@ -38,6 +38,8 @@ class Device {
 class Enc {
  public:
   Enc();                  // new command buffer on Device::get().queue()
+  explicit Enc(bool open_encoder);  // false: no compute encoder yet (call begin_encoder()/between before dispatching)
+  void enqueue();         // reserve this command buffer's place in the queue now (commit later)
   ~Enc();                 // commits + waits if still open
   void set_pipeline(const char* fn);
   void set_pipeline(void* pso);
