@@ -40,6 +40,8 @@ struct Options {
   bool hc_prefill_rows = false;  // MACSEEK_ARCH_HC_PREFILL=rows: per-token mixes kernel instead of the MMA GEMM
   bool hc_prefill_mma8 = false;  // MACSEEK_ARCH_HC_PREFILL=mma8: 8-token MMA tiles instead of 32-token tiles
   int router_groups = 96;      // MACSEEK_ARCH_ROUTER_G: fused router threadgroups (divides 384)
+  int hc_row_splits = 1;       // MACSEEK_ARCH_HC_SPLITS: decode step threadgroups per dim chunk (mix rows split; only
+                               // when h_out != h_in; bit-identical). HcStep::row_splits overrides.
 };
 Options& options();
 
@@ -64,6 +66,8 @@ struct HcStep {
   Buffer norm_w;               // [5120]
   Buffer x_out;                // [n][5120] (empty: no hc_pre / RMSNorm)
   int n = 1;
+  int row_splits = 0;          // decode fused step: threadgroups per dim chunk (0 = Options::hc_row_splits). Needs
+                               // h_out != h_in when there is an x_sub (falls back to 1 otherwise). Bit-identical.
 };
 // Decode (n == 1) mode: MACSEEK_ARCH_HC = fused (default, 1 dispatch) | split (2) | rows (2).
 // Prefill (n > 1): post/pre kernel + mixes GEMM (simdgroup MMA for n >= 8, MACSEEK_ARCH_HC_PREFILL=rows to force

@@ -34,6 +34,11 @@ class Device {
   struct Impl; Impl* p;
 };
 
+// Process-wide encode counters (profiling: dispatches, barrier calls, barriers that follow at least one dispatch,
+// compute encoders opened). Not thread-safe; reset by assigning {}.
+struct EncStats { uint64_t dispatches = 0, barriers = 0, stages = 0, encoders = 0; };
+EncStats& enc_stats();
+
 // One command buffer + one compute encoder. encode_* functions take an Enc&. Nothing commits until commit()/wait().
 class Enc {
  public:

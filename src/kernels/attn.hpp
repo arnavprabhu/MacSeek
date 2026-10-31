@@ -3,6 +3,7 @@
 // All encode_* functions only encode into the given Enc (no commit / wait). They insert the barriers they need
 // internally and end with a barrier, so outputs are safe to consume by the next dispatch.
 #include <cstdint>
+#include <functional>
 #include <vector>
 #include "core/metal.hpp"
 
@@ -69,6 +70,7 @@ struct State {
   Buffer Rk, Ri, Rc, Bk, Bi, Bc;  // running top-k (positions k=512, blocks k=2048) per query
   Buffer pfQ, pfS, pfP;   // prefill two-pass scratch: half [qblock][64][512], f32 / half [qblock][64][640]
   Buffer ulist, ucount;           // prefill: union of candidate blocks per 2-query tile, int [n/2][4096], int [n/2]
+  Buffer dec_cnt;                 // decode fused combine: uint [16] last-threadgroup counters (self-resetting)
 };
 void init(State& s, const Options& o);
 // Buffers that make up the persistent attention state after `pos` tokens (for save/load snapshots), with the number
@@ -100,10 +102,19 @@ void encode_layer(Enc& e, State& s, const LayerIO& io, int start, int n);
 
 // ---- building blocks (used by encode_layer; exposed for tests / benchmarks) ----
 void encode_kv_window(Enc& e, State& s, int layer, const Buffer& kv, const Buffer& norm_w, int start, int n);
-void encode_compress(Enc& e, State& s, int layer, const LayerIO& io, int start, int n);
-void encode_index_decode(Enc& e, State& s, int layer, const Buffer& iq, const Buffer& iw, int pos);
+void encode_compress(Enc& e, State& s, int layer, const LayerIO& io, int start, int n, bool barrier_after = true);
+// hook (optional): called inside the latency-bound stages (after the compaction and after the final select dispatches,
+// before their barriers) so a caller can put independent background work next to them (stage 0, 1).
+using StageHook = std::function<void(int stage)>;
+void encode_index_decode(Enc& e, State& s, int layer, const Buffer& iq, const Buffer& iw, int pos,
+                         const StageHook& hook = {});
 void encode_index_prefill(Enc& e, State& s, int layer, const Buffer& iq, const Buffer& iw, int start, int n);
-void encode_sparse(Enc& e, State& s, int layer, const Buffer& q, const Buffer& sinks, const Buffer& out, int start, int n);
+// fused_combine (decode only): the split-K combine runs in the last threadgroup of each head group (one dispatch,
+// bit-identical output; MACSEEK_DEC_COMBINE via ds41 DecOptions).
+// hook (decode): called after the sparse dispatch (stage 2) and after the combine dispatch (stage 3, unfused only),
+// before their barriers.
+void encode_sparse(Enc& e, State& s, int layer, const Buffer& q, const Buffer& sinks, const Buffer& out, int start, int n,
+                   bool fused_combine = false, const StageHook& hook = {});
 void encode_window_commit(Enc& e, State& s, int layer, int start, int n);
 // in-place quant-dequant simulation on f32 x[n] (n multiple of the block): mode 0 fp8 e4m3/ue8m0-32,
 // 1 fp4 e2m1/ue8m0-32, 2 fp4 e2m1/e4m3-16

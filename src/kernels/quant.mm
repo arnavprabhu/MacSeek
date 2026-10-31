@@ -94,6 +94,38 @@ void encode_matvec(Enc& e, QType t, const Buffer& W, int rows, int cols, const B
   e.dispatch_groups((rows + rows_per_tg - 1) / rows_per_tg, 1, 1, 32 * a.rsg * a.ks);
 }
 
+MvCfg matvec_cfg(QType t, int rows, int cols) {
+  MvCfg a = auto_cfg(t, rows, cols);
+  static const long env_nr = env_int("MACSEEK_MV_NR", 0), env_rsg = env_int("MACSEEK_MV_RSG", 0),
+                    env_ks = env_int("MACSEEK_MV_KS", 0);
+  if (env_nr) a.nr = (int)env_nr;
+  if (env_rsg) a.rsg = (int)env_rsg;
+  if (env_ks) a.ks = (int)env_ks;
+  return a;
+}
+
+void encode_matvec_rmsnorm(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& x, const Buffer& norm_w,
+                           float eps, const Buffer& y, int tiles_per_tg) {
+  const char* kn = kname(t);
+  if (!kn || t == QType::IQ1_S || t == QType::IQ2_XXS || cols % gpu_qk(t) != 0 || cols <= 1024)
+    die("matvec_rmsnorm", t, rows, cols);
+  const MvCfg a = matvec_cfg(t, rows, cols);
+  QMvArgs args{(uint32_t)rows, (uint32_t)cols, (uint32_t)row_bytes(t, cols), (uint32_t)rows, (uint32_t)cols, 0u,
+               (uint32_t)a.ks, 1, (uint32_t)cols, (uint32_t)rows};
+  // arch_rmsnorm launch for one row of `cols`: T = min(1024, max(32, ceil(cols/4 / 32) * 32)) threads
+  static const int env_tpt = (int)env_int("MACSEEK_MV_RN_TPT", 8);
+  const int tpt = std::max(1, tiles_per_tg > 0 ? tiles_per_tg : env_tpt);
+  struct { uint32_t dim; float eps; uint32_t nt, tpt; } na{(uint32_t)cols, eps,
+      (uint32_t)std::min(1024, std::max(32, (cols / 4 + 31) / 32 * 32)), (uint32_t)tpt};
+  std::string fn = std::string("q_mv_rn_") + kn + "_r" + std::to_string(a.nr);
+  e.set_pipeline(fn.c_str());
+  e.set_buffer(0, W); e.set_buffer(1, x); e.set_buffer(2, y);
+  e.set_value(3, args); e.set_buffer(4, norm_w); e.set_bytes(5, &na, sizeof na);
+  const int rows_per_tile = a.nr * a.rsg, ntiles = (rows + rows_per_tile - 1) / rows_per_tile;
+  e.set_threadgroup_memory(0, sizeof(float) * rows_per_tile * a.ks);
+  e.dispatch_groups((ntiles + tpt - 1) / tpt, 1, 1, 32 * a.rsg * a.ks);
+}
+
 void encode_matvec_n(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& X, const Buffer& Y, int n,
                      bool accumulate, int groups) {
   if (n == 1) { encode_matvec(e, t, W, rows, cols, X, Y, accumulate, groups); return; }
@@ -290,7 +322,7 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
   const char* p_gu = moe_pair(a.t_gate_up, a.t_shared);
   const char* p_d = moe_pair(a.t_down, a.t_shared);
   if (!p_gu || !p_d) die("moe_decode_table type combo", a.t_gate_up, 0, 0);
-  if ((part == MoePart::SharedGu || part == MoePart::Shared) && !a.has_shared) return;
+  if ((part == MoePart::SharedGu || part == MoePart::Shared || part == MoePart::SharedDown) && !a.has_shared) return;
   static const long env_gu_nr = env_int("MACSEEK_MOE_GU_NR", 2), env_gu_ks = env_int("MACSEEK_MOE_GU_KS", 1),
                     env_gu_rsg = env_int("MACSEEK_MOE_GU_RSG", 4), env_d_nr = env_int("MACSEEK_MOE_D_NR", 4),
                     env_d_ks = env_int("MACSEEK_MOE_D_KS", 1), env_d_rsg = env_int("MACSEEK_MOE_D_RSG", 2);
@@ -298,7 +330,8 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
   const bool gu_r = part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Routed;
   const bool gu_s = a.has_shared && (part == MoePart::All || part == MoePart::SharedGu || part == MoePart::Shared);
   const bool d_r = gu_r;
-  const bool d_s = a.has_shared && (part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Shared);
+  const bool d_s = a.has_shared && (part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Shared ||
+                                    part == MoePart::SharedDown);
   const bool shared_only = !gu_r;   // n_routed = 0 views: scratch rebased to the shared expert's h row
   const Buffer h = shared_only ? a.scratch.sub((size_t)a.n_routed * kExpertInter * 4, (size_t)kExpertInter * 4) : a.scratch;
   QMoeArgs args{shared_only ? 0u : (uint32_t)a.n_routed, d_s ? 1u : 0u, (uint32_t)kExpertDim, (uint32_t)kExpertInter,
@@ -306,7 +339,7 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
                 (uint32_t)row_bytes(a.t_shared, kExpertDim), (uint32_t)row_bytes(a.t_shared, kExpertInter), 1, 0};
   const int n_gu = (gu_r ? a.n_routed : 0) + (gu_s ? 1 : 0);
   if (n_gu > 0) {
-    const int nr = (int)env_gu_nr, ks = (int)env_gu_ks, rsg = (int)env_gu_rsg;
+    const int nr = a.gu_nr ? a.gu_nr : (int)env_gu_nr, ks = (int)env_gu_ks, rsg = a.gu_rsg ? a.gu_rsg : (int)env_gu_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     args.tiles = (kExpertInter + rows_per_tg - 1) / rows_per_tg;
@@ -323,7 +356,7 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
   if (!d_r && !d_s) return;
   if (n_gu > 0) e.barrier();
   {
-    const int nr = (int)env_d_nr, ks = (int)env_d_ks, rsg = (int)env_d_rsg;
+    const int nr = a.d_nr ? a.d_nr : (int)env_d_nr, ks = (int)env_d_ks, rsg = a.d_rsg ? a.d_rsg : (int)env_d_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     std::string fn = std::string("q_moe_down_t_") + p_d + "_r" + std::to_string(nr);

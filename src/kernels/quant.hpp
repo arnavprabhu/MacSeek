@@ -13,6 +13,17 @@ struct MvCfg { int nr = 0, rsg = 0, ks = 0; };
 
 bool matvec_supported(QType t);
 
+// Launch shape encode_matvec would use for this matrix (auto table + MACSEEK_MV_* overrides): splitting a matrix into
+// row chunks that all use this shape (chunk rows a multiple of nr*rsg) gives bit-identical rows.
+MvCfg matvec_cfg(QType t, int rows, int cols);
+
+// Decode matvec with the input RMSNorm fused into the x loads: y = W . (x * rsqrt(mean(x^2) + eps) * norm_w), x has
+// `cols` elements. Bit-identical to arch::encode_rmsnorm(x, norm_w, tmp, 1, cols, eps) -> barrier -> encode_matvec(tmp)
+// for cols > 1024 (the RMSNorm reduction is replayed exactly); types F32 F16 BF16 Q8_0 Q5_K Q6_K.
+// tiles_per_tg: row tiles (nr*rsg rows) per threadgroup, amortizing the norm prologue (0 = MACSEEK_MV_RN_TPT, default 8).
+void encode_matvec_rmsnorm(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& x, const Buffer& norm_w,
+                           float eps, const Buffer& y, int tiles_per_tg = 0);
+
 // y[rows] (+)= W[rows x cols] . x[cols]. groups > 1: block-diagonal, rows split into `groups` equal row groups and
 // group g reads x[g*cols .. g*cols+cols) (attn_output_a: groups=8, cols=4096, rows=8192, x has 32768 elements).
 void encode_matvec(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& x, const Buffer& y,
@@ -53,6 +64,9 @@ struct MoeDecodeArgs {
   Buffer x;                         // F32[5120] (normed FFN input)
   Buffer y;                         // F32[5120], result is ACCUMULATED into y
   Buffer scratch;                   // >= moe_decode_scratch_bytes()
+  // launch shape overrides of the table variants (0 = MACSEEK_MOE_* env / default). Rows per simdgroup (nr) and
+  // row-simdgroups per threadgroup (rsg) do not change any row's summation order: results are bit-identical.
+  int gu_nr = 0, gu_rsg = 0, d_nr = 0, d_rsg = 0;
 };
 size_t moe_decode_scratch_bytes();
 // Two dispatches (gate+up+swiglu for all experts incl. shared, then down for all experts accumulated into y) with a
@@ -65,8 +79,9 @@ void encode_moe_decode_table(Enc& e, const MoeDecodeArgs& a, const Buffer& table
 // (decode handshake overlap, MACSEEK_DEC_SYNC):
 //   SharedGu then AfterSharedGu  == All, bit-identical (each h element is computed by the same thread code)
 //   Shared then Routed           == All up to float summation order (y += shared; y += routed instead of one sum)
-// SharedGu / Shared never read `table`.
-enum class MoePart { All, SharedGu, AfterSharedGu, Shared, Routed };
+//   SharedGu then SharedDown     == Shared, bit-identical (the shared expert's gate/up and its down projection alone)
+// SharedGu / Shared / SharedDown never read `table`.
+enum class MoePart { All, SharedGu, AfterSharedGu, Shared, Routed, SharedDown };
 void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& table, MoePart part);
 
 // Prefill MoE (grouped GEMM over experts, tensor API). Routing is given in expert-sorted order: routed expert j

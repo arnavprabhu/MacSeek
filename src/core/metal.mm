@@ -107,16 +107,20 @@ struct Enc::Impl {
   id<MTLComputeCommandEncoder> ce;
   bool committed = false, waited = false;
 };
+EncStats& enc_stats() { static EncStats s; return s; }
+static bool g_enc_dirty = false;
 
 Enc::Enc() : p(new Impl) {
   id<MTLCommandQueue> q = (__bridge id<MTLCommandQueue>)Device::get().queue();
   p->cb = [q commandBufferWithUnretainedReferences];
   p->ce = [p->cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent];
+  enc_stats().encoders++;
 }
 Enc::Enc(bool open_encoder) : p(new Impl) {
   id<MTLCommandQueue> q = (__bridge id<MTLCommandQueue>)Device::get().queue();
   p->cb = [q commandBufferWithUnretainedReferences];
   p->ce = open_encoder ? [p->cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent] : nil;
+  if (open_encoder) enc_stats().encoders++;
 }
 void Enc::enqueue() { [p->cb enqueue]; }
 Enc::~Enc() { if (!p->waited) wait(); delete p; }
@@ -127,18 +131,26 @@ void Enc::set_bytes(int i, const void* d, size_t n) { [p->ce setBytes:d length:n
 void Enc::set_threadgroup_memory(int i, size_t n) { [p->ce setThreadgroupMemoryLength:(n + 15) / 16 * 16 atIndex:i]; }
 void Enc::dispatch_groups(uint32_t gx, uint32_t gy, uint32_t gz, uint32_t tx, uint32_t ty, uint32_t tz) {
   [p->ce dispatchThreadgroups:MTLSizeMake(gx, gy, gz) threadsPerThreadgroup:MTLSizeMake(tx, ty, tz)];
+  enc_stats().dispatches++; g_enc_dirty = true;
 }
 void Enc::dispatch_threads(uint32_t nx, uint32_t ny, uint32_t nz, uint32_t tx, uint32_t ty, uint32_t tz) {
   [p->ce dispatchThreads:MTLSizeMake(nx, ny, nz) threadsPerThreadgroup:MTLSizeMake(tx, ty, tz)];
+  enc_stats().dispatches++; g_enc_dirty = true;
 }
-void Enc::barrier() { [p->ce memoryBarrierWithScope:MTLBarrierScopeBuffers]; }
+void Enc::barrier() {
+  [p->ce memoryBarrierWithScope:MTLBarrierScopeBuffers];
+  enc_stats().barriers++; if (g_enc_dirty) enc_stats().stages++;
+  g_enc_dirty = false;
+}
 void Enc::use_resources(const std::vector<Buffer>& bufs) {
   std::vector<id<MTLResource>> r;
   for (auto& b : bufs) if (b.buf) r.push_back((__bridge id<MTLBuffer>)b.buf);
   if (!r.empty()) [p->ce useResources:r.data() count:r.size() usage:MTLResourceUsageRead];
 }
 void Enc::end_encoder() { if (p->ce) { [p->ce endEncoding]; p->ce = nil; } }
-void Enc::begin_encoder() { if (!p->ce) p->ce = [p->cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent]; }
+void Enc::begin_encoder() {
+  if (!p->ce) { p->ce = [p->cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent]; enc_stats().encoders++; g_enc_dirty = false; }
+}
 void Enc::commit() { if (!p->committed) { end_encoder(); [p->cb commit]; p->committed = true; } }
 void Enc::wait() {
   commit();

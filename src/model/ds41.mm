@@ -15,6 +15,7 @@
 #include "kernels/arch.hpp"
 #include "kernels/attn.hpp"
 #include "kernels/quant.hpp"
+#include "model/dec_layer.hpp"
 #include "model/engram_hash.hpp"
 #include "store/engram.hpp"
 #include "store/experts.hpp"
@@ -36,20 +37,7 @@ ModelOptions ModelOptions::from_env() {
   return o;
 }
 
-namespace {
-struct W {  // one weight: buffer + kernel type + shape
-  Buffer b; QType t = QType::F32; int rows = 0, cols = 0;
-  explicit operator bool() const { return (bool)b; }
-};
-struct LayerW {
-  W attn_norm, ffn_norm, q_a, q_a_norm, q_b, kv, kv_norm, o_a, o_b, sinks;
-  W c_kv, c_gate, c_norm, idx_qb, idx_proj, idx_k, idx_knorm;
-  W gate_inp, bias;
-  W sh_gate, sh_up, sh_down;
-  W hc_attn_fn, hc_attn_scale, hc_attn_base, hc_ffn_fn, hc_ffn_scale, hc_ffn_base;
-  W engram_kv, engram_gate;
-};
-}  // namespace
+// W / LayerW: model/dec_layer.hpp (shared with the decode layer encoder)
 
 struct Model::Impl {
   std::vector<LayerW> L;
@@ -294,9 +282,28 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   }
   // engram kv for both engram layers (depends only on token ids): ekv[s] = engram_kv(dequant(rows of layer s))
   Buffer ekv_l[2];
+  for (int s = 0; s < 2; s++) ekv_l[s] = P.ekv.sub((size_t)s * P.maxn * 25600 * 4, (size_t)n * 25600 * 4);
+  // Table decode encodes each layer through model/dec_layer (docs/modules/dec_gpu.md): MACSEEK_DEC_FUSE etc. select the
+  // fused variants; MACSEEK_DEC_LAYER=0 = the previous inline encoding below (same dispatch sequence as FUSE=0).
+  static const bool tbl_mode = env_int("MACSEEK_DEC_TABLE", 1) != 0;
+  static const bool dec_layer_mod = env_int("MACSEEK_DEC_LAYER", 1) != 0;
+  static const bool force2 = env_int("MACSEEK_PROF_FORCE", 0) == 2;
+  const bool dec_tbl = dec && tbl_mode && !force2;
+  const bool use_dmod = dec_tbl && dec_layer_mod;
+  DecCtx dctx;
+  if (use_dmod) {
+    static const DecOptions dopt = [&] { DecOptions o = DecOptions::from_env(); o.actq_out = o_.actq_out; return o; }();
+    dctx.cfg = &cfg_; dctx.L = &P.L; dctx.pred_w = &P.pred_w; dctx.ast = &P.ast; dctx.asc = &P.asc; dctx.o = dopt;
+    DecBufs& B = dctx.B;
+    B.h = h; B.h2 = P.h.sub(20480 * 4, 20480 * 4);   // decode uses row 0 of P.h; row 1 = ping-pong state
+    B.x = P.x; B.sub = P.sub; B.mixA = P.mixA; B.mixF = P.mixF;
+    B.qa = P.qa; B.qrn = P.qrn; B.q = P.q; B.kv = P.kv; B.ckv = P.ckv; B.cgate = P.cgate; B.iq = P.iq; B.iw = P.iw;
+    B.aout = P.aout; B.oa = P.oa; B.rids = P.rids; B.rw = P.rw; B.plog = P.plog;
+    B.ekv[0] = ekv_l[0]; B.ekv[1] = ekv_l[1]; B.moe_scratch = P.moe_dec_scratch; B.edeq = P.edeq;
+    encode_dec_prologue(*e, dctx, P.erow.sub(0, 2 * 24 * 144));
+  } else
   for (int s = 0; s < 2; s++) {
     const int l = cfg_.engram_layers[s];
-    ekv_l[s] = P.ekv.sub((size_t)s * P.maxn * 25600 * 4, (size_t)n * 25600 * 4);
     arch::encode_iq4nl_rows(*e, P.erow.sub((size_t)s * n * 24 * 144, (size_t)n * 24 * 144), 144, P.edeq, n * 24);
     e->barrier();
     linear(*e, P.L[l].engram_kv, P.edeq, ekv_l[s], n);
@@ -337,6 +344,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   // Attention side of layer l for this call: hc boundary (+engram), attention, hc boundary into the FFN, router,
   // and zeroing of `sub` (the MoE accumulates into it). Encodes into E; no commit.
   auto encode_attn_side = [&](Enc& E, int l) {
+    if (use_dmod) { encode_dec_attn_side(E, dctx, l, start); return; }
     LayerW& L = P.L[l];
     // ---- hyper-connection boundary into attention (+ engram) ----
     if (cfg_.is_engram(l)) {
@@ -419,7 +427,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
 
   const bool pipe = dec && env_int("MACSEEK_DEC_PIPE", 0) != 0;
   auto encode_head = [&](Enc& E) {
-    arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixF; a.norm_w = P.out_norm.b; a.x_out = P.x; a.n = n;
+    const Buffer hh = use_dmod ? dec_cur_h(dctx) : h;
+    arch::HcStep a; a.h_in = hh; a.h_out = hh; a.x_sub = P.sub; a.mix_prev = P.mixF; a.norm_w = P.out_norm.b; a.x_out = P.x; a.n = n;
     arch::encode_hc_step(E, a, P.asc); E.barrier();
     if (logits_all) {
       linear(E, P.head, P.x, P.logits, n); E.barrier();
@@ -430,8 +439,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       arch::encode_argmax(E, P.logits, 1, V, P.amax_i, P.amax_v, P.asc, temperature, seed);
     }
   };  bool head_done = false;
-  static const bool tbl_mode = env_int("MACSEEK_DEC_TABLE", 1) != 0;
-  if (dec && tbl_mode && env_int("MACSEEK_PROF_FORCE", 0) != 2) {
+  if (dec_tbl) {
     static const bool tforce = env_int("MACSEEK_PROF_FORCE", 0) == 1;   // PROFILING ONLY
     static const int tforced[6] = {0, 1, 2, 3, 4, 5};
     // Table decode: the whole token is ONE command buffer encoded up front. Per layer the GPU signals `rdy` after the
@@ -474,6 +482,11 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       m.shared = q::ExpertSlot{L.sh_gate.b, L.sh_up.b, L.sh_down.b};
       m.x = P.x; m.y = P.sub; m.scratch = P.moe_dec_scratch;
       const Buffer tl = P.tbl.sub((size_t)l * 6 * 3 * 8, 6 * 3 * 8);
+      if (use_dmod) {
+        DecSync ds; ds.rdy = (__bridge void*)rdy; ds.go = (__bridge void*)go; ds.value_base = b0; ds.mode = dsync;
+        encode_dec_moe_table(*e, dctx, l, m.t_gate_up, m.t_down, tl, arena, ds);   // ends with a barrier
+        continue;
+      }
       if (dsync == 0) {
         e->between([&](void* cb) {
           id<MTLCommandBuffer> c = (__bridge id<MTLCommandBuffer>)cb;
@@ -495,6 +508,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       }
       e->barrier();
     }
+    if (use_dmod) dec_bg_flush(*e, dctx, -1);   // engram_bg: no-op with the default plan
     encode_head(*e);
     head_done = true;
     prof_.encode_ms += tenc.ms();
