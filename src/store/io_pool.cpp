@@ -25,12 +25,28 @@ void IoPool::submit(IoRequestPtr r) {
   r->remaining.store(r->chunks.size());
   if (r->chunks.empty()) { if (r->on_done) r->on_done(*r); return; }
   int p = r->priority ? 1 : 0;
+  size_t n = r->chunks.size();
   {
     std::lock_guard<std::mutex> g(mu_);
     r->next = 0; r->queued = true;
     q_[p].push_back(std::move(r));
   }
-  cv_.notify_all();
+  if (n == 1) cv_.notify_one(); else cv_.notify_all();
+}
+
+void IoPool::submit(std::vector<IoRequestPtr>& rs) {
+  size_t chunks = 0;
+  {
+    std::lock_guard<std::mutex> g(mu_);
+    for (auto& r : rs) {
+      r->remaining.store(r->chunks.size());
+      r->next = 0; r->queued = true;
+      chunks += r->chunks.size();
+      q_[r->priority ? 1 : 0].push_back(r);
+    }
+  }
+  if (chunks == 1) cv_.notify_one(); else if (chunks) cv_.notify_all();
+  rs.clear();
 }
 
 void IoPool::promote(IoRequest* r) {

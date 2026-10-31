@@ -45,22 +45,29 @@ struct Residency {   // mincore over read-only mappings of every split
   }
 };
 
-struct Picker {
-  const ExpertLayout& L; const Residency& R; std::mt19937_64 rng{1234}; std::set<uint32_t> used; int skipped = 0;
+struct Picker {   // unused experts, least page-cache-resident first (never re-read an expert within a run)
+  const ExpertLayout& L; const Residency& R; std::mt19937_64 rng{1234}; std::set<uint32_t> used;
+  int skipped = 0, picked = 0; double resident_sum = 0;
   Picker(const ExpertLayout& l, const Residency& r) : L(l), R(r) {}
-  bool cold(int l, int e) {
-    for (int k = 0; k < 3; k++) { auto& m = L.layers[l].mat[k]; if (R.frac(m.fd, m.base + (uint64_t)e * m.stride, m.len) > 0) return false; }
-    return true;
+  double frac(int l, int e) {
+    double f = 0, tot = 0;
+    for (int k = 0; k < 3; k++) { auto& m = L.layers[l].mat[k]; f += R.frac(m.fd, m.base + (uint64_t)e * m.stride, m.len) * m.len; tot += m.len; }
+    return f / tot;
   }
   std::vector<int> pick(int l, int n) {
     std::vector<int> out;
-    while ((int)out.size() < n) {
-      int e = (int)(rng() % L.n_experts);
-      uint32_t k = (uint32_t)(l * L.n_experts + e);
-      if (used.count(k)) continue;
-      used.insert(k);
-      if (!cold(l, e)) { skipped++; continue; }
-      out.push_back(e);
+    for (int round = 0; (int)out.size() < n; round++) {
+      int best = -1; double bf = 2;
+      for (int tries = 0; tries < 48; tries++) {
+        int e = (int)(rng() % L.n_experts);
+        if (used.count((uint32_t)(l * L.n_experts + e)) || std::find(out.begin(), out.end(), e) != out.end()) continue;
+        double f = frac(l, e);
+        if (f < bf) { bf = f; best = e; }
+        if (f == 0) break;
+      }
+      if (best < 0 || (bf > 0.10 && round < 64)) { skipped++; if (round > 512) { fprintf(stderr, "picker: layer %d exhausted\n", l); abort(); } continue; }
+      used.insert((uint32_t)(l * L.n_experts + best));
+      out.push_back(best); picked++; resident_sum += bf;
     }
     return out;
   }
@@ -215,7 +222,7 @@ int main(int argc, char** argv) {
     }
   }
   MemStatus m1 = mem_status();
-  printf("\ntotal expert bytes read: %.2f GB (cold picks skipped as page-cache resident: %d)\nmem after: %s\nswap grew: %s\n",
-         total_read / 1e9, P.skipped, m1.str().c_str(), swap_grew(m0, m1) ? "YES" : "no");
+  printf("\ntotal expert bytes read: %.2f GB; picked %d experts, mean page-cache-resident fraction %.2f%% (skips %d)\nmem after: %s\nswap grew: %s\n",
+         total_read / 1e9, P.picked, P.picked ? 100 * P.resident_sum / P.picked : 0.0, P.skipped, m1.str().c_str(), swap_grew(m0, m1) ? "YES" : "no");
   return 0;
 }

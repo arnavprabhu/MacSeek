@@ -46,6 +46,7 @@ class IoPool {
   ~IoPool();
   IoPool(const IoPool&) = delete; IoPool& operator=(const IoPool&) = delete;
   void submit(IoRequestPtr r);       // r->priority selects the queue
+  void submit(std::vector<IoRequestPtr>& rs);   // batch: one lock + one wake-up for all (cleared on return)
   void promote(IoRequest* r);        // move a queued low-priority request to the demand queue (no-op otherwise)
   int threads() const { return (int)workers_.size(); }
   uint64_t reads() const { return reads_.load(); }

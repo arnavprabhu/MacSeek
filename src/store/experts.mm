@@ -17,6 +17,7 @@
 #include <deque>
 #include <fstream>
 #include <map>
+#include <thread>
 #include <sstream>
 
 namespace ms {
@@ -64,6 +65,7 @@ ExpertCacheOptions ExpertCacheOptions::from_env() {
   o.policy = p == "lfu" ? PolicyKind::LFU : p == "static" ? PolicyKind::Static : PolicyKind::LRU;
   o.stats_path = env_str("MACSEEK_ROUTING_STATS", "");
   o.ring_slots = (int)env_int("MACSEEK_RING_SLOTS", o.ring_slots);
+  o.prefault = env_int("MACSEEK_ARENA_PREFAULT", 1) != 0;
   return o;
 }
 
@@ -178,6 +180,16 @@ ExpertCache::ExpertCache(const ExpertLayout& layout, const ExpertCacheOptions& o
       arena_bytes_ += bytes;
     }
   }
+  if (o_.prefault && !o_.dry_io) {   // parallel first touch of every page
+    std::vector<std::pair<char*, size_t>> parts;
+    for (auto& m : p_->maps) for (size_t off = 0; off < m.second; off += 256ull << 20) parts.push_back({m.first + off, std::min<size_t>(256ull << 20, m.second - off)});
+    std::atomic<size_t> next{0};
+    std::vector<std::thread> th;
+    for (int t = 0; t < 8; t++) th.emplace_back([&] {
+      for (size_t i; (i = next++) < parts.size();) for (size_t o = 0; o < parts[i].second; o += kPage) parts[i].first[o] = 0;
+    });
+    for (auto& t : th) t.join();
+  }
   free_.assign(C, {});
   for (int s = (int)slots_.size() - 1; s >= 0; s--) free_[slots_[s].cls].push_back(s);
   map_.assign((size_t)NL * NE, -1);
@@ -261,6 +273,7 @@ int ExpertCache::take_slot_locked(int cls, bool block, std::unique_lock<std::mut
     }, &ctx);
     if (v >= 0) { evict_locked(v); return v; }
     if (!block) return -1;
+    if (!to_submit_.empty()) { lk.unlock(); flush_submits(); lk.lock(); continue; }   // loads we wait on must be queued
     if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(30)) {
       fprintf(stderr, "experts: no evictable slot in class %d for 30 s (all %d slots in use/pinned/loading)\n", cls, classes_[cls].n_slots);
       abort();
@@ -308,7 +321,13 @@ void ExpertCache::load_locked(int s, uint32_t k, int prio) {
   req->priority = prio;
   req->on_done = [this, s](IoRequest& r) { on_loaded(s, r.bytes.load()); };
   x.req = req.get();
-  pool_->submit(std::move(req));
+  to_submit_.push_back(std::move(req));
+}
+
+void ExpertCache::flush_submits() {
+  std::vector<std::shared_ptr<IoRequest>> v;
+  { std::lock_guard<std::mutex> g(mu_); v.swap(to_submit_); }
+  if (!v.empty()) pool_->submit(v);
 }
 
 void ExpertCache::complete_tickets_locked() {
@@ -382,6 +401,8 @@ ExpertLease ExpertCache::ensure(int layer, const int* ids, int n) {
     p_->pending.push_back((int)waiting.size());
     for (int s : waiting) slots_[s].waiters.push_back(lease.ticket);
   }
+  lk.unlock();
+  flush_submits();
   return lease;
 }
 
@@ -399,6 +420,8 @@ int ExpertCache::prefetch(int layer, const int* ids, int n) {
     stats_[layer].prefetch_issued++;
     issued++;
   }
+  lk.unlock();
+  flush_submits();
   return issued;
 }
 
@@ -421,6 +444,8 @@ int ExpertCache::pin(int layer, const int* ids, int n) {
     }
     pinned++;
   }
+  lk.unlock();
+  flush_submits();
   return pinned;
 }
 

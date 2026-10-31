@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
       uint64_t row = rng() % NR, off = t.offset + row * 144, pg = off / 16384, pg2 = (off + 143) / 16384;
       if (used_pages.count(pg) || used_pages.count(pg2)) continue;
       char v[2] = {0, 0};
-      if (map != MAP_FAILED) { mincore(map + pg * 16384, (pg2 - pg + 1) * 16384, v); if ((v[0] | v[1]) & 1) { skipped++; continue; } }
+      if (map != MAP_FAILED && skipped < 100000) { mincore(map + pg * 16384, (pg2 - pg + 1) * 16384, v); if ((v[0] | v[1]) & 1) { skipped++; continue; } }
       used_pages.insert(pg); used_pages.insert(pg2);
       r.push_back(row);
     }

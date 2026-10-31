@@ -73,6 +73,8 @@ struct ExpertCacheOptions {
   int ring_slots = 0;               // bulk-stream staging slots (0 = stream() unavailable); 12-24 recommended
   size_t max_buffer_bytes = 0;      // 0 = min(device maxBufferLength, 8 GiB)
   bool dry_io = false;              // policy simulation: no reads, slots become ready immediately
+  bool prefault = true;             // touch every arena page at startup (parallel): no zero-fill faults on the miss
+                                    // path (~2 µs per 16 KiB page = ~1 ms per expert otherwise); env MACSEEK_ARENA_PREFAULT
   std::shared_ptr<EvictionPolicy> custom_policy;   // overrides `policy` (Static pinning still uses stats_path)
   static ExpertCacheOptions from_env();   // MACSEEK_ARENA_GB, MACSEEK_IO_THREADS, MACSEEK_READ_CHUNK_KB,
                                           // MACSEEK_IO_ALIGN, MACSEEK_POLICY=lru|lfu|static, MACSEEK_ROUTING_STATS,
@@ -211,6 +213,7 @@ class ExpertCache {
   int take_slot_locked(int cls, bool block, std::unique_lock<std::mutex>& lk);
   void evict_locked(int s);
   void load_locked(int s, uint32_t key, int prio);
+  void flush_submits();             // submit requests queued by load_locked (call after dropping mu_)
   void on_loaded(int s, uint64_t bytes);
   ExpertView view_locked(int s) const;
   void release_slots(const std::vector<int>& slots);
@@ -230,6 +233,7 @@ class ExpertCache {
   mutable std::mutex mu_;
   std::condition_variable cv_;            // slot became ready / released
   int inflight_ = 0;
+  std::vector<std::shared_ptr<IoRequest>> to_submit_;   // built under mu_, submitted after unlock (one wake-up)
   uint64_t arena_bytes_ = 0;
   std::unique_ptr<Impl> p_;
   std::unique_ptr<IoPool> pool_;
