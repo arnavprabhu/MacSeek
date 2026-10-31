@@ -63,7 +63,8 @@ struct Model::Impl {
   Buffer moe_scr[2], route_dev[2];
   Buffer pids, pw;                   // (unused)
   Buffer plog;                       // decode: router logits of layers l+1..l+D applied to layer l's FFN input
-  Buffer plog_n;                     // prefill: router logits of layer l+1 on layer l's FFN input, [n][384]
+  Buffer plog_n;
+  Buffer tbl;                        // decode table mode: [40][6][3] device addresses of the routed experts                     // prefill: router logits of layer l+1 on layer l's FFN input, [n][384]
   arch::Scratch asc2;                // second scratch for the predictor router (same kernel family)   // prefill MoE scratch + routing tables (double-buffered)
 };
 
@@ -151,7 +152,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(2 * n * 25600 * 4, "ekv");
   P.logits = A((size_t)std::max(o.max_logits_rows, 1) * cfg_.vocab * 4, "logits");
   P.amax_i = A(64, "amax_i"); P.amax_v = A(64, "amax_v");
-  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog"); P.plog_n = A(n * 384 * 4, "plog_n");
+  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog"); P.plog_n = A(n * 384 * 4, "plog_n"); P.tbl = A(40 * 6 * 3 * 8, "tbl");
   P.asc2 = arch::Scratch::create(64, 1);
   P.moe_dec_scratch = A(q::moe_decode_scratch_bytes(), "moe_dec");
   const int total = (int)n * 6;
@@ -364,6 +365,72 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   };
 
   const bool pipe = dec && env_int("MACSEEK_DEC_PIPE", 0) != 0;
+  auto encode_head = [&](Enc& E) {
+    arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixF; a.norm_w = P.out_norm.b; a.x_out = P.x; a.n = n;
+    arch::encode_hc_step(E, a, P.asc); E.barrier();
+    if (logits_all) {
+      linear(E, P.head, P.x, P.logits, n); E.barrier();
+      arch::encode_argmax(E, P.logits.sub((size_t)(n - 1) * V * 4, (size_t)V * 4), 1, V, P.amax_i, P.amax_v, P.asc, temperature, seed);
+    } else {
+      q::encode_matvec(E, P.head.t, P.head.b, P.head.rows, P.head.cols, P.x.sub((size_t)(n - 1) * 5120 * 4, 5120 * 4), P.logits, false);
+      E.barrier();
+      arch::encode_argmax(E, P.logits, 1, V, P.amax_i, P.amax_v, P.asc, temperature, seed);
+    }
+  };  bool head_done = false;
+  static const bool tbl_mode = env_int("MACSEEK_DEC_TABLE", 1) != 0;
+  if (dec && tbl_mode && env_int("MACSEEK_PROF_FORCE", 0) != 2) {
+    static const bool tforce = env_int("MACSEEK_PROF_FORCE", 0) == 1;   // PROFILING ONLY
+    static const int tforced[6] = {0, 1, 2, 3, 4, 5};
+    // Table decode: the whole token is ONE command buffer encoded up front. Per layer the GPU signals `rdy` after the
+    // router and waits on `go`; the CPU reads the ids, ensures the experts, writes their device addresses into
+    // P.tbl[l] and signals `go`. No command-buffer round trip per layer.
+    id<MTLDevice> dev = (__bridge id<MTLDevice>)Device::get().device();
+    static id<MTLSharedEvent> rdy = [dev newSharedEvent];
+    static id<MTLSharedEvent> go = [dev newSharedEvent];
+    static uint64_t tb = 0;
+    const uint64_t b0 = tb;
+    tb += cfg_.n_layers;
+    const std::vector<Buffer> arena = cache_->buffers();
+    Timer tenc;
+    for (int l = 0; l < cfg_.n_layers; l++) {
+      LayerW& L = P.L[l];
+      encode_attn_side(*e, l);
+      e->between([&](void* cb) {
+        id<MTLCommandBuffer> c = (__bridge id<MTLCommandBuffer>)cb;
+        [c encodeSignalEvent:rdy value:b0 + 1 + l];
+        [c encodeWaitForEvent:go value:b0 + 1 + l];
+      });
+      e->use_resources(arena);
+      const auto& lay = cache_->layout().layers[l];
+      q::MoeDecodeArgs m;
+      m.t_gate_up = (QType)(int)lay.mat[0].type; m.t_down = (QType)(int)lay.mat[2].type;
+      m.n_routed = 6; m.weights = P.rw; m.has_shared = true; m.t_shared = L.sh_gate.t;
+      m.shared = q::ExpertSlot{L.sh_gate.b, L.sh_up.b, L.sh_down.b};
+      m.x = P.x; m.y = P.sub; m.scratch = P.moe_dec_scratch;
+      q::encode_moe_decode_table(*e, m, P.tbl.sub((size_t)l * 6 * 3 * 8, 6 * 3 * 8));
+      e->barrier();
+    }
+    encode_head(*e);
+    head_done = true;
+    prof_.encode_ms += tenc.ms();
+    e->commit();
+    std::vector<ExpertLease> leases;
+    leases.reserve(cfg_.n_layers);
+    for (int l = 0; l < cfg_.n_layers; l++) {
+      Timer tw;
+      while (rdy.signaledValue < b0 + 1 + l) { }
+      wait_ms += tw.ms();
+      Timer tx;
+      ExpertLease lease = cache_->ensure(l, tforce ? tforced : (const int*)P.rids.cpu(), 6);
+      if (pred_on && !tforce) prefetch_predicted(l);
+      uint64_t* t = (uint64_t*)P.tbl.cpu() + (size_t)l * 18;
+      for (int k = 0; k < 6; k++) for (int j = 0; j < 3; j++) t[k * 3 + j] = lease.views[k].gpu[j];
+      if (lease.ticket) lease.wait();
+      go.signaledValue = b0 + 1 + l;
+      leases.push_back(std::move(lease));
+      exp_ms += tx.ms();
+    }
+  } else
   if (pipe) {
     // Pipelined decode (docs/integration.md): GPU-ordered chain att(0) moe(0) att(1) ... ; att(l+1) is encoded and
     // committed while att(l) runs; moe(l) is reserved in the queue before att(l+1) and encoded once the router ids are
@@ -446,6 +513,24 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     }
     encode_attn_side(*e, l);
     prof_.encode_ms += tenc.ms();
+    static const int force_mode = (int)env_int("MACSEEK_PROF_FORCE", 0);
+    if (dec && force_mode == 2) {
+      // PROFILING ONLY: forced experts are known up front, so the whole token goes in one command buffer (no handoff)
+      static const int forced[6] = {0, 1, 2, 3, 4, 5};
+      ExpertLease lease = cache_->ensure(l, forced, 6);
+      lease.wait();
+      q::MoeDecodeArgs m;
+      m.t_gate_up = (QType)(int)lease.views[0].type[0]; m.t_down = (QType)(int)lease.views[0].type[2];
+      m.n_routed = 6;
+      for (int k = 0; k < 6; k++) m.slot[k] = q::ExpertSlot{lease.views[k].mat[0], lease.views[k].mat[1], lease.views[k].mat[2]};
+      m.weights = P.rw; m.has_shared = true; m.t_shared = L.sh_gate.t;
+      m.shared = q::ExpertSlot{L.sh_gate.b, L.sh_up.b, L.sh_down.b};
+      m.x = P.x; m.y = P.sub; m.scratch = P.moe_dec_scratch;
+      q::encode_moe_decode(*e, m);
+      e->barrier();
+      lease.release_after(e->cmdbuf());
+      continue;
+    }
     Timer tw;
     e->wait();
     wait_ms += tw.ms();
@@ -455,8 +540,10 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     Timer tx;
     const int* ids = (const int*)P.rids.cpu();
     if (dec) {
-      ExpertLease lease = cache_->ensure(l, ids, 6);
-      if (pred_on) prefetch_predicted(l);
+      static const bool force_ids = env_int("MACSEEK_PROF_FORCE", 0) != 0;   // PROFILING ONLY: wrong output
+      static const int forced[6] = {0, 1, 2, 3, 4, 5};
+      ExpertLease lease = cache_->ensure(l, force_ids ? forced : ids, 6);
+      if (pred_on && !force_ids) prefetch_predicted(l);
       e = std::make_unique<Enc>();
       if (dec_cpu_wait) lease.wait();
       else e->between([&](void* cb) { lease.encode_wait(cb); });
@@ -567,19 +654,10 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   }
 
   // ---- head ----
-  {
-    arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixF; a.norm_w = P.out_norm.b; a.x_out = P.x; a.n = n;
-    arch::encode_hc_step(*e, a, P.asc); e->barrier();
-  }
+
   int32_t next = -1;
-  if (logits_all) {
-    linear(*e, P.head, P.x, P.logits, n); e->barrier();
-    arch::encode_argmax(*e, P.logits.sub((size_t)(n - 1) * V * 4, (size_t)V * 4), 1, V, P.amax_i, P.amax_v, P.asc, temperature, seed);
-  } else {
-    q::encode_matvec(*e, P.head.t, P.head.b, P.head.rows, P.head.cols, P.x.sub((size_t)(n - 1) * 5120 * 4, 5120 * 4), P.logits, false);
-    e->barrier();
-    arch::encode_argmax(*e, P.logits, 1, V, P.amax_i, P.amax_v, P.asc, temperature, seed);
-  }
+  if (!head_done) encode_head(*e);
+
   Timer tw;
   e->wait();
   wait_ms += tw.ms();

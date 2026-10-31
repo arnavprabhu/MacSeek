@@ -58,6 +58,9 @@ size_t moe_decode_scratch_bytes();
 // Two dispatches (gate+up+swiglu for all experts incl. shared, then down for all experts accumulated into y) with a
 // barrier between them. swiglu: u = clamp(up, -10, 10), g = min(gate, 10), h = silu(g) * u * weight.
 void encode_moe_decode(Enc& e, const MoeDecodeArgs& a);
+// Same, but routed expert matrices come from `table`: kMaxRouted entries of 3 device addresses {gate, up, down}
+// (uint64, filled by the CPU before the GPU runs this). a.slot[] is ignored. The caller makes the arena resident.
+void encode_moe_decode_table(Enc& e, const MoeDecodeArgs& a, const Buffer& table);
 
 // Prefill MoE (grouped GEMM over experts, tensor API). Routing is given in expert-sorted order: routed expert j
 // (0..n_exp-1, any subset of the layer's experts) owns entries [offs[j], offs[j+1]) of tok[] (token row in X) and

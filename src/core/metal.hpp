@@ -49,6 +49,7 @@ class Enc {
   void set_threadgroup_memory(int idx, size_t n);
   void dispatch_groups(uint32_t gx, uint32_t gy, uint32_t gz, uint32_t tx, uint32_t ty = 1, uint32_t tz = 1);
   void dispatch_threads(uint32_t nx, uint32_t ny, uint32_t nz, uint32_t tx, uint32_t ty = 1, uint32_t tz = 1);
+  void use_resources(const std::vector<Buffer>& bufs);  // make buffers resident for indirect (pointer) access
   void barrier();         // memory barrier on buffers between dependent dispatches (concurrent encoder)
   // End the current compute encoder, run f(cmdbuf) (e.g. encodeWaitForEvent / encodeSignalEvent, which need no
   // open encoder), then open a new compute encoder in the same command buffer. Pipelines/bindings must be re-set.

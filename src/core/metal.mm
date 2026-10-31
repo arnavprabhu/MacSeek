@@ -132,6 +132,11 @@ void Enc::dispatch_threads(uint32_t nx, uint32_t ny, uint32_t nz, uint32_t tx, u
   [p->ce dispatchThreads:MTLSizeMake(nx, ny, nz) threadsPerThreadgroup:MTLSizeMake(tx, ty, tz)];
 }
 void Enc::barrier() { [p->ce memoryBarrierWithScope:MTLBarrierScopeBuffers]; }
+void Enc::use_resources(const std::vector<Buffer>& bufs) {
+  std::vector<id<MTLResource>> r;
+  for (auto& b : bufs) if (b.buf) r.push_back((__bridge id<MTLBuffer>)b.buf);
+  if (!r.empty()) [p->ce useResources:r.data() count:r.size() usage:MTLResourceUsageRead];
+}
 void Enc::end_encoder() { if (p->ce) { [p->ce endEncoding]; p->ce = nil; } }
 void Enc::begin_encoder() { if (!p->ce) p->ce = [p->cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent]; }
 void Enc::commit() { if (!p->committed) { end_encoder(); [p->cb commit]; p->committed = true; } }

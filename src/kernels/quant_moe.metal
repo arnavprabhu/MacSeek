@@ -165,3 +165,108 @@ Q_MOE_INST(QB_IQ1S, QB_Q6K, "iq1_s_q6_k")
 Q_MOE_INST(QB_IQ1S, QB_Q8_0, "iq1_s_q8_0")
 Q_MOE_INST(QB_IQ2XXS, QB_Q6K, "iq2_xxs_q6_k")
 Q_MOE_INST(QB_IQ2XXS, QB_Q8_0, "iq2_xxs_q8_0")
+
+
+// ---- pointer-table variants (decode without host re-binding): routed expert e's matrices come from tbl[e]
+// (device addresses, written by the CPU before the GPU reaches this dispatch). Callers must make the expert arena
+// resident (useResource) in the encoder.
+struct QDecPtr { device const uchar* g; device const uchar* u; device const uchar* d; };
+
+template <typename QR, typename QS, int NR>
+kernel void q_moe_gu_t(device const float* x [[buffer(0)]], device float* h [[buffer(1)]],
+                       constant QMoeArgs& a [[buffer(2)]], device const float* wts [[buffer(3)]],
+                       device const QDecPtr* tbl [[buffer(4)]],
+                       device const uchar* gs [[buffer(16)]], device const uchar* us [[buffer(17)]],
+                       threadgroup float* red [[threadgroup(0)]], uint tg [[threadgroup_position_in_grid]],
+                       ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]],
+                       ushort nsg [[simdgroups_per_threadgroup]]) {
+  const ushort ks = a.ksplit, kk = sg % ks, rs = sg / ks, rsg = nsg / ks;
+  const uint e = tg / a.tiles;
+  const uint row0 = ((tg % a.tiles) * rsg + rs) * NR;
+  float ag[NR], au[NR];
+  const bool shared = e >= a.n_routed;
+  if (!shared) q_gu_rows<QR, NR>(tbl[e].g, tbl[e].u, a.rb_gu_r, a.inter, row0, x, a.dim, kk, ks, lane, ag, au);
+  else q_gu_rows<QS, NR>(gs, us, a.rb_gu_s, a.inter, row0, x, a.dim, kk, ks, lane, ag, au);
+  if (ks > 1) {
+    if (lane == 0) for (int r = 0; r < NR; r++) {
+      red[((rs * NR + r) * 2 + 0) * ks + kk] = ag[r]; red[((rs * NR + r) * 2 + 1) * ks + kk] = au[r];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (kk != 0) return;
+    for (int r = 0; r < NR; r++) {
+      float sg_ = 0, su = 0;
+      for (ushort k = 0; k < ks; k++) { sg_ += red[((rs * NR + r) * 2) * ks + k]; su += red[((rs * NR + r) * 2 + 1) * ks + k]; }
+      ag[r] = sg_; au[r] = su;
+    }
+  }
+  if (lane == 0) {
+    const float w = shared ? 1.f : wts[e];
+    for (int r = 0; r < NR; r++) {
+      const uint row = row0 + r;
+      if (row < a.inter) h[e * a.inter + row] = q_swiglu(ag[r], au[r], w);
+    }
+  }
+}
+
+template <typename QR, typename QS, int NR>
+kernel void q_moe_down_t(device const float* h [[buffer(0)]], device float* y [[buffer(1)]],
+                         constant QMoeArgs& a [[buffer(2)]], device const QDecPtr* tbl [[buffer(4)]],
+                         device const uchar* ds [[buffer(10)]],
+                         threadgroup float* red [[threadgroup(0)]], uint tg [[threadgroup_position_in_grid]],
+                         ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]],
+                         ushort nsg [[simdgroups_per_threadgroup]]) {
+  const ushort ks = a.ksplit, kk = sg % ks, rs = sg / ks, rsg = nsg / ks;
+  const uint row0 = (tg * rsg + rs) * NR;
+  float acc[NR];
+  for (int r = 0; r < NR; r++) acc[r] = 0.f;
+  {
+    constexpr ushort BPI = 32 / QR::LPB;
+    const ushort sub = lane % QR::LPB, slot = lane / QR::LPB;
+    const uint nb = a.inter / QR::QK, nu = nb * a.n_routed;
+    for (uint u = kk * BPI + slot; u < nu; u += ks * BPI) {
+      const uint e = u / nb, ib = u - e * nb;
+      device const uchar* D = tbl[e].d;
+      float4 xr[QR::X4];
+      QR::load_x(h + e * a.inter + ib * QR::QK, sub, xr);
+      for (int r = 0; r < NR; r++)
+        acc[r] += QR::dot(D + (ulong)min(row0 + r, a.dim - 1) * a.rb_d_r + ib * QR::BB, sub, xr);
+    }
+  }
+  if (a.has_shared) {
+    constexpr ushort BPI = 32 / QS::LPB;
+    const ushort sub = lane % QS::LPB, slot = lane / QS::LPB;
+    const uint nb = a.inter / QS::QK;
+    device const float* hs = h + a.n_routed * a.inter;
+    for (uint ib = kk * BPI + slot; ib < nb; ib += ks * BPI) {
+      float4 xr[QS::X4];
+      QS::load_x(hs + ib * QS::QK, sub, xr);
+      for (int r = 0; r < NR; r++)
+        acc[r] += QS::dot(ds + (ulong)min(row0 + r, a.dim - 1) * a.rb_d_s + ib * QS::BB, sub, xr);
+    }
+  }
+  for (int r = 0; r < NR; r++) acc[r] = simd_sum(acc[r]);
+  if (ks > 1) {
+    if (lane == 0) for (int r = 0; r < NR; r++) red[(rs * NR + r) * ks + kk] = acc[r];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (kk != 0) return;
+    for (int r = 0; r < NR; r++) { float s = 0; for (ushort k = 0; k < ks; k++) s += red[(rs * NR + r) * ks + k]; acc[r] = s; }
+  }
+  if (lane == 0)
+    for (int r = 0; r < NR; r++) {
+      const uint row = row0 + r;
+      if (row < a.dim) y[row] += acc[r];
+    }
+}
+
+#define Q_MOE_T_INST(QR, QS, name, NR)                                                                             \
+  template [[host_name("q_moe_gu_t_" name "_r" #NR)]] kernel void q_moe_gu_t<QR, QS, NR>(                         \
+      device const float*, device float*, constant QMoeArgs&, device const float*, device const QDecPtr*,         \
+      device const uchar*, device const uchar*, threadgroup float*, uint, ushort, ushort, ushort);                 \
+  template [[host_name("q_moe_down_t_" name "_r" #NR)]] kernel void q_moe_down_t<QR, QS, NR>(                     \
+      device const float*, device float*, constant QMoeArgs&, device const QDecPtr*, device const uchar*,         \
+      threadgroup float*, uint, ushort, ushort, ushort);
+#define Q_MOE_T_ALL(QR, QS, name) Q_MOE_T_INST(QR, QS, name, 1) Q_MOE_T_INST(QR, QS, name, 2) Q_MOE_T_INST(QR, QS, name, 4)
+Q_MOE_T_ALL(QB_IQ1S, QB_Q6K, "iq1_s_q6_k")
+Q_MOE_T_ALL(QB_IQ1S, QB_Q8_0, "iq1_s_q8_0")
+Q_MOE_T_ALL(QB_IQ2XXS, QB_Q6K, "iq2_xxs_q6_k")
+Q_MOE_T_ALL(QB_IQ2XXS, QB_Q8_0, "iq2_xxs_q8_0")
