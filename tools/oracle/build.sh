@@ -12,3 +12,6 @@ $CXX -std=c++20 -O2 -Wall -Wno-deprecated-declarations \
   -L/opt/homebrew/lib -L"$LLAMA_LIB" -Wl,-rpath,/opt/homebrew/lib -Wl,-rpath,"$LLAMA_LIB" \
   -lllama -lggml -lggml-base
 echo "built $OUT/oracle_logits"
+$CXX -std=c++20 -O2 -Wall -I/opt/homebrew/include "$ROOT/tools/oracle/dequant_check.cpp" -o "$OUT/dequant_check" \
+  -L/opt/homebrew/lib -Wl,-rpath,/opt/homebrew/lib -lggml -lggml-base
+echo "built $OUT/dequant_check"
