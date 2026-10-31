@@ -74,7 +74,7 @@ int cmd_snapshot(int argc, char** argv) {
   if (n <= 0 || n > (int)toks.size()) n = (int)toks.size();
   ms::ds41::Model m;
   ms::Timer t;
-  const int chunk = 8192;
+  const int chunk = (int)std::max<long>(1, std::atol(getenv("MACSEEK_SNAP_PIECE") ? getenv("MACSEEK_SNAP_PIECE") : "32768"));
   for (int i = 0; i < n; i += chunk) {
     int c = std::min(chunk, n - i);
     ms::Timer tc;
