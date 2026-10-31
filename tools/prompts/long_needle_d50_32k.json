@@ -1,0 +1,15 @@
+{
+ "name": "long_needle_d50_32k",
+ "n_tokens": 31071,
+ "target": 32000,
+ "depth": 0.5,
+ "needle": "Important note for later: the access code for the Halvorsen observatory archive is MAPLE-7314-QUARTZ. Remember this code exactly.",
+ "answer": "MAPLE-7314-QUARTZ",
+ "question": "The documents above contain one sentence that gives the access code for the Halvorsen observatory archive. What is that access code? Reply with the code only.",
+ "needle_token_pos_approx": 15375,
+ "needle_depth_actual": 0.4948344115091243,
+ "n_docs": 1,
+ "docs": [
+  "===== FILE: user-manual.adoc ====="
+ ]
+}
