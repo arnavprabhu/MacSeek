@@ -385,7 +385,11 @@ ExpertLease ExpertCache::ensure(int layer, const int* ids, int n) {
       st.hits++;
       if (x.state != Ready) {
         st.inflight_hits++;
-        if (x.req && x.req->priority) pool_->promote(x.req);
+        if (x.req && x.req->priority) {
+          bool pending_submit = false;   // built but not yet handed to the pool: just raise its priority
+          for (auto& r : to_submit_) if (r.get() == x.req) { r->priority = 0; pending_submit = true; break; }
+          if (!pending_submit) pool_->promote(x.req);
+        }
       }
       if (x.prefetched && !x.used) st.prefetch_used++;
     } else {

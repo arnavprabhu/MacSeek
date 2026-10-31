@@ -171,6 +171,17 @@ int main() {
           st.prefetch_issued, st.prefetch_used, st.prefetch_wasted);
   }
 
+  {   // demand on a still-loading prefetch (promotion path)
+    ms::ExpertCache c(S.L, small_opts(plb, 14));
+    int pf[4] = {20, 21, 22, 23};
+    c.prefetch(3, pf, 4);
+    auto l = c.ensure(3, pf, 4); l.wait();
+    bool ok = true;
+    for (int i = 0; i < 4; i++) ok &= check_view(S.L, 3, pf[i], l.views[i]);
+    auto st = c.layer_stats(3);
+    CHECK(ok && st.hits == 4 && st.misses == 0 && st.prefetch_used == 4, "promoted prefetch: hits %llu inflight %llu", st.hits, st.inflight_hits);
+  }
+
   printf("-- T5\n");
   // ---- T5: LFU keeps a hot expert, LRU does not ----
   for (int pol = 0; pol < 2; pol++) {
