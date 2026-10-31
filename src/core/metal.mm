@@ -145,7 +145,7 @@ void Enc::wait() {
     }
   }
 }
-double Enc::gpu_ms() const { return (p->cb.GPUEndTime - p->cb.GPUStartTime) * 1e3; }
+double Enc::gpu_ms() const { double s = p->cb.GPUStartTime, e = p->cb.GPUEndTime; return (s > 0 && e >= s) ? (e - s) * 1e3 : 0.0; }
 void* Enc::encoder() { return (__bridge void*)p->ce; }
 void* Enc::cmdbuf() { return (__bridge void*)p->cb; }
 

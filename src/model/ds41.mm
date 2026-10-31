@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <unistd.h>
 
 #include "core/env.hpp"
 #include "core/timer.hpp"
@@ -127,7 +128,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
 
   // attention state
   attn::Options ao = attn::Options::from_env();
-  ao.max_chunk = std::min(ao.max_chunk, o.max_chunk);
+  ao.max_chunk = o.max_chunk;
   o_.max_chunk = ao.max_chunk;
   attn::init(P.ast, ao);
   P.maxn = o_.max_chunk;
@@ -149,16 +150,24 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.moe_dec_scratch = A(q::moe_decode_scratch_bytes(), "moe_dec");
   const int total = (int)n * 6;
   for (int i = 0; i < 2; i++) {
-    P.moe_scr[i] = A(q::moe_prefill_scratch_bytes(total, (int)n, 384), "moe_pf");
+    P.moe_scr[i] = A(q::moe_prefill_scratch_bytes(std::min(total, 8192), (int)n, o.moe_group), "moe_pf");  // grows on demand
     P.route_dev[i] = A((size_t)total * 4 * 3 + 4096, "route");
   }
 
   // expert cache last: it takes what is left
   ExpertLayout layout = ExpertLayout::from_gguf(*g_);
   ExpertCacheOptions co = ExpertCacheOptions::from_env();
+  // memory freed by a process that just exited takes a few seconds to show up as available: wait until it settles
   MemStatus ms0 = mem_status();
+  for (int i = 0; i < 40; i++) {
+    usleep(250000);
+    MemStatus m1 = mem_status();
+    bool settled = m1.available < ms0.available + (256ull << 20);
+    ms0 = m1;
+    if (settled && i >= 3) break;
+  }
   uint64_t planned = 2ull << 30;  // prefill transients + slack
-  uint64_t arena = o.arena_gb > 0 ? (uint64_t)(o.arena_gb * 1073741824.0) : recommend_arena_bytes(planned, 8ull << 30, 40ull << 30);
+  uint64_t arena = o.arena_gb > 0 ? (uint64_t)(o.arena_gb * 1073741824.0) : recommend_arena_bytes(planned, (uint64_t)(env_f("MACSEEK_HEADROOM_GB", 12) * 1073741824.0), 40ull << 30);
   co.arena_bytes = arena;
   cache_ = std::make_unique<ExpertCache>(layout, co);
   if (o.verbose) {
@@ -307,6 +316,13 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   };
 
   const bool pipe = dec && env_int("MACSEEK_DEC_PIPE", 0) != 0;
+  static const int pf_prefetch_min = (int)env_int("MACSEEK_PF_PREFETCH", 1) ? (int)env_int("MACSEEK_PF_PREFETCH_MIN", 1024) : 1 << 30;
+  // Prefill waits for expert reads on the CPU: a GPU command buffer blocked on an I/O event for long trips the GPU
+  // watchdog ("GPU Timeout Error"). MACSEEK_PF_GPU_WAIT=1 restores GPU-side waits. MACSEEK_CPU_WAIT_IO=1 also makes
+  // decode wait on the CPU (profiling: GPU times are only valid for command buffers without event waits).
+  static const bool cpu_wait_io = env_int("MACSEEK_PF_GPU_WAIT", 0) == 0;
+  static const bool dec_cpu_wait = env_int("MACSEEK_CPU_WAIT_IO", 0) != 0;
+  static std::vector<int> all_ids = [] { std::vector<int> v(384); for (int i = 0; i < 384; i++) v[i] = i; return v; }();
   if (pipe) {
     // Pipelined decode (docs/integration.md): GPU-ordered chain att(0) moe(0) att(1) ... ; att(l+1) is encoded and
     // committed while att(l) runs; moe(l) is reserved in the queue before att(l+1) and encoded once the router ids are
@@ -380,6 +396,12 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   for (int l = 0; l < cfg_.n_layers; l++) {
     LayerW& L = P.L[l];
     Timer tenc;
+    // prefill: a big chunk routes to nearly every expert of a layer, so start streaming this layer's experts now (they
+    // load while attention runs) and the next layer's while this layer's MoE runs. MACSEEK_PF_PREFETCH=0 disables.
+    if (!dec && n >= pf_prefetch_min) {
+      if (l == 0) cache_->prefetch(0, all_ids.data(), 384);
+      if (l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, all_ids.data(), 384);
+    }
     encode_attn_side(*e, l);
     prof_.encode_ms += tenc.ms();
     Timer tw;
@@ -393,7 +415,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     if (dec) {
       ExpertLease lease = cache_->ensure(l, ids, 6);
       e = std::make_unique<Enc>();
-      e->between([&](void* cb) { lease.encode_wait(cb); });
+      if (dec_cpu_wait) lease.wait();
+      else e->between([&](void* cb) { lease.encode_wait(cb); });
       q::MoeDecodeArgs m;
       m.t_gate_up = (QType)(int)lease.views[0].type[0]; m.t_down = (QType)(int)lease.views[0].type[2];
       m.n_routed = 6;
@@ -446,7 +469,16 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         offs[gids.size()] = c;
         encs[gi] = std::make_unique<Enc>();
         Enc& eg = *encs[gi];
-        eg.between([&](void* cb) { leases[gi].encode_wait(cb); });
+        if (cpu_wait_io) leases[gi].wait();
+        else eg.between([&](void* cb) { leases[gi].encode_wait(cb); });
+        {  // grow this scratch if the group needs more (only after the CB that used it finished: waited above)
+          size_t need = q::moe_prefill_scratch_bytes(total, n, (int)gids.size());
+          if (need > P.moe_scr[sb].size) {
+            if (gi >= 1 && encs[gi - 1] && sb == ((gi - 1) & 1)) encs[gi - 1]->wait();
+            Device::get().release(P.moe_scr[sb]);
+            P.moe_scr[sb] = Device::get().alloc(need + (need >> 3), "moe_pf");
+          }
+        }
         q::MoePrefillArgs m;
         m.t_gate_up = (QType)(int)leases[gi].views[0].type[0]; m.t_down = (QType)(int)leases[gi].views[0].type[2];
         m.n_tokens = n; m.n_exp = (int)gids.size(); m.slots = slots.data(); m.offs = offs.data();
