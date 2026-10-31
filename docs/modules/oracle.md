@@ -6,7 +6,7 @@ ONLY as the logits oracle and the speed baseline. No llama.cpp code enters the e
 ## 1. Working llama.cpp config (use for every dump and every baseline)
 
 Default full Metal offload (`-ngl 99`, mmap) **fails**: `ggml_metal_synchronize: command buffer failed ... Insufficient
-Memory (00000008)` after ~300 s (coordinator sanity run, `logs/baseline/llbench_sanity.log`, max RSS 44.8 GB).
+Memory (00000008)` after ~300 s (sanity run, `logs/baseline/llbench_sanity.log`, max RSS 44.8 GB).
 
 Working config: **`-ngl 99` + all MoE expert tensors on CPU** (`--cpu-moe` / `-ncmoe 99`; in oracle_logits a tensor
 buft override `\.ffn_(up|down|gate)_(ch|)exps` -> CPU), **mmap on** (default load mode). Placement it produces:

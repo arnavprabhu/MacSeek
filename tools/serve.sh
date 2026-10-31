@@ -4,7 +4,7 @@
 # Holds the model lock (one model process at a time). Ctrl+C stops it.
 set -e
 D=$(cd "$(dirname "$0")/.." && pwd)
-B=${MACSEEK_BUILD:-$D/build5}
+B=${MACSEEK_BUILD:-$D/build}
 if [ ! -f "$B/build.ninja" ]; then cmake -S "$D" -B "$B" -G Ninja -DCMAKE_BUILD_TYPE=Release >/dev/null; fi
 ninja -C "$B" macseek >/dev/null
 echo "macseek: loading the model (about 10 s), then open http://${HOST:-127.0.0.1}:${PORT:-8080}"

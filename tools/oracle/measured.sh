@@ -7,7 +7,7 @@
 set -u
 LOG="$1"; shift
 # Always the MAIN checkout's lock (worktrees would otherwise lock their own logs/.model.lock).
-LOCK=${MACSEEK_LOCK:-/Users/arnav/Desktop/Projects/MacSeek/tools/modellock.sh}
+LOCK=${MACSEEK_LOCK:-$(cd "$(dirname "$0")/.." && pwd)/modellock.sh}
 mkdir -p "$(dirname "$LOG")"
 snap() {
   echo "--- $1: $(date '+%Y-%m-%d %H:%M:%S')"

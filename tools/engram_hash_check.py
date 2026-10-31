@@ -17,10 +17,9 @@ import argparse, os, random, subprocess, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gguf_dump  # noqa: E402
+import model_path  # noqa: E402
 
-DEFAULT_GGUF = os.path.expanduser(
-    "~/Unsloth Models/hub/models--unsloth--DeepSeek-V4.1-Flash-1017-GGUF/snapshots/"
-    "8a6ec9cf118e785a362ea94ee123c61c70553be6/UD-IQ1_S/DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00001-of-00005.gguf")
+DEFAULT_GGUF = model_path.default_model()
 LAYERS, MAX_NGRAM, HEADS, VOCAB = (1, 14), 4, 8, 16000000
 NUM_EMB = (384006168, 384016682)       # config.json engram_num_embeddings
 TABLE_ROWS = 768022850                 # per_layer_token_embd rows

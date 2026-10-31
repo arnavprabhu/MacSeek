@@ -1,4 +1,4 @@
-# MacSeek — bespoke inference engine for DeepSeek-V4.1-Flash-1017 (Unsloth UD-IQ1_S GGUF) on M5 Pro 64 GB
+# MacSeek — bespoke inference engine for DeepSeek-V4.1-Flash-1017 (Unsloth UD-IQ1_S GGUF) on a 64 GB Apple Silicon Mac
 
 This file is the contract between modules. If you change an interface, update this file in the same change.
 
@@ -8,13 +8,13 @@ This file is the contract between modules. If you change an interface, update th
 - Written from scratch: no llama.cpp/ggml code, no code from any earlier DS41 engine repo. Stock Homebrew llama.cpp
   (`/opt/homebrew/bin/llama-*`, `libllama`) is used ONLY as (a) the speed baseline and (b) the logits oracle.
   Reading upstream source for a *spec detail* (e.g. a tokenizer regex) is allowed; copying code is not.
-- Principles: `~/.hermes/skills/software-development/local-llm-inference-engine/references/speed-principles.md`
-  (roofline per phase, specialize hot paths with fallbacks, measured MoE placement, headroom, 3 gate layers).
-- **Only one process may load the model at a time** (64 GB RAM, model is 233 GB). Module agents test kernels on
+- Principles: roofline per phase, specialize hot paths with fallbacks, measured MoE placement, memory headroom,
+  3 correctness gate layers (§6).
+- **Only one process may load the model at a time** (64 GB RAM, model is 233 GB). Kernel work is tested on
   synthetic data only. Model runs go through `tools/modellock.sh` (flock on `logs/.model.lock`).
 - Every optimization is switchable via an env var / CLI flag, with the slow-but-correct path as fallback.
 
-## 1. Hardware (measured)
+## 1. Hardware (reference machine, measured)
 
 - Apple M5 Pro, 18 CPU cores (6 super + 12 perf), 20-core GPU, Metal 4, MTLGPUFamilyApple10, tensor API (Metal 4
   `MetalPerformancePrimitives` matmul2d) available, bf16 available. recommendedMaxWorkingSetSize = 56.6 GB.
@@ -29,7 +29,8 @@ This file is the contract between modules. If you change an interface, update th
 
 ## 2. Model facts (from the GGUF; full tables in docs/tensors.txt and docs/metadata.txt)
 
-Files (read-only, never copy): `~/Unsloth Models/hub/models--unsloth--DeepSeek-V4.1-Flash-1017-GGUF/snapshots/8a6ec9cf118e785a362ea94ee123c61c70553be6/`
+Files (read-only, never copy), Hugging Face repo `unsloth/DeepSeek-V4.1-Flash-1017-GGUF` at revision
+`8a6ec9cf118e785a362ea94ee123c61c70553be6`, found in the HF hub cache or `$MACSEEK_MODEL_DIR` (`src/core/model_path.hpp`):
 - `UD-IQ1_S/DeepSeek-V4.1-Flash-1017-UD-IQ1_S-0000{1..5}-of-00005.gguf` (main model, arch `deepseek41`)
 - `dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf` (arch `dflash`, native 3-layer block drafter, block 5) — later
 - `mmproj-F16.gguf` (vision) — out of scope
@@ -115,8 +116,8 @@ engram_kv -> key [4][5120] + value [5120]; gate_j = sigmoid(signed_sqrt(clamp|do
 
 ## 4. Code layout and interfaces
 
-Language: C++20 + Objective-C++ (Metal host code in .mm), Metal Shading Language 4 kernels. There is NO offline Metal
-toolchain on this machine (`xcrun metal` fails; do not install it). CMake bundles all `src/kernels/*.metal` (local
+Language: C++20 + Objective-C++ (Metal host code in .mm), Metal Shading Language 4 kernels. The offline Metal
+toolchain (`xcrun metal`) is NOT required. CMake bundles all `src/kernels/*.metal` (local
 `#include "x.h"` inlined) into `build/macseek.metal` via `tools/metalc` which compile-checks it with the system compiler
 (newLibraryWithSource, Metal 4.0, fast math); `ms::Device` compiles the bundle once at startup. Errors show at build time.
 Kernel function names must be globally unique across .metal files (prefix with your module, e.g. `mv_`, `attn_`). Build: `cmake -S . -B build -G Ninja
@@ -125,7 +126,7 @@ Kernel function names must be globally unique across .metal files (prefix with y
 ```
 src/core/      metal.hpp/.mm   Device/queue/library/pipeline cache, Buffer (MTLBuffer + offset + size), Encoder helper
                arena.hpp/.cpp  page-aligned allocations wrapped as no-copy shared MTLBuffers; residency set
-               timer.hpp, log.hpp, env.hpp (MACSEEK_* env flags)
+               timer.hpp, log.hpp, env.hpp (MACSEEK_* env flags), model_path.hpp (GGUF location)
 src/gguf/      gguf.hpp/.cpp   mmap-free parser of all splits: metadata map, tensor table {name,type,dims,file,offset,nbytes}
 src/store/     weights.*       loads resident (dense) tensors into arena buffers, optional repack per kernel layout;
                                TokenEmbd = token_embd rows by pread (not resident by default)
@@ -159,7 +160,7 @@ bench/         microbenchmarks (membw, matvec, matmul, attention)
   buffer; they never commit or wait. One command buffer per decode token (or per prefill chunk) — no per-op sync.
 - `Buffer { id<MTLBuffer> buf; size_t off; size_t size; }` — kernels bind `buf` at `off`.
 
-### 4.2 Kernel families (kernels agents)
+### 4.2 Kernel families
 Quant kernels live in `src/kernels/quant.hpp` (namespace `ms::q`, full docs: `docs/modules/quant.md`):
 1. `encode_matvec(e, qtype, W, rows, cols, x, y, accumulate=false, groups=1)`  y[rows] (+)= W[rows x cols] . x  (decode,
    n=1, F32 math). `groups=8` = block-diagonal attn_output_a (group g reads x[g*cols..]).

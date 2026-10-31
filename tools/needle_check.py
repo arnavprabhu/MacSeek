@@ -12,7 +12,7 @@ import json, os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-MAIN = "/Users/arnav/Desktop/Projects/MacSeek"
+MAIN = os.environ.get("MACSEEK_MAIN", ROOT)  # main checkout (shared logs/) when run from a worktree
 
 
 def arg(a, name, default):
@@ -40,7 +40,9 @@ def main():
     out_dir = arg(a, "--out-dir", os.path.join(MAIN, "logs", "oracle", "needle"))
     os.makedirs(out_dir, exist_ok=True)
     name = os.path.basename(prompt)
-    model = open(os.path.join(MAIN, "logs", "baseline", "model_path.txt")).read().strip()
+    sys.path.insert(0, HERE)
+    import model_path
+    model = model_path.default_model()
     rj, log = os.path.join(out_dir, name + ".json"), os.path.join(out_dir, name + ".log")
     cmd = [os.path.join(ROOT, "tools", "oracle", "measured.sh"), log,
            os.path.join(ROOT, "build", "oracle", "oracle_logits"), "-m", model, "--ids", prompt + ".ids",

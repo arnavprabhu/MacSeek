@@ -8,10 +8,10 @@
 #         logs/baseline/<label>.jsonl (llama-bench results, one JSON object per test).
 set -eu
 LABEL="$1"; shift
-MAIN=/Users/arnav/Desktop/Projects/MacSeek
-OUT="$MAIN/logs/baseline"
-M="$(cat "$MAIN/logs/baseline/model_path.txt")"
 HERE=$(cd "$(dirname "$0")" && pwd)
+MAIN=${MACSEEK_MAIN:-$(cd "$HERE/../.." && pwd)}
+OUT="$MAIN/logs/baseline"
+M="${MACSEEK_MODEL:-$(python3 "$MAIN/tools/model_path.py")}"
 mkdir -p "$OUT"
 "$HERE/measured.sh" "$OUT/$LABEL.log" /opt/homebrew/bin/llama-bench -m "$M" -ngl 99 -ncmoe 99 -o jsonl --progress "$@" || true
 grep '^{' "$OUT/$LABEL.log" > "$OUT/$LABEL.jsonl" || true

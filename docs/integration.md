@@ -1,4 +1,4 @@
-# Integration design (coordinator) — decode / prefill schedule
+# Integration design — decode / prefill schedule
 
 ## Decode token schedule (batch 1)
 

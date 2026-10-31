@@ -14,8 +14,10 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "reference", "encoding"))
 import encoding as enc  # official DeepSeek-V4.1 chat encoder (stdlib only)
 
-DEFAULT_MODEL = ("/Users/arnav/Unsloth Models/hub/models--unsloth--DeepSeek-V4.1-Flash-1017-GGUF/snapshots/"
-                 "8a6ec9cf118e785a362ea94ee123c61c70553be6/UD-IQ1_S/DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00001-of-00005.gguf")
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import model_path  # noqa: E402
+
+DEFAULT_MODEL = model_path.default_model()
 PYLIB = "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14"
 BOS = enc.bos_token
 

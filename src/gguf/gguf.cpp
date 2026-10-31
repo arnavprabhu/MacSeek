@@ -1,4 +1,5 @@
 #include "gguf/gguf.hpp"
+#include "core/model_path.hpp"
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -135,10 +136,7 @@ bool Gguf::exists(const std::string& p) { struct stat st; return stat(p.c_str(),
 
 std::string Gguf::default_model_path() {
   if (const char* e = getenv("MACSEEK_MODEL")) if (*e) return e;
-  const char* home = getenv("HOME");
-  return std::string(home ? home : "/Users/arnav") +
-         "/Unsloth Models/hub/models--unsloth--DeepSeek-V4.1-Flash-1017-GGUF/snapshots/"
-         "8a6ec9cf118e785a362ea94ee123c61c70553be6/UD-IQ1_S/DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00001-of-00005.gguf";
+  return ms::default_model_split1();
 }
 
 std::vector<std::string> Gguf::expand_splits(const std::string& path) {

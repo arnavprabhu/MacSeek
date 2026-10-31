@@ -13,7 +13,7 @@ handshakes; bandwidth floor ~29.5 ms for the ~8.4 GB read per token).
 | `tests/test_dec_fuse.mm` | ctest: (1) `encode_matvec_rmsnorm` == rmsnorm -> matvec bit for bit (Q6_K, Q5_K, BF16, Q8_0, F32); (2) layers 1, 2, 5, 20, 24, 31 and chains 0-2, 12-14: every switch and combination vs the unfused sequence, bit-exact on h, x, sub, q, attention output, router ids/weights and the KV / compressed / index-key state; (3) run-to-run determinism. |
 | `src/core/metal.*` | `ms::enc_stats()`: process-wide dispatch / barrier / stage / encoder counters. |
 
-## Baseline (bench, M5 Pro, `taskpolicy -b`, best of N; another agent's jobs were sharing the GPU most of the time,
+## Baseline (bench, M5 Pro, `taskpolicy -b`, best of N; other GPU jobs were running most of the time,
 so single deltas below ~0.3 ms are noise)
 
 `bench_decode_layer base`: **37.4-37.6 ms/token** (matches the 37.6 ms measured on the model), **784 dispatches, 595

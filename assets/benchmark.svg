@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="340" viewBox="0 0 860 340" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <rect width="860" height="340" rx="14" fill="#0d1117"/>
+  <text x="32" y="44" font-size="20" font-weight="700" fill="#e6edf3">DeepSeek-V4.1-Flash at 200K tokens of context, 64 GB Mac</text>
+  <text x="32" y="68" font-size="13" fill="#8b949e">Same model file (Unsloth UD-IQ1_S GGUF, 233 GB) — stock llama.cpp vs MacSeek</text>
+
+  <!-- legend -->
+  <rect x="560" y="88" width="14" height="14" rx="3" fill="#484f58"/>
+  <text x="580" y="100" font-size="13" fill="#c9d1d9">llama.cpp</text>
+  <rect x="670" y="88" width="14" height="14" rx="3" fill="url(#g)"/>
+  <text x="690" y="100" font-size="13" fill="#c9d1d9">MacSeek</text>
+
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#4f8cff"/>
+      <stop offset="1" stop-color="#a371f7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Prefill: 57.1 vs 419.1 tok/s, scale 420 -> 560 px -->
+  <text x="32" y="138" font-size="15" font-weight="600" fill="#e6edf3">Prefill, 199K-token prompt</text>
+  <text x="32" y="157" font-size="12" fill="#8b949e">58 min → 8 min</text>
+  <rect x="250" y="126" width="76" height="22" rx="4" fill="#484f58"/>
+  <text x="334" y="142" font-size="13" fill="#c9d1d9">57 tok/s</text>
+  <rect x="250" y="154" width="559" height="22" rx="4" fill="url(#g)"/>
+  <text x="799" y="170" font-size="13" font-weight="700" fill="#ffffff" text-anchor="end">419 tok/s  ·  7.3×</text>
+
+  <!-- Decode: 1.91 vs 22.6 tok/s, scale 23.5 -> 560 px -->
+  <text x="32" y="228" font-size="15" font-weight="600" fill="#e6edf3">Decode at 200K depth</text>
+  <text x="32" y="247" font-size="12" fill="#8b949e">sustained, 3000 tokens</text>
+  <rect x="250" y="216" width="46" height="22" rx="4" fill="#484f58"/>
+  <text x="304" y="232" font-size="13" fill="#c9d1d9">1.9 tok/s</text>
+  <rect x="250" y="244" width="539" height="22" rx="4" fill="url(#g)"/>
+  <text x="779" y="260" font-size="13" font-weight="700" fill="#ffffff" text-anchor="end">22.6 tok/s  ·  11.8×</text>
+
+  <text x="32" y="312" font-size="12" fill="#8b949e">Quality vs the llama.cpp logits: 98.8% top-1 agreement, mean KL 0.002 · 200K needle-in-a-haystack: pass</text>
+</svg>

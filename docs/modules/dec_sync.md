@@ -6,7 +6,7 @@ experts' device addresses into `P.tbl[l]`, the CPU sets `go`, and the GPU runs t
 (200K context, all hits forced): 44.1 ms/token, against 37.6 ms with no handshakes. That is about 160 us per
 handshake.
 
-## Measurements (bench/sync_probe.mm, M5 Pro, `taskpolicy -b`, a coordinator model job sharing the GPU)
+## Measurements (bench/sync_probe.mm, M5 Pro, `taskpolicy -b`, a model job sharing the GPU)
 
 The chain is 40 dependent one-simdgroup dispatches (39 handshakes). Per-handshake cost = (token - no-handshake token)
 / 39. The table gives min and median over 30 round-robin tokens. Every handshake mode also verifies that each layer read

@@ -1,4 +1,5 @@
 #include "ref/arch_testutil.hpp"
+#include "core/model_path.hpp"
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -33,10 +34,7 @@ static std::string src_root() {
 }
 
 std::string model_dir() {
-  const char* e = getenv("MACSEEK_MODEL_DIR");
-  std::string d = e ? e : std::string(getenv("HOME") ? getenv("HOME") : "") +
-                              "/Unsloth Models/hub/models--unsloth--DeepSeek-V4.1-Flash-1017-GGUF/snapshots/"
-                              "8a6ec9cf118e785a362ea94ee123c61c70553be6/UD-IQ1_S";
+  std::string d = ms::default_model_dir();
   struct stat st;
   std::string probe = d + "/DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00001-of-00005.gguf";
   if (stat(probe.c_str(), &st) != 0) return "";

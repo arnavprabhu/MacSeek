@@ -16,7 +16,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -mcpu=native -DNDEBUG")
 set(CMAKE_OBJCXX_FLAGS_RELEASE "-O3 -mcpu=native -DNDEBUG")
 set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} -fobjc-arc")
 
-# ---- Metal kernels: no offline Metal toolchain on this machine, so all src/kernels/*.metal are bundled (local
+# ---- Metal kernels: no offline Metal toolchain needed: all src/kernels/*.metal are bundled (local
 # #include "x.h" inlined once) into build/macseek.metal, compile-checked at build time by `metalc` (newLibraryWithSource,
 # Metal 4), and compiled at runtime by Device (cached per process; MTLBinaryArchive later). ----
 add_executable(metalc ${CMAKE_SOURCE_DIR}/tools/metalc/metalc.mm)

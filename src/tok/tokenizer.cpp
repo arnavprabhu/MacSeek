@@ -1,4 +1,5 @@
 #include "tok/tokenizer.hpp"
+#include "core/model_path.hpp"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -818,10 +819,8 @@ std::string StreamDecoder::flush() {
 std::string default_gguf_path() {
   const char* e = getenv("MACSEEK_GGUF");
   if (e && *e) return e;
-  const char* home = getenv("HOME");
-  return std::string(home ? home : "/Users/arnav") +
-         "/Unsloth Models/hub/models--unsloth--DeepSeek-V4.1-Flash-1017-GGUF/snapshots/"
-         "8a6ec9cf118e785a362ea94ee123c61c70553be6/UD-IQ1_S/DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00001-of-00005.gguf";
+  if (const char* m = getenv("MACSEEK_MODEL"); m && *m) return m;
+  return ms::default_model_split1();
 }
 
 }  // namespace ms::tok

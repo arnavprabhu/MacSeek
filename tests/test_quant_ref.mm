@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "core/model_path.hpp"
 #include "ref/dequant.hpp"
 #if __has_include("/opt/homebrew/include/ggml.h")
 #include "/opt/homebrew/include/ggml.h"
@@ -17,9 +18,6 @@
 #endif
 
 using ms::q::QType;
-static const char* kModelDir =
-    "/Users/arnav/Unsloth Models/hub/models--unsloth--DeepSeek-V4.1-Flash-1017-GGUF/snapshots/"
-    "8a6ec9cf118e785a362ea94ee123c61c70553be6/UD-IQ1_S/";
 
 typedef void (*to_float_fn)(const void*, float*, int64_t);
 static to_float_fn ggml_to_float(QType t) {
@@ -76,7 +74,7 @@ static bool find_tensor(const std::string& name, TInfo& ti, const char* table) {
 static int real_rows(const char* tname, QType t, int64_t elems, const char* table = "tensors.txt", const char* sub = "") {
   TInfo ti;
   if (!find_tensor(tname, ti, table)) { printf("  tensor %s not in docs/tensors.txt\n", tname); return 1; }
-  std::string path = std::string(kModelDir) + sub + ti.file;
+  std::string path = ms::default_model_dir() + "/" + sub + ti.file;
   int fd = open(path.c_str(), O_RDONLY);
   if (fd < 0) { printf("  %-8s %-28s SKIP (model file not readable)\n", ms::q::type_name(t), tname); return 0; }
   size_t bytes = ms::q::row_bytes(t, elems);

@@ -20,9 +20,10 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-DEFAULT_GGUF = os.path.expanduser(
-    "~/Unsloth Models/hub/models--unsloth--DeepSeek-V4.1-Flash-1017-GGUF/snapshots/"
-    "8a6ec9cf118e785a362ea94ee123c61c70553be6/UD-IQ1_S/DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00001-of-00005.gguf")
+sys.path.insert(0, HERE)
+import model_path  # noqa: E402
+
+DEFAULT_GGUF = model_path.default_model()
 
 PROSE = """It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of
 foolishness... "Don't you think so?" she asked. I'd've said no; they'll say yes, we're sure. O'Neill's CAN'T-stop
@@ -127,7 +128,7 @@ def build_corpus(out):
     sdk = subprocess.run(["xcrun", "--show-sdk-path"], capture_output=True, text=True).stdout.strip()
     cpp = os.path.join(sdk, "usr", "include", "c++", "v1", "optional")
     put("code_cpp.txt", read(cpp, 20000) if os.path.exists(cpp) else b"int main(){return 0;}\n")
-    js = glob.glob(os.path.expanduser("~/.config/opencode/node_modules/toml/lib/parser.js"))
+    js = glob.glob(os.path.join(ROOT, "web", "*.html"))
     put("code_js.txt", read(js[0], 20000) if js else b"const x = (a, b) => a ?? b; // js\n")
     put("json.txt", read(os.path.join(ROOT, "reference", "tokenizer.json"), 30000) +
         json.dumps(json.load(open(os.path.join(ROOT, "tests", "data", "chat", "test_input_3.json"))),
