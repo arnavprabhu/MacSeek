@@ -66,7 +66,8 @@ struct QB_Q8_0 {
   }
   static inline float dot(device const uchar* b, ushort sub, thread const float4* xr) {
     return q_ldh(b) * (metal::dot(q_i8x4(q_ld32(b + 2 + 8 * sub)), xr[0]) + metal::dot(q_i8x4(q_ld32(b + 6 + 8 * sub)), xr[1]));
-  }
+  }  // 4 consecutive weights starting at element j (j % 4 == 0) of block b (MoE prefill cooperative-tensor dequant)
+  static inline float4 deq4(device const uchar* b, uint j) { return q_ldh(b) * q_i8x4(q_ld32(b + 2 + j)); }
 };
 
 // ---------------- Q6_K: {ql[128]; qh[64]; int8 sc[16]; half d} 210 B. 16 lanes; lane = (half h, l0 = 4*(sub&7)),
@@ -97,6 +98,12 @@ struct QB_Q6K {
     float4 q[4]; float s[4]; quants(b, sub, q, s);
     return q_ldh(b + 208) * (s[0] * metal::dot(q[0], xr[0]) + s[1] * metal::dot(q[1], xr[1]) +
                              s[2] * metal::dot(q[2], xr[2]) + s[3] * metal::dot(q[3], xr[3]));
+  }  static inline float4 deq4(device const uchar* b, uint j) {
+    const uint h = j >> 7, kk = (j >> 5) & 3, l = j & 31;
+    const uint ql = q_ld32(b + 64 * h + 32 * (kk & 1) + l) >> (4 * (kk >> 1));
+    const uint qh = q_ld32(b + 128 + 32 * h + l) >> (2 * kk);
+    const float sc = float(((device const char*)b)[192 + 8 * h + (l >> 4) + 2 * kk]);
+    return (q_ldh(b + 208) * sc) * (q_u8x4((ql & 0x0F0F0F0Fu) | ((qh & 0x03030303u) << 4)) - 32.f);
   }
 };
 
@@ -171,6 +178,12 @@ struct QB_IQ1S_T {
     }
     const float dl = q_ldh(b) * float(2 * ((qh >> 12) & 7) + 1);
     return dl * (s + ((qh & 0x8000) ? -0.125f : 0.125f) * xr[EPL / 4].x);
+  }  static inline float4 deq4(device const uchar* b, uint j) {
+    const uint ib = j >> 5, gq = (j >> 3) & 3;
+    const uint qh = q_ld16(b + 34 + 2 * ib), qs = b[2 + 4 * ib + gq];
+    const float dl = q_ldh(b) * float(2 * ((qh >> 12) & 7) + 1), delta = (qh & 0x8000) ? -0.125f : 0.125f;
+    const uint2 e = ((constant uint2*)q_iq1s_gridh)[2 * (qs | (((qh >> (3 * gq)) & 7) << 8)) + ((j >> 2) & 1)];
+    return dl * (float4(as_type<half4>(e)) + delta);
   }
 };
 
@@ -206,6 +219,11 @@ struct QB_IQ2XXS_T {
       s += metal::dot(float4(as_type<half4>(e.xy)), xr[2 * g]) + metal::dot(float4(as_type<half4>(e.zw)), xr[2 * g + 1]);
     }
     return q_ldh(b) * (0.5f + float(a1 >> 28)) * 0.25f * s;
+  }  static inline float4 deq4(device const uchar* b, uint j) {
+    const uint ib = j >> 5, gq = (j >> 3) & 3, hf = (j >> 2) & 1;
+    const uint a1 = q_ld32(b + 6 + 8 * ib), idx = b[2 + 8 * ib + gq];
+    const uint2 e = ((constant uint2*)q_iq2xxs_gridh)[2 * idx + hf] ^ ((constant uint2*)q_iq2_signh)[2 * ((a1 >> (7 * gq)) & 127) + hf];
+    return (q_ldh(b) * (0.5f + float(a1 >> 28)) * 0.25f) * float4(as_type<half4>(e));
   }
 };
 
