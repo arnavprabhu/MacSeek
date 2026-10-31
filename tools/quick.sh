@@ -15,7 +15,7 @@ for p in $PROMPTS; do IDS="$IDS,tools/prompts/$p.ids"; OUT="$OUT,logs/quick/$L/$
 IDS=${IDS#,}; OUT=${OUT#,}
 {
   echo "== $L $(date) $*"; sysctl -n vm.swapusage
-  env "$@" tools/modellock.sh ${MACSEEK_BIN:-build/macseek} bench --state "$STATE" --ids "$CORPUS" --decode ${QDEC:-128} --prefill ${QPF:-2048} > logs/quick/$L/bench.json 2> logs/quick/$L/bench.err
+  env "$@" tools/modellock.sh ${MACSEEK_BIN:-build/macseek} bench --state "$STATE" --ids "$CORPUS" --decode ${QDEC:-128} --prefill ${QPF:-4096} > logs/quick/$L/bench.json 2> logs/quick/$L/bench.err
   cat logs/quick/$L/bench.json
   [ -n "$QSKIPQ" ] || env "$@" tools/modellock.sh ${MACSEEK_BIN:-build/macseek} logits --ids "$IDS" --out "$OUT" 2> logs/quick/$L/logits.err | tail -3
   [ -n "$QSKIPQ" ] || for p in $PROMPTS; do python3 tools/quality.py "$BASE/$p.logits" "logs/quick/$L/$p.logits" | tail -1; done

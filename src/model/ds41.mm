@@ -29,7 +29,7 @@ ModelOptions ModelOptions::from_env() {
   ModelOptions o;
   o.model_path = env_str("MACSEEK_MODEL", "");
   o.arena_gb = env_f("MACSEEK_ARENA_GB", 0);
-  o.max_chunk = (int)env_int("MACSEEK_CHUNK", 2048);
+  o.max_chunk = (int)env_int("MACSEEK_CHUNK", 4096);
   o.actq_out = env_int("MACSEEK_ACTQ_OUT", env_int("MACSEEK_ACTQ", 0)) != 0;
   o.moe_group = (int)env_int("MACSEEK_MOE_GROUP", 64);
   o.verbose = env_int("MACSEEK_VERBOSE", 1) != 0;

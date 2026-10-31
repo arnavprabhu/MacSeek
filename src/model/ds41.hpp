@@ -18,7 +18,7 @@ namespace ms::ds41 {
 struct ModelOptions {
   std::string model_path;      // any split; "" = Gguf::default_model_path()
   double arena_gb = 0;         // expert arena; 0 = auto (memguard, <= 40 GiB). env MACSEEK_ARENA_GB
-  int max_chunk = 2048;        // prefill chunk (<= attn max_chunk)
+  int max_chunk = 4096;        // prefill chunk (<= attn max_chunk)
   int max_logits_rows = 1024;  // rows of full logits a prefill call may return
   bool actq_out = true;        // fp8 sim of the attention output before wo_a (reference act_quant). env MACSEEK_ACTQ_OUT
   int moe_group = 64;          // prefill: experts per MoE group (must fit the cache comfortably). env MACSEEK_MOE_GROUP
