@@ -136,8 +136,10 @@ src/model/     ds41.hpp/.mm    model state (KV rings, compressed caches, indexer
                                history), forward_decode(token), forward_prefill(tokens chunk), save/load state snapshot
 src/tok/       tokenizer.*     GPT-2 byte-level BPE from GGUF vocab+merges, pre-tokenizer `joyai-llm`, special tokens
                chat.*          DeepSeek V4.1 chat formatting (hard-coded, matches the GGUF jinja template)
+               json.*          ordered JSON value/parser/serializer (Python json.dumps-exact), shared with server
+src/server/    http.*          OpenAI-compatible HTTP/1.1 + SSE server; generation via ms::server::Backend (docs/modules/tok.md)
 src/sample/    sampler.*       greedy / temp / top-p (GPU argmax for greedy)
-src/app/       main.cpp        `macseek` CLI: gen, bench, logits, snapshot, serve
+src/app/       main.cpp        `macseek` CLI: tokenize, detok, chat-format, serve; gen, bench, logits, snapshot (hooks)
 tests/         unit tests per module (ctest), CPU references in tests/ref/*.cpp
 tools/         gguf_dump.py, oracle/ (llama.cpp logits dumper), quality.py, bench scripts, modellock.sh
 bench/         microbenchmarks (membw, matvec, matmul, attention)

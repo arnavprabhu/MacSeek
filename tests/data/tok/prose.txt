@@ -1,0 +1,43 @@
+It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of
+foolishness... "Don't you think so?" she asked. I'd've said no; they'll say yes, we're sure. O'Neill's CAN'T-stop
+attitude -- e.g., Mr. Smith's 3rd attempt (at 9:45 a.m.) -- cost $1,234.56 (≈ €1.1k) & 12% more!!!
+Naïve café owners in Zürich façade—“smart quotes”, ‘single’, «guillemets», and the em–dash… Ünïcödé ÀÉÎÕÜ ß ﬁ ﬂ.
+Привет, как дела? Γειά σου Κόσμε! שלום עולם. مرحبا بالعالم. नमस्ते दुनिया। สวัสดีชาวโลก. ສະບາຍດີ. Xin chào thế giới.
+It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of
+foolishness... "Don't you think so?" she asked. I'd've said no; they'll say yes, we're sure. O'Neill's CAN'T-stop
+attitude -- e.g., Mr. Smith's 3rd attempt (at 9:45 a.m.) -- cost $1,234.56 (≈ €1.1k) & 12% more!!!
+Naïve café owners in Zürich façade—“smart quotes”, ‘single’, «guillemets», and the em–dash… Ünïcödé ÀÉÎÕÜ ß ﬁ ﬂ.
+Привет, как дела? Γειά σου Κόσμε! שלום עולם. مرحبا بالعالم. नमस्ते दुनिया। สวัสดีชาวโลก. ສະບາຍດີ. Xin chào thế giới.
+It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of
+foolishness... "Don't you think so?" she asked. I'd've said no; they'll say yes, we're sure. O'Neill's CAN'T-stop
+attitude -- e.g., Mr. Smith's 3rd attempt (at 9:45 a.m.) -- cost $1,234.56 (≈ €1.1k) & 12% more!!!
+Naïve café owners in Zürich façade—“smart quotes”, ‘single’, «guillemets», and the em–dash… Ünïcödé ÀÉÎÕÜ ß ﬁ ﬂ.
+Привет, как дела? Γειά σου Κόσμε! שלום עולם. مرحبا بالعالم. नमस्ते दुनिया। สวัสดีชาวโลก. ສະບາຍດີ. Xin chào thế giới.
+s = """Gur Mra bs Clguba, ol Gvz Crgref
+
+Ornhgvshy vf orggre guna htyl.
+Rkcyvpvg vf orggre guna vzcyvpvg.
+Fvzcyr vf orggre guna pbzcyrk.
+Pbzcyrk vf orggre guna pbzcyvpngrq.
+Syng vf orggre guna arfgrq.
+Fcnefr vf orggre guna qrafr.
+Ernqnovyvgl pbhagf.
+Fcrpvny pnfrf nera'g fcrpvny rabhtu gb oernx gur ehyrf.
+Nygubhtu cenpgvpnyvgl orngf chevgl.
+Reebef fubhyq arire cnff fvyragyl.
+Hayrff rkcyvpvgyl fvyraprq.
+Va gur snpr bs nzovthvgl, ershfr gur grzcgngvba gb thrff.
+Gurer fubhyq or bar-- naq cersrenoyl bayl bar --boivbhf jnl gb qb vg.
+Nygubhtu gung jnl znl abg or boivbhf ng svefg hayrff lbh'er Qhgpu.
+Abj vf orggre guna arire.
+Nygubhtu arire vf bsgra orggre guna *evtug* abj.
+Vs gur vzcyrzragngvba vf uneq gb rkcynva, vg'f n onq vqrn.
+Vs gur vzcyrzragngvba vf rnfl gb rkcynva, vg znl or n tbbq vqrn.
+Anzrfcnprf ner bar ubaxvat terng vqrn -- yrg'f qb zber bs gubfr!"""
+
+d = {}
+for c in (65, 97):
+    for i in range(26):
+        d[chr(i+c)] = chr((i+13) % 26 + c)
+
+print("".join([d.get(c, c) for c in s]))

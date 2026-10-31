@@ -1,0 +1,1406 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [
+    {
+      "id": 0,
+      "content": "<｜begin▁of▁sentence｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 1,
+      "content": "<｜end▁of▁sentence｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 2,
+      "content": "<｜▁pad▁｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128000,
+      "content": "<｜place▁holder▁no▁0｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128001,
+      "content": "<｜place▁holder▁no▁1｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128002,
+      "content": "<｜place▁holder▁no▁2｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128003,
+      "content": "<｜place▁holder▁no▁3｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128004,
+      "content": "<｜place▁holder▁no▁4｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128005,
+      "content": "<｜place▁holder▁no▁5｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128006,
+      "content": "<｜place▁holder▁no▁6｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128007,
+      "content": "<｜place▁holder▁no▁7｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128008,
+      "content": "<｜place▁holder▁no▁8｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128009,
+      "content": "<｜place▁holder▁no▁9｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128010,
+      "content": "<｜place▁holder▁no▁10｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128011,
+      "content": "<｜place▁holder▁no▁11｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128012,
+      "content": "<｜place▁holder▁no▁12｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128013,
+      "content": "<｜place▁holder▁no▁13｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128014,
+      "content": "<｜place▁holder▁no▁14｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128015,
+      "content": "<｜place▁holder▁no▁15｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128016,
+      "content": "<｜place▁holder▁no▁16｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128017,
+      "content": "<｜place▁holder▁no▁17｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128018,
+      "content": "<｜place▁holder▁no▁18｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128019,
+      "content": "<｜place▁holder▁no▁19｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128020,
+      "content": "<｜place▁holder▁no▁20｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128021,
+      "content": "<｜place▁holder▁no▁21｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128022,
+      "content": "<｜place▁holder▁no▁22｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128023,
+      "content": "<｜place▁holder▁no▁23｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128024,
+      "content": "<｜place▁holder▁no▁24｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128025,
+      "content": "<｜place▁holder▁no▁25｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128026,
+      "content": "<｜place▁holder▁no▁26｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128027,
+      "content": "<｜place▁holder▁no▁27｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128028,
+      "content": "<｜place▁holder▁no▁28｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128029,
+      "content": "<｜place▁holder▁no▁29｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128030,
+      "content": "<｜place▁holder▁no▁30｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128031,
+      "content": "<｜place▁holder▁no▁31｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128032,
+      "content": "<｜place▁holder▁no▁32｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128033,
+      "content": "<｜place▁holder▁no▁33｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128034,
+      "content": "<｜place▁holder▁no▁34｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128035,
+      "content": "<｜place▁holder▁no▁35｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128036,
+      "content": "<｜place▁holder▁no▁36｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128037,
+      "content": "<｜place▁holder▁no▁37｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128038,
+      "content": "<｜place▁holder▁no▁38｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128039,
+      "content": "<｜place▁holder▁no▁39｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128040,
+      "content": "<｜place▁holder▁no▁40｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128041,
+      "content": "<｜place▁holder▁no▁41｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128042,
+      "content": "<｜place▁holder▁no▁42｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128043,
+      "content": "<｜place▁holder▁no▁43｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128044,
+      "content": "<｜place▁holder▁no▁44｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128045,
+      "content": "<｜place▁holder▁no▁45｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128046,
+      "content": "<｜place▁holder▁no▁46｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128047,
+      "content": "<｜place▁holder▁no▁47｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128048,
+      "content": "<｜place▁holder▁no▁48｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128049,
+      "content": "<｜place▁holder▁no▁49｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128050,
+      "content": "<｜place▁holder▁no▁50｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128051,
+      "content": "<｜place▁holder▁no▁51｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128052,
+      "content": "<｜place▁holder▁no▁52｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128053,
+      "content": "<｜place▁holder▁no▁53｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128054,
+      "content": "<｜place▁holder▁no▁54｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128055,
+      "content": "<｜place▁holder▁no▁55｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128056,
+      "content": "<｜place▁holder▁no▁56｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128057,
+      "content": "<｜place▁holder▁no▁57｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128058,
+      "content": "<｜place▁holder▁no▁58｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128059,
+      "content": "<｜place▁holder▁no▁59｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128060,
+      "content": "<｜place▁holder▁no▁60｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128061,
+      "content": "<｜place▁holder▁no▁61｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128062,
+      "content": "<｜place▁holder▁no▁62｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128063,
+      "content": "<｜place▁holder▁no▁63｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128064,
+      "content": "<｜place▁holder▁no▁64｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128065,
+      "content": "<｜place▁holder▁no▁65｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128066,
+      "content": "<｜place▁holder▁no▁66｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128067,
+      "content": "<｜place▁holder▁no▁67｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128068,
+      "content": "<｜place▁holder▁no▁68｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128069,
+      "content": "<｜place▁holder▁no▁69｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128070,
+      "content": "<｜place▁holder▁no▁70｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128071,
+      "content": "<｜place▁holder▁no▁71｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128072,
+      "content": "<｜place▁holder▁no▁72｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128073,
+      "content": "<｜place▁holder▁no▁73｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128074,
+      "content": "<｜place▁holder▁no▁74｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128075,
+      "content": "<｜place▁holder▁no▁75｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128076,
+      "content": "<｜place▁holder▁no▁76｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128077,
+      "content": "<｜place▁holder▁no▁77｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128078,
+      "content": "<｜place▁holder▁no▁78｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128079,
+      "content": "<｜place▁holder▁no▁79｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128080,
+      "content": "<｜place▁holder▁no▁80｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128081,
+      "content": "<｜place▁holder▁no▁81｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128082,
+      "content": "<｜place▁holder▁no▁82｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128083,
+      "content": "<｜place▁holder▁no▁83｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128084,
+      "content": "<｜place▁holder▁no▁84｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128085,
+      "content": "<｜place▁holder▁no▁85｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128086,
+      "content": "<｜place▁holder▁no▁86｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128087,
+      "content": "<｜place▁holder▁no▁87｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128088,
+      "content": "<｜place▁holder▁no▁88｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128089,
+      "content": "<｜place▁holder▁no▁89｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128090,
+      "content": "<｜place▁holder▁no▁90｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128091,
+      "content": "<｜place▁holder▁no▁91｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128092,
+      "content": "<｜place▁holder▁no▁92｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128093,
+      "content": "<｜place▁holder▁no▁93｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128094,
+      "content": "<｜place▁holder▁no▁94｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128095,
+      "content": "<｜place▁holder▁no▁95｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128096,
+      "content": "<｜place▁holder▁no▁96｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128097,
+      "content": "<｜place▁holder▁no▁97｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128098,
+      "content": "<｜place▁holder▁no▁98｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128099,
+      "content": "<｜place▁holder▁no▁99｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128100,
+      "content": "<｜place▁holder▁no▁100｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128101,
+      "content": "<｜place▁holder▁no▁101｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128102,
+      "content": "<｜place▁holder▁no▁102｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128103,
+      "content": "<｜place▁holder▁no▁103｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128104,
+      "content": "<｜place▁holder▁no▁104｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128105,
+      "content": "<｜place▁holder▁no▁105｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128106,
+      "content": "<｜place▁holder▁no▁106｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128107,
+      "content": "<｜place▁holder▁no▁107｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128108,
+      "content": "<｜place▁holder▁no▁108｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128109,
+      "content": "<｜place▁holder▁no▁109｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128110,
+      "content": "<｜place▁holder▁no▁110｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128111,
+      "content": "<｜place▁holder▁no▁111｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128112,
+      "content": "<｜place▁holder▁no▁112｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128113,
+      "content": "<｜place▁holder▁no▁113｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128114,
+      "content": "<｜place▁holder▁no▁114｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128115,
+      "content": "<｜place▁holder▁no▁115｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128116,
+      "content": "<｜place▁holder▁no▁116｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128117,
+      "content": "<｜place▁holder▁no▁117｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128118,
+      "content": "<｜place▁holder▁no▁118｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128119,
+      "content": "<｜place▁holder▁no▁119｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128120,
+      "content": "<｜place▁holder▁no▁120｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128121,
+      "content": "<｜place▁holder▁no▁121｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128122,
+      "content": "<｜place▁holder▁no▁122｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128123,
+      "content": "<｜place▁holder▁no▁123｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128124,
+      "content": "<｜place▁holder▁no▁124｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128125,
+      "content": "<｜place▁holder▁no▁125｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128126,
+      "content": "<｜place▁holder▁no▁126｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128127,
+      "content": "<｜place▁holder▁no▁127｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128128,
+      "content": "<｜place▁holder▁no▁128｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128129,
+      "content": "<｜place▁holder▁no▁129｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128130,
+      "content": "<｜place▁holder▁no▁130｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128131,
+      "content": "<｜place▁holder▁no▁131｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128132,
+      "content": "<｜place▁holder▁no▁132｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128133,
+      "content": "<｜place▁holder▁no▁133｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128134,
+      "content": "<｜place▁holder▁no▁134｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128135,
+      "content": "<｜place▁holder▁no▁135｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128136,
+      "content": "<｜place▁holder▁no▁136｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128137,
+      "content": "<｜place▁holder▁no▁137｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128138,
+      "content": "<｜place▁holder▁no▁138｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128139,
+      "content": "<｜place▁holder▁no▁139｜>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 128140,
+      "conte[
+  {
+    "role": "system",
+    "content": "该助手为DeepSeek，由深度求索公司创造。"
+  },
+  {
+    "role": "latest_reminder",
+    "content": "2026-02-21,星期六,广州,App,中文"
+  },
+  {
+    "role": "system",
+    "content": "CITATION FORMAT: 【{cursor_id}†L{start_line_id}(-L{end_line_id})?】",
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "search",
+          "description": "Web search. Split multiple queries with '||'.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "queries": {
+                "type": "string",
+                "description": "query1||query2"
+              }
+            },
+            "required": [
+              "queries"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "open",
+          "description": "Batch open IDs (format 【{id}†...】) or URLs.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "open_list": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "description": "ID or URL",
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "default": -1
+                    },
+                    "loc": {
+                      "type": "integer",
+                      "description": "Start line",
+                      "default": -1
+                    },
+                    "num_lines": {
+                      "type": "integer",
+                      "description": "",
+                      "default": -1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "description": ""
+              }
+            },
+            "required": [
+              "open_list"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": "小柴胡冲剂和布洛芬能一起吃吗？"
+  },
+  {
+    "role": "assistant",
+    "content": "",
+    "reasoning_content": "用户想知道小柴胡冲剂和布洛芬能否一起服用。",
+    "tool_calls": [
+      {
+        "type": "function",
+        "function": {
+          "name": "search",
+          "arguments": "{\"queries\": \"小柴胡冲剂 布洛芬 相互作用 一起吃\"}"
+        }
+      }
+    ]
+  },
+  {
+    "role": "tool",
+    "content": "[0]"
+  },
+  {
+    "role": "assistant",
+    "content": "请及时就医。",
+    "reasoning_content": "现在开始组织回答。",
+    "tool_calls": []
+  }
+]

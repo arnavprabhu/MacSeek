@@ -1,0 +1,46 @@
+a  b   c	def		ghi
+
+jk
+lm
+no 
+  pq   
+
+
+   rs tu　vw xy z end   	 
+ 	  
+			indent
+    four
+        eight
+  nel ​ zwsp  emsp  nnbsp ﻿ bom
+   
+  trailing   a  b   c	def		ghi
+
+jk
+lm
+no 
+  pq   
+
+
+   rs tu　vw xy z end   	 
+ 	  
+			indent
+    four
+        eight
+  nel ​ zwsp  emsp  nnbsp ﻿ bom
+   
+  trailing   a  b   c	def		ghi
+
+jk
+lm
+no 
+  pq   
+
+
+   rs tu　vw xy z end   	 
+ 	  
+			indent
+    four
+        eight
+  nel ​ zwsp  emsp  nnbsp ﻿ bom
+   
+  trailing   
