@@ -1,0 +1,22 @@
+mem before: total 64.0 GiB | avail 33.7 (free 5.9 inactive 27.6 spec 0.1 purg 0.0) | active 21.4 wired 4.6 compressed 4.0 | swap 0.34/2.00 | self rss 0.02 footprint 0.01
+
+== ensure() latency, 6 cold misses in one layer (20 iters per config) ==
+threads chunkKB align |  p50_ms  p90_ms  max_ms  mean_ms | eff_GB/s | ensure_us  cpu_us/miss
+      8    1024 16384 |    3.69    4.43    4.45     3.69 |    12.33 |       9.3       1663.5
+     16    1024 16384 |    3.63    4.54    4.65     3.71 |    12.07 |      35.1       1789.1
+     16       0 16384 |    3.72    4.54    4.65     3.80 |    11.91 |      32.1       2384.8
+     16     256 16384 |    3.70    4.45    4.54     3.81 |    12.35 |      37.3       3440.6
+     16    1024     1 |    3.57    4.54    4.59     3.73 |    11.95 |      40.6       3194.4
+     16       0     1 |    3.55    4.50    4.53     3.72 |    11.93 |      42.5       3731.7
+     12     512 16384 |    3.63    4.48    4.58     3.68 |    12.34 |      22.9       2699.6
+
+== 16 concurrent clients, 1 cold miss each per ensure (pool threads = 16) ==
+160 experts, 1.21 GB in 86.6 ms: 13.94 GB/s; per-ensure p50 8.58 ms p99 9.26 ms
+
+== bulk stream (prefill): one layer, cold experts through the ring, CPU consumer ==
+ring  8: 48 experts, 0.33 GB in 25.6 ms: 13.05 GB/s (consumer stall 25.5 ms)
+ring 16: 48 experts, 0.33 GB in 27.4 ms: 12.19 GB/s (consumer stall 27.4 ms)
+
+total expert bytes read: 8.24 GB; picked 1138 experts, mean page-cache-resident fraction 0.09% (skips 0)
+mem after: total 64.0 GiB | avail 33.9 (free 5.5 inactive 27.6 spec 0.7 purg 0.0) | active 21.6 wired 4.7 compressed 4.0 | swap 0.34/2.00 | self rss 0.03 footprint 0.02
+swap grew: no

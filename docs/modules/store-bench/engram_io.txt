@@ -1,0 +1,29 @@
+mem before: total 64.0 GiB | avail 33.9 (free 5.5 inactive 27.6 spec 0.7 purg 0.0) | active 21.7 wired 4.7 compressed 4.0 | swap 0.34/2.00 | self rss 0.02 footprint 0.01
+
+== decode: 48 rows/token (2 engram layers x 24), 100 tokens per config, row cache off ==
+mode   QD |  p50_ms  p90_ms  p99_ms  max_ms | rows/s(seq tokens)
+exact   8 |   0.531   0.555   0.590   0.590 |     84241
+exact  16 |   0.371   0.399   0.422   0.422 |    115812
+exact  32 |   0.322   0.352   0.409   0.409 |    130755
+4k      8 |   0.472   0.493   0.532   0.532 |     92979
+4k     16 |   0.343   0.367   0.418   0.418 |    123169
+4k     32 |   0.316   0.336   0.432   0.432 |    130809
+16k     8 |   0.591   0.692   2.945   2.945 |     64515
+16k    16 |   0.376   0.860   4.496   4.496 |     74562
+16k    32 |   0.329   0.352   0.391   0.391 |    127613
+
+== prompt batch: 256 tokens = 12288 rows in one async request, row cache off ==
+mode   QD |   ms     rows/s    reads   MB_read  IOPS
+exact  16 |    69.5    176896   12288      1.8 176896
+exact  32 |    57.9    212250   12288      1.8 212250
+exact  64 |    51.8    237325   12288      1.8 237325
+4k     16 |    63.5    193631   12286     51.9 193600
+4k     32 |    56.9    216092   12284     51.9 216022
+4k     64 |    52.1    235676   12286     51.9 235638
+16k    16 |    69.8    176088   12262    202.7 175715
+16k    32 |    58.4    210384   12265    202.7 209990
+16k    64 |    52.9    232298   12269    202.8 231939
+
+total bytes read 1.07 GB, rows skipped as resident 50
+mem after: total 64.0 GiB | avail 34.2 (free 5.6 inactive 27.6 spec 0.7 purg 0.3) | active 23.0 wired 3.3 compressed 4.0 | swap 0.34/2.00 | self rss 0.03 footprint 0.03
+swap grew: no

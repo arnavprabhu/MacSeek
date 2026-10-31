@@ -1,0 +1,16 @@
+mem before: total 64.0 GiB | avail 21.2 (free 0.2 inactive 20.9 spec 0.0 purg 0.1) | active 20.5 wired 18.1 compressed 3.7 | swap 0.34/2.00 | self rss 0.02 footprint 0.01
+
+== bookkeeping cost + policy simulation (dry_io: no reads, no memory; real geometry, 40 GiB arena) ==
+   synthetic routing: per layer Zipf(s) over a random expert permutation, 6 distinct experts per token
+zipf s=0.6  lru      : hit 52.7%  miss bytes/token 0.852 GB (-> 60.9 ms/token @14 GB/s)  ensure(6) 0.47 us/call  slots 5640 pinned 0
+zipf s=0.6  lfu-exact: hit 58.2%  miss bytes/token 0.752 GB (-> 53.7 ms/token @14 GB/s)  ensure(6) 7.61 us/call  slots 5640 pinned 0
+zipf s=0.6  lfu-s64  : hit 58.2%  miss bytes/token 0.753 GB (-> 53.8 ms/token @14 GB/s)  ensure(6) 0.85 us/call  slots 5640 pinned 0
+zipf s=0.6  static   : hit 62.3%  miss bytes/token 0.686 GB (-> 49.0 ms/token @14 GB/s)  ensure(6) 0.39 us/call  slots 5750 pinned 4885
+zipf s=1.0  lru      : hit 75.8%  miss bytes/token 0.436 GB (-> 31.1 ms/token @14 GB/s)  ensure(6) 0.33 us/call  slots 5640 pinned 0
+zipf s=1.0  lfu-exact: hit 79.0%  miss bytes/token 0.377 GB (-> 27.0 ms/token @14 GB/s)  ensure(6) 4.00 us/call  slots 5640 pinned 0
+zipf s=1.0  lfu-s64  : hit 79.0%  miss bytes/token 0.378 GB (-> 27.0 ms/token @14 GB/s)  ensure(6) 0.53 us/call  slots 5640 pinned 0
+zipf s=1.0  static   : hit 81.9%  miss bytes/token 0.329 GB (-> 23.5 ms/token @14 GB/s)  ensure(6) 0.26 us/call  slots 5718 pinned 4858
+
+total expert bytes read: 0.00 GB; picked 0 experts, mean page-cache-resident fraction 0.00% (skips 0)
+mem after: total 64.0 GiB | avail 21.2 (free 0.2 inactive 20.9 spec 0.0 purg 0.1) | active 20.5 wired 18.1 compressed 3.7 | swap 0.34/2.00 | self rss 0.04 footprint 0.03
+swap grew: no
