@@ -1,0 +1,27 @@
+streaming read bandwidth (attn_probe_bw, 1 GiB): 280.7 GB/s
+
+== decode, 1 token at position 200000 (all 40 layers), sustained (20 reps per command buffer) ==
+component                                          ms   MB moved     % BW
+kv window + compressor (40 layers)              0.088        0.7     2.7%
+indexer full scans 2,8,14 (100K) + 20 (200K)    0.898      132.2    52.5%
+  of which layer 2 (100K)                       0.165       26.4    57.2%
+  of which layer 20 (200K + candidate blocks)    0.356       52.8    52.8%
+indexer candidate-restricted 24,28,32,36        0.232       17.3    26.6%
+sparse attention (40 layers, split-K)           1.164      140.5    43.0%
+TOTAL (one command buffer, all 40 layers)       2.509      290.7    41.3%
+sum of components: 2.382 ms
+
+== prefill, chunk of 2048 tokens at depth 200000 (all 40 layers) ==
+component                                               ms   TFLOP/s
+kv window + compressor + ring commit (40 layers)      0.98
+indexer layer 2 (full, 101K keys)                   119.35     14.20
+indexer layer 8 (full, 101K keys)                   119.01     14.24
+indexer layer 14 (full, 101K keys)                  119.18     14.22
+indexer layer 20 (full, 202K keys)                  243.79     13.90
+indexer layer 24 (cand union, 202K keys)             72.28     46.90
+indexer layer 28 (cand union, 202K keys)             72.71     46.62
+indexer layer 32 (cand union, 202K keys)             72.61     46.69
+indexer layer 36 (cand union, 202K keys)             72.51     46.75
+sparse attention (40 layers)                        780.65      8.45
+TOTAL (one command buffer)                         1712.59   (1195.9 tok/s attention-side)
+sum of components: 1673.08 ms (indexer 891.45)

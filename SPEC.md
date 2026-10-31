@@ -176,9 +176,10 @@ IQ1_S/IQ2_XXS need the iq1s_grid / iq2xxs_grid / ksigns tables: generate them fr
 `llama-quantize`-free path: `tools/oracle/dequant_check` (links libggml from Homebrew, test-only).
 
 ### 4.3 Model state at 200K (all GPU-resident, small)
-window KV: 40 x 128 x 512 F32 (or F16); compressed KV: layers 2,8,14 -> 100K x 512; layer 20 -> 200K x 512 (F16 = 200 MB;
-fp8/fp4 sim keeps F16 storage of the dequantized values); index keys: 128-dim per compressed position for the 4 sources;
-compressor partial-group state; engram token history. `save_state(path)` / `load_state(path)` must round-trip
+window KV: 40 x 128 x 512 F16; compressed KV: layers 2,8,14 -> 100K x 512; layer 20 -> 200K x 512 (F16; fp8/fp4 sim
+values are exact in F16); index keys: F16 128-dim per compressed position for the 4 sources; compressor partial-group
+state (f32); engram token history. Exact attention layouts, API and switches: docs/modules/attn.md (`ms::attn::State`,
+`encode_layer`, `persistent_state()` lists the buffers/bytes to snapshot). `save_state(path)` / `load_state(path)` must round-trip
 bit-exactly (enables the 1-minute loop: load 200K snapshot, decode 128, time a 2K prefill chunk).
 
 ## 5. Memory plan (64 GB)
