@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
     const A::Options o0 = st.opt;
     auto setv = [&](int v) {
       st.opt = o0; st.pf_score_reg_ok = v && reg_ok; st.pf_fold_ok = v && fold_ok;
-      if (!v) st.opt.pf_merge_filter = false;
+      if (!v) { st.opt.pf_merge_filter = false; st.opt.pf_idx_qblock = 0; }
     };
     const int rounds = (int)env_int("BENCH_ROUNDS", 3);
     const int idxL[8] = {2, 8, 14, 20, 24, 28, 32, 36};

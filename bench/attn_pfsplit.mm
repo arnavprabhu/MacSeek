@@ -93,12 +93,13 @@ int main() {
         st.opt = o0;
         st.pf_score_reg_ok = v ? reg_ok : false;
         st.pf_fold_ok = v ? fold_ok : false;
-        if (v == 0) { st.opt.pf_merge_filter = false; }
+        if (v == 0) { st.opt.pf_merge_filter = false; st.opt.pf_idx_qblock = 0; }
         if (v == 2 && off) {
           std::string f = off;
           if (f == "reg") st.pf_score_reg_ok = false;
           if (f == "fold") st.pf_fold_ok = false;
           if (f == "mfilter") st.opt.pf_merge_filter = false;
+          if (f == "idxqb") st.opt.pf_idx_qblock = 0;
         }
         t[0][v] = std::min(t[0][v], tmin([&](Enc& e) { A::encode_index_prefill(e, st, 20, iq, iw, start, n); }, 1));
         t[1][v] = std::min(t[1][v], tmin([&](Enc& e) { A::encode_index_prefill(e, st, 24, iq, iw, start, n); }, 1));

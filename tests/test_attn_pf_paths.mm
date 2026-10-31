@@ -113,7 +113,7 @@ static void compare(const Out& a, const Out& b, const char* what, double tol) {
 }
 
 static A::Options all_off(A::Options o) {
-  o.pf_score_reg = false; o.pf_fold_softmax = false; o.pf_merge_filter = false;
+  o.pf_score_reg = false; o.pf_fold_softmax = false; o.pf_merge_filter = false; o.pf_idx_qblock = 0;
   return o;
 }
 
@@ -122,7 +122,7 @@ int main() {
   const std::vector<int> layers = {0, 2, 20, 24};
   {
     printf("at depth: S0=40001, chunk of 160 (3 key chunks, candidate masking + union active)\n");
-    A::Options o; o.max_pos = 65536; o.max_chunk = 160; o.pf_qblock = 64;  // 3 query blocks
+    A::Options o; o.max_pos = 65536; o.max_chunk = 160; o.pf_qblock = 64; o.pf_idx_qblock = 64;  // 3 query blocks
     Out on = run(o, layers, 40001, 160, 9);
     Out off = run(all_off(o), layers, 40001, 160, 9);
     compare(on, off, "all fast paths vs all off", 5e-4);
@@ -130,6 +130,8 @@ int main() {
     v = o; v.pf_fold_softmax = false; compare(on, run(v, layers, 40001, 160, 9), "pf_fold_softmax off", 5e-4);
     v = o; v.pf2_qblock = 16; compare(on, run(v, layers, 40001, 160, 9), "pf2_qblock 16 (10-stage pipeline) vs 64", 0.0);
     v = o; v.pf2_qblock = 160; compare(on, run(v, layers, 40001, 160, 9), "pf2_qblock 160 (one block) vs 64", 0.0);
+    v = o; v.pf_idx_qblock = 0; compare(on, run(v, layers, 40001, 160, 9), "pf_idx_qblock 0 (unblocked)", 0.0);
+    v = o; v.pf_idx_qblock = 34; compare(on, run(v, layers, 40001, 160, 9), "pf_idx_qblock 34 (5 blocks, odd tail)", 0.0);
     v = o; v.pf_merge_filter = false; compare(on, run(v, layers, 40001, 160, 9), "pf_merge_filter off", 0.0);
   }
   {
