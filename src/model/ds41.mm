@@ -425,7 +425,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     // Gap work is ordered after the attention side and before the routed MoE by MTLFences: consecutive compute
     // encoders over untracked buffers are not ordered by themselves, and the go wait only orders work after it.
     static const int dsync = [] {
-      const std::string v = env_str("MACSEEK_DEC_SYNC", "event");
+      const std::string v = env_str("MACSEEK_DEC_SYNC", "shared");
       if (v == "1" || v == "sgu") return 1;
       if (v == "2" || v == "shared") return 2;
       return 0;

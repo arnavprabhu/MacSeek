@@ -1,0 +1,99 @@
+Start testing: Oct 31 05:11 CDT
+----------------------------------------------------------
+9/21 Testing: test_dec_sync
+9/21 Test: test_dec_sync
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_dec_sync"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_dec_sync" start time: Oct 31 05:11 CDT
+Output:
+----------------------------------------------------------
+A) split table MoE equivalence
+  split gu=IQ1_S   down=IQ1_S   shared=Q6_K : sgu bit-identical yes | shared max|dy| 4.88e-04 | table vs slot kernel 0.00e+00 (|y| 4.44e+03)
+  split gu=IQ1_S   down=IQ2_XXS shared=Q8_0 : sgu bit-identical yes | shared max|dy| 9.16e-05 | table vs slot kernel 0.00e+00 (|y| 6.39e+02)
+  split gu=IQ2_XXS down=IQ2_XXS shared=Q6_K : sgu bit-identical yes | shared max|dy| 7.32e-04 | table vs slot kernel 0.00e+00 (|y| 5.59e+03)
+B) emulated decode loop
+  loop: 40 layers x 48 experts, arena 640 slots (33% of experts), ExpertCache: arena 0.03 GiB, 640 slots, policy lru, 4 io threads, chunk 16 KiB, align 16384, ring 0
+  class 0: slot 49152 B (regions 16384/16384/16384, types IQ1_S/IQ1_S/IQ1_S), 40 layers, 640 slots (16.0/layer, 33.3% of experts)
+
+  loop[misses]: 24 tokens/mode, demand hit rate 0.53, layers with a miss 98%, evictions 7510, prefetch issued 2741
+  loop: ms/token event min 22.71 med 25.79 | overlap min 21.99 med 23.82 | saved per handshake: min 18.1 us, med 49.2 us
+  loop: stale/evicted expert reads 0, gap-ordering violations 0, chain mismatches 0, CPU id mismatches 0
+  loop: 40 layers x 48 experts, arena 1920 slots (100% of experts), ExpertCache: arena 0.09 GiB, 1920 slots, policy lru, 4 io threads, chunk 16 KiB, align 16384, ring 0
+  class 0: slot 49152 B (regions 16384/16384/16384, types IQ1_S/IQ1_S/IQ1_S), 40 layers, 1920 slots (48.0/layer, 100.0% of experts)
+
+  loop[all-hit]: 24 tokens/mode, demand hit rate 1.00, layers with a miss 0%, evictions 0, prefetch issued 0
+  loop: ms/token event min 20.55 med 20.97 | overlap min 13.85 med 13.87 | saved per handshake: min 167.6 us, med 177.7 us
+  loop: stale/evicted expert reads 0, gap-ordering violations 0, chain mismatches 0, CPU id mismatches 0
+all OK
+<end of output>
+Test time =   2.94 sec
+----------------------------------------------------------
+Test Passed.
+"test_dec_sync" end time: Oct 31 05:11 CDT
+"test_dec_sync" time elapsed: 00:00:02
+----------------------------------------------------------
+
+14/21 Testing: test_quant_moe
+14/21 Test: test_quant_moe
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_moe"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_quant_moe" start time: Oct 31 05:11 CDT
+Output:
+----------------------------------------------------------
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=6  clamped= 2756  h_err 5.20e-09  y_err 3.63e-08  ok
+  gu=IQ1_S   down=IQ2_XXS shared=Q8_0 routed=6  clamped=  841  h_err 5.20e-09  y_err 2.35e-08  ok
+  gu=IQ1_S   down=IQ2_XXS shared=Q6_K routed=6  clamped= 2756  h_err 5.20e-09  y_err 3.33e-08  ok
+  gu=IQ2_XXS down=IQ2_XXS shared=Q6_K routed=6  clamped=13927  h_err 4.79e-09  y_err 2.27e-08  ok
+  gu=IQ2_XXS down=IQ2_XXS shared=-    routed=3  clamped= 5985  h_err 4.79e-09  y_err 3.09e-08  ok
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=0  clamped= 1867  h_err 4.04e-09  y_err 4.21e-08  ok
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=6  clamped=15817  h_err 4.12e-09  y_err 1.13e-07  ok
+all OK
+<end of output>
+Test time =   2.20 sec
+----------------------------------------------------------
+Test Passed.
+"test_quant_moe" end time: Oct 31 05:11 CDT
+"test_quant_moe" time elapsed: 00:00:02
+----------------------------------------------------------
+
+15/21 Testing: test_quant_moe_prefill
+15/21 Test: test_quant_moe_prefill
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_moe_prefill"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_quant_moe_prefill" start time: Oct 31 05:11 CDT
+Output:
+----------------------------------------------------------
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K path=-1 shdense=-1 popular n=80 k=2 experts=5 entries=160 (m 18..80) checked=80  err(half-emul) 7.97e-06  err(vs F32) 1.85e-04  repeat bit-identical  ok
+  gu=IQ2_XXS down=IQ2_XXS shared=Q8_0 path=-1 shdense=-1 popular n=70 k=2 experts=4 entries=140 (m 21..70) checked=70  err(half-emul) 6.13e-06  err(vs F32) 1.27e-04  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ2_XXS shared=-    path=-1 shdense=-1 popular n=40 k=3 experts=4 entries=120 (m 21..40) checked=40  err(half-emul) 1.39e-05  err(vs F32) 9.75e-05  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K path=-1 shdense=-1 sizes   n=600 k=6 experts=20 entries=1813 (m 1..600) checked=55  err(half-emul) 7.93e-06  err(vs F32) 1.73e-04  repeat bit-identical  ok
+  gu=IQ2_XXS down=IQ1_S   shared=Q8_0 path=-1 shdense= 0 sizes   n=600 k=6 experts=20 entries=1813 (m 1..600) checked=55  err(half-emul) 3.53e-06  err(vs F32) 1.05e-04  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ2_XXS shared=Q6_K path=-1 shdense=-1 zipf    n=256 k=6 experts=64 entries=1536 (m 4..171) checked=49  err(half-emul) 6.20e-06  err(vs F32) 1.34e-04  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K path= 0 shdense= 0 popular n=80 k=2 experts=5 entries=160 (m 18..80) checked=80  err(half-emul) 7.97e-06  err(vs F32) 1.85e-04  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ2_XXS shared=Q8_0 path= 0 shdense= 1 zipf    n=256 k=6 experts=64 entries=1536 (m 4..171) checked=49  err(half-emul) 9.92e-06  err(vs F32) 6.28e-05  repeat bit-identical  ok
+all OK
+<end of output>
+Test time =  13.37 sec
+----------------------------------------------------------
+Test Passed.
+"test_quant_moe_prefill" end time: Oct 31 05:12 CDT
+"test_quant_moe_prefill" time elapsed: 00:00:13
+----------------------------------------------------------
+
+17/21 Testing: test_smoke
+17/21 Test: test_smoke
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_smoke"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_smoke" start time: Oct 31 05:12 CDT
+Output:
+----------------------------------------------------------
+smoke OK
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"test_smoke" end time: Oct 31 05:12 CDT
+"test_smoke" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 31 05:12 CDT
