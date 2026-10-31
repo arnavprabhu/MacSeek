@@ -65,6 +65,41 @@ int main() {
     double t = tmin([&](Enc& e) { A::encode_index_prefill(e, st, L, iq, iw, start, n); });
     printf("index layer %2d total            %9.2f ms\n", L, t);
   }
+  if (env_int("BENCH_CAND_DRIFT", -1) >= 0) {
+    // Real-text-like candidate blocks for layers 24..36: query q's 2048 blocks = query q-1's with `drift` of them
+    // replaced by random visible blocks (the newest block is always included). Union size and layer-24 cost, base vs new.
+    const int drift = (int)env_int("BENCH_CAND_DRIFT", 0), nblk = (start + n) / 8;
+    std::vector<int> set(2048);
+    std::vector<char> in(nblk + 1, 0);
+    for (int i = 0; i < 2048; i++) { int b; do b = (int)(xr() % (uint32_t)(start / 8)); while (in[b]); in[b] = 1; set[i] = b; }
+    uint32_t* m = (uint32_t*)st.cand_mask.cpu();
+    for (int qq = 0; qq < n; qq++) {
+      for (int k = 0; k < drift; k++) {
+        int i = (int)(xr() % 2047u) + 1, b;  // slot 0 = newest block
+        do b = (int)(xr() % (uint32_t)((start + qq + 1) / 8)); while (in[b]);
+        in[set[i]] = 0; in[b] = 1; set[i] = b;
+      }
+      const int newest = (start + qq) / 8;
+      if (!in[newest]) { in[set[0]] = 0; set[0] = newest; in[newest] = 1; }
+      uint32_t* row = m + (size_t)qq * st.mask_words;
+      memset(row, 0, st.mask_words * 4);
+      for (int b : set) row[b >> 5] |= 1u << (b & 31);
+    }
+    const bool reg_ok = st.pf_score_reg_ok; const A::Options o0 = st.opt;
+    double t[2] = {1e9, 1e9};
+    for (int rd = 0; rd < 3; rd++)
+      for (int v = 0; v < 2; v++) {
+        st.opt = o0; st.pf_score_reg_ok = v && reg_ok;
+        if (!v) { st.opt.pf_merge_filter = false; st.opt.pf_idx_qblock = 0; }
+        t[v] = std::min(t[v], tmin([&](Enc& e) { A::encode_index_prefill(e, st, 24, iq, iw, start, n); }, 1));
+      }
+    st.opt = o0; st.pf_score_reg_ok = reg_ok;
+    const int* uc = (const int*)st.ucount.cpu(); double usum = 0;
+    for (int i = 0; i < (n + 1) / 2; i++) usum += uc[i];
+    printf("cand drift %d blocks/query: union mean %.0f blocks per 2-query tile | layer 24 base %.2f ms, new %.2f ms (%.2fx)\n",
+           drift, usum / ((n + 1) / 2), t[0], t[1], t[0] / t[1]);
+    return 0;
+  }
   if (env_int("BENCH_QB_SWEEP", 0)) {  // interleaved sweep of the two-pass query block (sparse layer 20 and 0), min of rounds
     const int qbs[5] = {512, 128, 64, 32, 16};
     double t[5][2];

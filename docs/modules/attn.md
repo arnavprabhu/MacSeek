@@ -10,10 +10,11 @@ Branch `mod/attn`. Files:
 | `src/kernels/attn_index.metal` | indexer: decode scorers (tensor-op full scan, tensor-op candidate-list, simdgroup fallback), exact radix top-k (one threadgroup), histogram compaction top-k, prefill tiled scorer (tensor ops) + per-query running top-k merge, candidate-block union |
 | `src/kernels/attn_sparse.metal` | sparse attention with sinks, flash-style simdgroup-matrix kernel (decode split-K + combine; prefill fallback) |
 | `src/kernels/attn_sparse_pf.metal` | prefill sparse attention, two-pass on the tensor units (scores → softmax → P·V) |
+| `src/kernels/attn_sparse_pf2.metal` | prefill sparse attention, folded-softmax two-pass (per-tile max/sum in the score pass, no f32 score matrix / softmax dispatch), software-pipelined over 64-query blocks (default prefill path) |
 | `src/kernels/attn_probe.metal` | probes (matmul throughput, streaming bandwidth, fragment layout) — not used by the engine |
 | `tests/ref/attn_ref.{hpp,cpp}` | CPU reference of every piece (the math spec) |
-| `tests/test_attn_units.mm`, `test_attn_stack.mm`, `test_attn_200k.mm`, `tests/attn_test_util.hpp` | ctests |
-| `bench/attn200k.mm` (+ `attn_prof`, `attn_pfprof`, `attn_mmprobe`, `attn_layout_probe`, `attn_dispatch_probe`) | benchmarks |
+| `tests/test_attn_units.mm`, `test_attn_stack.mm`, `test_attn_200k.mm`, `test_attn_pf_paths.mm`, `tests/attn_test_util.hpp` | ctests |
+| `bench/attn200k.mm` (`BENCH_AB=1`: interleaved base/new prefill table), `attn_pfsplit` (per-kernel prefill split, A/B of single switches, query-block sweep, candidate-drift model), `attn_coop_probe` (cooperative-tensor layouts), `attn_cache_probe` (read BW vs working set) (+ `attn_prof`, `attn_pfprof`, `attn_mmprobe`, `attn_layout_probe`, `attn_dispatch_probe`) | benchmarks |
 
 ## API
 
@@ -58,14 +59,19 @@ Options / env switches (every optimization can be turned off; the slow path is t
 
 | option | env | default | effect |
 |---|---|---|---|
-| `actq` | `MACSEEK_ACTQ` | 1 | fp8/fp4 quant-dequant simulations as in the reference (0 = plain f32→f16) |
+| `actq` | `MACSEEK_ACTQ` | 0 (`from_env`; struct default 1) | fp8/fp4 quant-dequant simulations as in the reference (0 = plain f32→f16; engine default, closer to the llama.cpp oracle) |
 | `max_pos` | `MACSEEK_MAX_POS` | 262144 | rope tables and cache capacity |
-| `max_chunk` | — | 2048 | largest prefill chunk |
+| `max_chunk` | — (engine: `MACSEEK_CHUNK`) | 2048 (engine sets 4096) | largest prefill chunk |
 | `key_chunk` | `MACSEEK_ATTN_KCHUNK` | 16384 | prefill indexer key chunk (bounds the score scratch) |
 | `dec_fast_index` | `MACSEEK_ATTN_DEC_FAST` | 1 | tensor-op decode scorer + histogram/compaction top-k (0: simdgroup scorer + single-TG radix select) |
 | `pf_cand_union` | `MACSEEK_ATTN_PF_UNION` | 1 | prefill layers 24..36 score only the union of the candidate blocks of each 2-query tile (0: dense + mask) |
 | `pf_mpp` | `MACSEEK_ATTN_PF_MPP` | 1 | prefill sparse attention two-pass on tensor units (0: flash simdgroup kernel) |
-| `pf_qblock` | `MACSEEK_ATTN_PF_QBLOCK` | 512 | queries per two-pass block (scratch ≈ 0.3 MB/query) |
+| `pf_fold_softmax` | `MACSEEK_ATTN_PF_FOLD` | 1 | two-pass with the softmax folded into both passes (`attn_sparse_pf2.metal`); 0: 3-kernel two-pass (scores f32 → softmax → P·V) |
+| `pf2_qblock` | `MACSEEK_ATTN_PF2_QBLOCK` | 64 | folded path: queries per pipelined block (2 scratch sets of ≈ 150 KB/query: 19 MB at 64) |
+| `pf_qblock` | `MACSEEK_ATTN_PF_QBLOCK` | 512 | 3-kernel path: queries per two-pass block (scratch ≈ 0.3 MB/query) |
+| `pf_score_reg` | `MACSEEK_ATTN_PF_SCORE_REG` | 1 | prefill indexer scorers (dense + candidate union) sum the heads in registers (0: threadgroup-memory epilogue) |
+| `pf_merge_filter` | `MACSEEK_ATTN_PF_MFILTER` | 1 | running top-512 merge compacts only chunk elements above the running minimum (exact) |
+| `pf_idx_qblock` | `MACSEEK_ATTN_PF_IDX_QBLOCK` | 256 | candidate-union layers: score/merge chain per block of 256 queries, 2 blocks in flight (0: whole chunk) |
 | `dec_rows_split` | `MACSEEK_ATTN_DEC_SPLIT` | 64 | decode split-K rows per threadgroup |
 | `dec_heads_tg`, `pf_heads_tg` | `MACSEEK_ATTN_DEC_HEADS`, `_PF_HEADS` | 8 | heads per flash threadgroup (16 = 256 threads, measured 2-3x slower) |
 | `dec_mpp` | `MACSEEK_ATTN_DEC_MPP` | 0 | decode through the two-pass path (measured slower: 55 vs 29 µs/layer) |
@@ -81,7 +87,8 @@ Options / env switches (every optimization can be turned off; the slow path is t
 | `cst[s]` | f32 [2][ratio][512] | compressor partial group: kv slots then gate-score slots, slot = pos % ratio |
 
 Only rows `< (pos+1)/ratio` are meaningful. At 200K context the state is ckv+ikey 640 MB + rings 5 MB (+128 MB rope
-tables). All scratch (decode + prefill, max_chunk 2048) ≈ 400 MB.
+tables). All scratch (decode + prefill) ≈ 0.5 GB at max_chunk 4096, dominated by the indexer score chunk S [n][16384] f32
+(268 MB); the prefill attention scratch is 19 MB (folded path; the 3-kernel path needs 158 MB).
 
 **Storage dtype and accuracy.** Caches are F16. With the quant simulation on (reference behaviour), every stored
 value is an e4m3 (window, ue8m0 scale/32) or e2m1 (compressed KV with e4m3 scale/16; index keys with ue8m0
@@ -116,11 +123,17 @@ Packed fp8/fp4 storage would be equally exact and 2-4x smaller (see next ideas).
 | `test_attn_stack` | layers {0,2,3,20,21,24}, 600 tokens from 0: one-shot prefill, chunked prefill+decode (odd boundaries 1,1,131,1,1,1,122,…), pure decode — all vs CPU token-by-token reference (rel rms ≤ 2.6e-4, top-k lists identical 252/252); prefill-only chunking **bit-exact** vs one-shot; at depth (random 40K-position caches, 3 key chunks, candidate masking active): chunk of 96 vs CPU ref, chunked (33,1,62) vs one-shot |
 | `test_attn_200k` | decode at pos 200000 and 262143 (max) for layers {0,2,3,20,21,24} vs CPU ref: top-512 identical, out rel rms ≈ 1.7e-4; ACTQ=0 path 250-prefill + 50 decode vs ref |
 
-Fallback paths (`MACSEEK_ATTN_PF_MPP=0`, `MACSEEK_ATTN_DEC_FAST=0`, `MACSEEK_ATTN_PF_UNION=0`) pass the same tests.
+| `test_attn_pf_paths` | threshold-filtered merge == full merge == CPU top-k (5 key chunks, -inf holes, survivor overflow, threshold ties); at depth 40K (3 key chunks, candidate union): all prefill fast paths vs all off and each switch alone — top-k lists identical, outputs within 3e-4 rel rms (folded softmax; everything else bit-identical); pipelined block size 16 / 64 / 160 and index query-blocking 0 / 34 / 64 bit-identical; shallow chunk from position 0 (skipped all-invalid tiles) |
+
+Fallback paths (`MACSEEK_ATTN_PF_MPP=0`, `MACSEEK_ATTN_DEC_FAST=0`, `MACSEEK_ATTN_PF_UNION=0`) pass the same tests. The register
+epilogues assume a cooperative-tensor layout of `matmul2d` (probed with `bench_attn_coop_probe`); `init` verifies it with
+`attn_idx_layout_check` / `attn_pf2_layout_check` and falls back to the threadgroup-memory kernels (stderr note) if it ever changes.
+Accuracy vs the CPU reference (`test_attn_stack`, out rel rms one-shot from 0 / at depth): folded path 1.30e-4 / 1.78e-4,
+3-kernel path 2.06e-4 / 2.00e-4 (the folded P = exp(S − m_tile) ≤ 1 keeps more half precision than the normalized P).
 
 ## Benchmarks (M5 Pro, 20-core GPU) — `build/bench_attn200k`
 
-Measured with a `llama-bench` (model owner) running concurrently on the GPU, so absolute numbers are pessimistic;
+Decode numbers were measured with a `llama-bench` (model owner) running concurrently on the GPU (pessimistic);
 timings are min over command buffers. Decode is timed **sustained** (20 tokens per command buffer): short command
 buffers run at low GPU clocks (x10 layers: 132 µs/layer vs 29.6 µs/layer sustained) and are not representative.
 Streaming read bandwidth (own probe, 1 GiB): **281-289 GB/s**. Dependent dispatch + barrier ≈ 4 µs.
@@ -137,27 +150,74 @@ Decode, 1 token at position 200000, all 40 layers (synthetic random caches):
 | sparse attention, 40 layers (split-K + combine) | 1.17 | 140 | 42% |
 | **total, one command buffer** | **2.51 ms/token** | 291 | 40% |
 
-Prefill, one 2048-token chunk at depth 200000, all 40 layers:
+Prefill at depth 200000, all 40 layers, synthetic random state (`BENCH_AB=1 BENCH_CHUNK=n build/bench_attn200k`:
+base = all prefill switches of this section off, new = defaults, toggled at run time on the same state and interleaved,
+min over 3 rounds; idle GPU). TFLOP/s for the new path in brackets.
 
-| component | ms | TFLOP/s |
-|---|---|---|
-| kv window + compressor + ring commit | 1.0 | |
-| indexer layers 2, 8, 14 (101K keys, dense) | 3 × 119 | 14.2 |
-| indexer layer 20 (202K keys + candidate blocks) | 244 | 13.9 |
-| indexer layers 24, 28, 32, 36 (candidate union; random data = worst-case union ≈ 4096 blocks) | 4 × 72 | (47 dense-equivalent) |
-| sparse attention, 40 layers (two-pass tensor ops) | 586–780 | 8.5–11.3 |
-| **total, one command buffer** | **≈1.7 s (1200 tok/s attention-side)** | |
+| component | n=2048 base | n=2048 new | n=4096 base | n=4096 new | speedup |
+|---|---|---|---|---|---|
+| kv window + compressor + ring commit | 0.98 | 0.98 | 1.82 | 1.85 | — |
+| indexer layer 2 (= 8, 14; dense ~100K keys) | 118.4 | 58.1 | 242.3 | 117.7 (29 TF) | 2.06x |
+| indexer layer 20 (dense ~200K keys + candidate blocks) | 242.1 | 121.5 | 497.1 | 244.2 (28 TF) | 2.04x |
+| indexer layer 24 (= 28, 32, 36; candidate union, random = worst case) | 71.0 | 25.2 | 149.7 | 50.3 | 2.98x |
+| indexer, all 8 index layers | 881 | 396 | 1823 | 799 | 2.28x |
+| sparse attention, 40 layers | 726 | 515 | 1434 | 1024 (12.9 TF) | 1.40x |
+| **total, one command buffer** | **1590** | **905** | **3238** | **1800** | **1.80x** |
+| attention-side tok/s | 1288 | 2263 | 1265 | 2275 | |
 
-Before → after during this work: decode 9.8 → 2.5 ms/token (indexer tensor ops + compaction top-k, 8-head TGs);
-prefill 3.2 s → 1.7 s (candidate union 247 → 72 ms per layer, two-pass attention 1.45 → 0.6-0.78 s). Matrix-unit
-probes: simdgroup_matrix 7.4 TFLOP/s, `matmul2d` 64x64 tiles 22 TFLOP/s (half in, f32 acc, K=128).
+Realistic overlap (neighbouring tokens pick mostly the same keys / blocks). Random state is the worst case for the candidate
+union and for the row reuse of sparse attention. Two models, both in the benches: `BENCH_QCORR_PCT=95` (AR(1)-correlated
+indexer inputs: 43% top-512 overlap of consecutive queries, union 3021 blocks per 2-query tile) gives n=4096 total
+2967 → 1630 ms (1.82x; layer 24 117 → 41 ms, sparse attention 1284 → 797 ms). `BENCH_CAND_DRIFT=d` (bench_attn_pfsplit;
+each query's 2048 candidate blocks = the previous query's with d replaced) gives layer 24 at n=4096: d=0 78 → 26 ms,
+d=20 80 → 28 ms, d=100 84 → 29 ms, d≈all 126 → 43 ms.
+
+What changed (each switchable, see Options; the old path is the fallback):
+
+1. **Indexer score epilogue in registers** (`pf_score_reg`). The cooperative destination of `matmul2d(64, 128, 128)` on 4
+   simdgroups has a fixed layout (probed: element i of lane l in simdgroup sg is row R + 8·bit2(i) + 32·bit5(i), col C +
+   (i&3) + 32·bits3-4(i)); each thread adds its 2 heads in registers, a reduce-scatter over lane bits 1, 2, 4 sums 16 heads
+   with 28 shuffles, and 1 KB of threadgroup memory adds the two head halves. The old epilogue wrote the whole 32 KB tile to
+   threadgroup memory (1 threadgroup per core). Dense scorer 14 → 29-32 TFLOP/s; the candidate-union scorer (64x64 tiles)
+   uses the same scheme.
+2. **Threshold-filtered running top-k merge** (`pf_merge_filter`). Once a query's running list holds 512 entries, only chunk
+   elements strictly above its minimum can enter (ties lose: they have higher indices). The chunk is compacted in index
+   order into threadgroup memory (≤ 2048 survivors, else the full merge runs) and the exact select runs on 512 + survivors.
+   Merge per 16K-key chunk 2.3 → 1.6 ms (n=4096), i.e. about one read of S.
+3. **Folded-softmax two-pass attention** (`pf_fold_softmax`). Pass 1 (`attn_pf2_scores`, one 64-row tile per threadgroup)
+   computes the tile's per-head max m_t and Σexp(S − m_t) in registers and writes P_t = exp(S − m_t) as half (≤ 1) plus
+   (m_t, l_t); pass 2 (`attn_pf2_pv`) derives M = max(sink, m_t), L and α_t = exp(m_t − M)/L per head and accumulates
+   α_t·(P_t·V_t). No f32 score matrix (671 MB per layer at n=4096), no softmax dispatch, tiles whose 64 rows are all invalid
+   are skipped in both passes, gathers double-buffered. More accurate than before (P keeps more half precision).
+4. **Software-pipelined small query blocks** (`pf2_qblock` = 64). Stage j dispatches qprep(j), scores(j−1), P·V(j−2) with one
+   barrier per stage (two scratch sets). A 64-query block's gathered rows (40 MB), P and Qh are still in the on-chip cache
+   (`bench_attn_cache_probe`: ~0.9-1.1 TB/s up to 32 MB working sets) when pass 2 re-reads them: sparse layer 30.3 →
+   26.8 ms (random) / 24.9 → 20.4 ms (QCORR 95) vs 512-query blocks; scratch 158 MB → 19 MB.
+5. **Query-blocked candidate-union chain** (`pf_idx_qblock` = 256): score + merge per 256-query block, two blocks in flight,
+   so S rows are re-read from cache (layer 24: 55 → 50 ms). No gain on the dense layers (compute-bound), so not used there.
+
+Measured and dropped (slower or no gain; numbers at n=4096): P·V over 128-dim slices on 4 simdgroups (64+64 accumulator
+registers: 37 vs 32 ms per layer), on 8 simdgroups (`execution_simdgroups<8>`, single-buffered V: slower), α-scaled P
+staged in threadgroup memory (no gain, 2x the half rounding of P: rel rms vs CPU 3.4e-4), f32 q read directly by the score
+pass as an f32×f16 tensor op (slower, and its destination layout differs), window tiles read straight from device memory
+(contiguous chunk rows; ±1%), 2 row chunks in flight per thread in pass 1 (±1%), larger key chunks for the dense indexer
+(KC 16384 best), query-blocking the dense indexer chain (+1.5%), `pf_qblock` 1024 for the 3-kernel path (−1.5%).
+
+History: decode 9.8 → 2.5 ms/token (indexer tensor ops + compaction top-k, 8-head TGs); prefill n=2048 3.2 s → 1.7 s
+(candidate union, two-pass attention) → 0.9 s (this round). Matrix-unit probes: simdgroup_matrix 7.4 TFLOP/s, `matmul2d`
+64x64 tiles 22 TFLOP/s measured next to a running llama-bench (the register-epilogue indexer reaches 29-32 on an idle GPU).
 
 ## Limits / caveats
 
 - Decode attention is latency-bound (~29 µs/layer for 640 rows: 2 dispatches + 4 serial 16-row chunks per TG).
-- Prefill indexer scoring sits at ~14 TFLOP/s vs 22 for a bare `matmul2d`: the relu·w head-sum epilogue goes through
-  threadgroup memory (cooperative-tensor layout is opaque; `reduce_columns` needs single-simdgroup scope and was slower).
-- Candidate-union cost depends on how much adjacent queries' candidate sets overlap (random test data is the worst case).
+- The register epilogues depend on the (undocumented) cooperative-tensor layout of `matmul2d`; checked at init, fallback
+  to the threadgroup-memory kernels if it changes.
+- Sparse attention prefill (≈ 26 ms per 640-row layer at n=4096, 13 TFLOP/s) is limited by the row gathers through
+  threadgroup memory: with all rows cache-resident (identical top-k lists) it runs at ~17 ms. The rows are still read
+  twice (scores, P·V); a single pass needs the 64x512 f32 output per query on chip (128 KB), which does not fit (32 KB
+  threadgroup memory; input cooperative tensors require single-simdgroup scope).
+- Candidate-union cost depends on how much adjacent queries' candidate sets overlap (random test data is the worst case;
+  see the drift numbers above).
 - Exact-tie handling: if more elements tie at the k-th score than are needed, the fast decode path falls back to the
   exact single-TG select (deterministic lowest-index rule); prefill merges use the same rule per chunk.
 - `encode_layer` uses shared scratch (topk, candidates, decode scores): layers must be encoded in order, one sequence
@@ -166,13 +226,13 @@ probes: simdgroup_matrix 7.4 TFLOP/s, `matmul2d` 64x64 tiles 22 TFLOP/s (half in
 
 ## Next ideas (ranked)
 
-1. Packed index keys (fp4 e2m1 + ue8m0/32 = 68 B instead of 256 B per key, exact): decode full scans 0.9 → ~0.3 ms;
-   tensor ops accept `metal_fp4_e2m1_format`, so prefill could also use fp4×fp4 with per-block scaling.
-2. Prefill indexer epilogue without threadgroup round trip (probe the cooperative-tensor layout once at startup, or
-   fold the head sum into a second tiny matmul) → toward 20 TFLOP/s (≈ -200 ms per chunk).
-3. Decode attention: fuse the split-K combine (last-threadgroup pattern) and keep Q prepped once per layer
+1. Packed index keys (fp4 e2m1 + ue8m0/32 = 68 B instead of 256 B per key) — exact only with `actq=1`; with the engine's
+   `actq=0` the keys are plain f16, so this needs an accuracy gate first. Tensor ops accept `metal_fp4_e2m1_format`.
+2. Candidate union with 4-query tiles when the measured union is small (real text: union ≈ 2048 + 3·drift blocks), else
+   2-query tiles — decided per tile on the GPU from `ucount`.
+3. Fuse the dense indexer's threshold filter into the scorer (write only survivors, not the S matrix: ≈ 2 ms per 16K-key
+   chunk, ~60 ms per 4096 chunk) and filter the layer-20 block merge (k = 2048) too (~6 ms).
+4. Decode attention: fuse the split-K combine (last-threadgroup pattern) and keep Q prepped once per layer
    (≈ -0.3 ms/token); packed fp8 window rows halve row bytes.
-4. Prefill attention: share window rows across consecutive queries (union tiles like the indexer), skip all-invalid
-   row tiles at shallow depth, overlap scores/softmax/PV of consecutive query blocks.
-5. Re-measure on an idle GPU (all numbers above were taken next to a running `llama-bench`) and re-tune splits /
-   tile sizes; then measure the real-data candidate-union size (adjacent-query overlap) on model activations.
+5. Measure the real top-k / candidate overlap on model activations (the benches model it with `BENCH_QCORR_PCT` and
+   `BENCH_CAND_DRIFT`) and retune `pf2_qblock` / `pf_idx_qblock` on it.
