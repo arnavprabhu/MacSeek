@@ -412,6 +412,11 @@ void encode_quant_sim(Enc& e, const Buffer& x, uint32_t n, int mode) {
 
 void encode_layer(Enc& e, State& s, const LayerIO& io, int start, int n) {
   const int L = io.layer;
+  if (L < 0 || L >= kLayers || n < 1 || n > s.opt.max_chunk || start < 0 || start + n > s.opt.max_pos) {
+    fprintf(stderr, "attn::encode_layer: bad call layer=%d start=%d n=%d (max_chunk %d, max_pos %d)\n", L, start, n,
+            s.opt.max_chunk, s.opt.max_pos);
+    abort();
+  }
   encode_kv_window(e, s, L, io.kv, io.kv_norm, start, n);
   if (is_kv_source(L)) { bool ws; compress_groups(e, s, L, io, start, n, ws); }
   e.barrier();
