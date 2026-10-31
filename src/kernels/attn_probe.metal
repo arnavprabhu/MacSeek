@@ -66,3 +66,49 @@ kernel void attn_probe_layout(device float* out [[buffer(0)]], ushort ln [[threa
   auto e = a.thread_elements();
   out[ln * 2] = e[0]; out[ln * 2 + 1] = e[1];
 }
+
+// cooperative destination layout probe: out[t * 256 + i] = row * 4096 + col (or -1), out[128*256 + t] = capacity
+template <int TM, int TN>
+inline void probe_coop_layout(device half* A, device half* B, device int* out, ushort t) {
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(A, dextents<int32_t, 2>(128, TM));
+  auto tB = tensor<device half, dextents<int32_t, 2>, tensor_inline>(B, dextents<int32_t, 2>(128, TN));
+  constexpr auto desc = matmul2d_descriptor(TM, TN, 128, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) {
+    int v = -1;
+    if (cT.is_valid_element(i)) { auto id = cT.get_multidimensional_index(i); v = id[1] * 4096 + id[0]; }
+    if (i < 256) out[t * 256 + i] = v;
+  }
+  out[128 * 256 + t] = cT.get_capacity();
+}
+kernel void attn_probe_coop_64x128(device half* A [[buffer(0)]], device half* B [[buffer(1)]], device int* out [[buffer(2)]],
+                                   ushort t [[thread_index_in_threadgroup]]) { probe_coop_layout<64, 128>(A, B, out, t); }
+kernel void attn_probe_coop_64x64(device half* A [[buffer(0)]], device half* B [[buffer(1)]], device int* out [[buffer(2)]],
+                                  ushort t [[thread_index_in_threadgroup]]) { probe_coop_layout<64, 64>(A, B, out, t); }
+kernel void attn_probe_coop_128x64(device half* A [[buffer(0)]], device half* B [[buffer(1)]], device int* out [[buffer(2)]],
+                                   ushort t [[thread_index_in_threadgroup]]) { probe_coop_layout<128, 64>(A, B, out, t); }
+// 8-simdgroup NN 64x128 (K=64) destination layout: out[t * 256 + i] = row * 4096 + col, out[256*256 + t] = capacity
+kernel void attn_probe_coop8_64x128(device int* out [[buffer(0)]], ushort t [[thread_index_in_threadgroup]]) {
+  threadgroup half X[64 * 128];
+  auto tA = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(64, 64));
+  auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(128, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 128, 64, false, false, false, matmul2d_descriptor::mode::multiply);
+  matmul2d<desc, execution_simdgroups<8>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) {
+    int v = -1;
+    if (cT.is_valid_element(i)) { auto id = cT.get_multidimensional_index(i); v = id[1] * 4096 + id[0]; }
+    if (i < 256) out[t * 256 + i] = v;
+  }
+  out[256 * 256 + t] = cT.get_capacity();
+}
+
+// cache-capacity probe: every thread re-reads its grid-stride share of a W-byte buffer `reps` times
+kernel void attn_probe_bw_rep(device const float4* a [[buffer(0)]], device float* out [[buffer(1)]], constant uint2& nr [[buffer(2)]],
+                              uint gid [[thread_position_in_grid]], uint gsz [[threads_per_grid]]) {
+  float4 s = 0;
+  for (uint r = 0; r < nr.y; r++)
+    for (uint i = gid; i < nr.x; i += gsz) s += a[(i + r * 4099u) % nr.x];
+  if (s.x == 1234.5f) out[0] = s.y + s.z + s.w;
+}

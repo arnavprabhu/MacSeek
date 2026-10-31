@@ -38,6 +38,15 @@ struct Options {
                            // (0: flash-style simdgroup kernel). env MACSEEK_ATTN_PF_MPP
   bool dec_mpp = false;    // decode through the two-pass tensor path too (measured slower: 3 dependent dispatches)
   int pf_qblock = 512;     // queries per two-pass block (bounds scratch: ~0.3 MB per query)
+  bool pf_score_reg = true;  // prefill indexer scorer with the head sum in registers (cooperative-tensor layout checked
+                             // at init; 0 or layout mismatch: threadgroup-memory epilogue). env MACSEEK_ATTN_PF_SCORE_REG
+  bool pf_fold_softmax = true;  // two-pass prefill attention with the softmax folded into both passes (tile max/sum,
+                                // P = exp(S - m_tile) half; no f32 score matrix / softmax dispatch). env MACSEEK_ATTN_PF_FOLD
+  bool pf_merge_filter = true;  // prefill running top-k merge (k=512): only chunk elements above the running minimum
+                                // are compacted and merged (exact). env MACSEEK_ATTN_PF_MFILTER
+  int pf2_qblock = 64;   // folded path: queries per pipelined block (2 scratch sets of ~150 KB/query). env MACSEEK_ATTN_PF2_QBLOCK
+  int pf_idx_qblock = 256;  // prefill candidate-union layers: score/merge per block of this many queries, 2 blocks in
+                            // flight (score rows stay cache-resident; 0: whole chunk). env MACSEEK_ATTN_PF_IDX_QBLOCK
   int pf_heads_tg = 8;     // heads per sparse-attention threadgroup, prefill (8: 128 threads | 16: 256 threads). env MACSEEK_ATTN_PF_HEADS
   static Options from_env();
 };
@@ -68,6 +77,9 @@ struct State {
   Buffer S, BS;                // f32 [max_chunk][key_chunk], [max_chunk][key_chunk/8]
   Buffer Rk, Ri, Rc, Bk, Bi, Bc;  // running top-k (positions k=512, blocks k=2048) per query
   Buffer pfQ, pfS, pfP;   // prefill two-pass scratch: half [qblock][64][512], f32 / half [qblock][64][640]
+  bool pf_score_reg_ok = false;
+  bool pf_fold_ok = false;        // folded-softmax attention usable (option on + layout verified at init)
+  Buffer pfML;                    // float2 [qblock][R/64][64] per-tile (max, sum) for the folded-softmax path   // register-epilogue scorer usable (option on + layout verified at init)
   Buffer ulist, ucount;           // prefill: union of candidate blocks per 2-query tile, int [n/2][4096], int [n/2]
 };
 void init(State& s, const Options& o);

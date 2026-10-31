@@ -45,6 +45,12 @@ Options Options::from_env() {
   o.pf_mpp = env_int("MACSEEK_ATTN_PF_MPP", 1) != 0;
   o.dec_mpp = env_int("MACSEEK_ATTN_DEC_MPP", 0) != 0;
   o.pf_qblock = (int)env_int("MACSEEK_ATTN_PF_QBLOCK", o.pf_qblock);
+  o.pf_score_reg = env_int("MACSEEK_ATTN_PF_SCORE_REG", 1) != 0;
+  o.pf_fold_softmax = env_int("MACSEEK_ATTN_PF_FOLD", 1) != 0;
+
+  o.pf_merge_filter = env_int("MACSEEK_ATTN_PF_MFILTER", 1) != 0;
+  o.pf2_qblock = (int)env_int("MACSEEK_ATTN_PF2_QBLOCK", o.pf2_qblock);
+  o.pf_idx_qblock = (int)env_int("MACSEEK_ATTN_PF_IDX_QBLOCK", o.pf_idx_qblock);
   return o;
 }
 
@@ -119,11 +125,32 @@ void init(State& s, const Options& o) {
   s.Bk = d.alloc((size_t)nmax * kCandBlocks * 4, "attn.Bk");
   s.Bi = d.alloc((size_t)nmax * kCandBlocks * 4, "attn.Bi");
   s.Bc = d.alloc((size_t)nmax * 4, "attn.Bc");
+  if (o.pf_mpp && o.pf_fold_softmax && nmax > 1) {
+    Buffer r = d.alloc(128 * 4, "attn.chk");
+    { Enc e; e.set_pipeline("attn_pf2_layout_check"); e.set_buffer(0, r); e.dispatch_groups(1, 1, 1, 128); e.wait(); }
+    int bad = 0;
+    for (int i = 0; i < 128; i++) bad += ((const int*)r.cpu())[i];
+    s.pf_fold_ok = bad == 0;
+    if (bad) fprintf(stderr, "attn: pf2 cooperative-tensor layout differs from the assumed one (%d); using the 3-kernel path\n", bad);
+    d.release(r);
+  }
   if ((o.pf_mpp && nmax > 1) || o.dec_mpp) {
-    const size_t qb = std::min(o.pf_qblock, nmax);
+    // folded path: two scratch sets of pf2_qblock queries (software pipeline); 3-kernel path: one set of pf_qblock
+    const size_t qb = s.pf_fold_ok && !o.dec_mpp ? 2 * (size_t)std::min(o.pf2_qblock, nmax) : (size_t)std::min(o.pf_qblock, nmax);
     s.pfQ = d.alloc(qb * kH * kD * 2, "attn.pfQ");
-    s.pfS = d.alloc(qb * kH * (kWin + kTopk) * 4, "attn.pfS");
+    if (!s.pf_fold_ok || o.dec_mpp) s.pfS = d.alloc(qb * kH * (kWin + kTopk) * 4, "attn.pfS");
     s.pfP = d.alloc(qb * kH * (kWin + kTopk) * 2, "attn.pfP");
+    if (s.pf_fold_ok) s.pfML = d.alloc(qb * ((kWin + kTopk) / 64) * kH * 8, "attn.pfML");
+  }
+  if (o.pf_score_reg) {  // verify the cooperative-tensor layout the register epilogue assumes
+    Buffer qa = d.alloc(64 * kID * 2, "attn.chk"), kb = d.alloc(128 * kID * 2, "attn.chk"), r = d.alloc(128 * 4, "attn.chk");
+    { Enc e; e.set_pipeline("attn_idx_layout_check"); e.set_buffer(0, qa); e.set_buffer(1, kb); e.set_buffer(2, r);
+      e.dispatch_groups(1, 1, 1, 128); e.wait(); }
+    int bad = 0;
+    for (int i = 0; i < 128; i++) bad += ((const int*)r.cpu())[i];
+    s.pf_score_reg_ok = bad == 0;
+    if (bad) fprintf(stderr, "attn: cooperative-tensor layout differs from the assumed one (%d); using the TG-memory scorer\n", bad);
+    d.release(qa); d.release(kb); d.release(r);
   }
   s.ulist = d.alloc((size_t)(nq2 / 2) * kUnionCap * 4, "attn.ulist");
   s.ucount = d.alloc((size_t)(nq2 / 2) * 4, "attn.ucount");
@@ -274,7 +301,7 @@ void encode_index_prefill(Enc& e, State& s, int L, const Buffer& iq, const Buffe
   }
   auto merge = [&](const Buffer& src, const Buffer& k_, const Buffer& i_, const Buffer& c_, int k, int cnt, int ld, int base, int first) {
     MergeArgs a{n, k, cnt, ld, base, first};
-    e.set_pipeline("attn_topk_merge");
+    e.set_pipeline(s.opt.pf_merge_filter && k <= 512 ? "attn_topk_merge_f" : "attn_topk_merge");
     e.set_buffer(0, src); e.set_buffer(1, k_); e.set_buffer(2, i_); e.set_buffer(3, c_); e.set_value(4, a);
     e.dispatch_groups(n, 1, 1, 1024);
   };
@@ -283,6 +310,27 @@ void encode_index_prefill(Enc& e, State& s, int L, const Buffer& iq, const Buffe
     if (cs) merge(s.BS, s.Bk, s.Bi, s.Bc, kCandBlocks, 0, KC / 8, 0, 1);
     e.barrier();
   }
+  // Query blocking (pf_idx_qblock > 0): the score/merge chain of each key chunk runs per block of QBQ queries, two
+  // blocks in flight (stage t: one block's scorer, the other block's merge, no barrier between them), so each block's
+  // score rows S are still cache-resident when its merge reads them. 0: whole chunk at once.
+  // (Used for the candidate-union layers only: measured -9% there; no gain on the dense layers, whose scorer is
+  // compute-bound.)
+  const int QBQ = um && s.opt.pf_idx_qblock > 0 ? std::max(2, s.opt.pf_idx_qblock / 2 * 2) : n;
+  const int nblk = (n + QBQ - 1) / QBQ;
+  auto run_blocks = [&](int nch, auto&& score, auto&& mrg) {
+    auto step = [&](int b, int t) { if (t & 1) mrg(b, t >> 1); else score(b, t >> 1); };
+    if (nblk == 1) { for (int t = 0; t < 2 * nch; t++) { step(0, t); e.barrier(); } return; }
+    for (int b0 = 0; b0 < nblk; b0 += 2) {
+      const int b1 = b0 + 1 < nblk ? b0 + 1 : -1;
+      for (int t = 0; t < 2 * nch + (b1 >= 0 ? 1 : 0); t++) {
+        if (t < 2 * nch) step(b0, t);
+        if (b1 >= 0 && t >= 1) step(b1, t - 1);
+        e.barrier();
+      }
+    }
+  };
+  auto qoff = [&](int b) { return b * QBQ; };
+  auto qcnt = [&](int b) { return std::min(QBQ, n - b * QBQ); };
   if (um && s.opt.pf_cand_union && len_max > 0) {
     const int ntiles = (n + 1) / 2;
     {
@@ -293,33 +341,62 @@ void encode_index_prefill(Enc& e, State& s, int L, const Buffer& iq, const Buffe
       e.barrier();
     }
     const int nv_max = std::min(kUnionCap, (len_max + kCandBS - 1) / kCandBS) * kCandBS;
-    for (int kc0 = 0; kc0 < nv_max; kc0 += KC) {
-      const int c = std::min(KC, nv_max - kc0);
-      IdxPfListArgs a{start, n, r, kc0, c, KC, s.mask_words, kUnionCap, ntiles * 64};
-      e.set_pipeline("attn_idx_score_pf_list");
-      e.set_buffer(0, s.Qi); e.set_buffer(1, s.wq); e.set_buffer(2, s.ikey[sl]); e.set_buffer(3, s.S);
-      e.set_buffer(4, s.cand_mask); e.set_buffer(5, s.ulist); e.set_buffer(6, s.ucount); e.set_value(7, a);
-      e.dispatch_groups((c + 63) / 64, ntiles, 1, 128);
-      e.barrier();
-      MergeListArgs m{n, kTopk, c, KC, kc0, kc0 == 0, kUnionCap};
-      e.set_pipeline("attn_topk_merge_list");
-      e.set_buffer(0, s.S); e.set_buffer(1, s.Rk); e.set_buffer(2, s.Ri); e.set_buffer(3, s.Rc);
-      e.set_buffer(4, s.ulist); e.set_buffer(5, s.ucount); e.set_value(6, m);
-      e.dispatch_groups(n, 1, 1, 1024);
-      e.barrier();
-    }
+    const int nch = (nv_max + KC - 1) / KC;
+    auto score = [&](int b, int ch) {
+      const int q0 = qoff(b), nb = qcnt(b), kc0 = ch * KC, c = std::min(KC, nv_max - kc0), nt = (nb + 1) / 2;
+      IdxPfListArgs a{start + q0, nb, r, kc0, c, KC, s.mask_words, kUnionCap, nt * 64};
+      e.set_pipeline(s.pf_score_reg_ok ? "attn_idx_score_pf_list2" : "attn_idx_score_pf_list");
+      e.set_buffer(0, s.Qi.sub((size_t)q0 * kIH * kID * 2, (size_t)nt * 2 * kIH * kID * 2));
+      e.set_buffer(1, s.wq.sub((size_t)q0 * kIH * 4, (size_t)nb * kIH * 4)); e.set_buffer(2, s.ikey[sl]);
+      e.set_buffer(3, s.S.sub((size_t)q0 * KC * 4, (size_t)nb * KC * 4));
+      e.set_buffer(4, s.cand_mask.sub((size_t)q0 * s.mask_words * 4, (size_t)nb * s.mask_words * 4));
+      e.set_buffer(5, s.ulist.sub((size_t)(q0 / 2) * kUnionCap * 4, (size_t)nt * kUnionCap * 4));
+      e.set_buffer(6, s.ucount.sub((size_t)(q0 / 2) * 4, (size_t)nt * 4)); e.set_value(7, a);
+      e.dispatch_groups((c + 63) / 64, nt, 1, 128);
+    };
+    auto mrg = [&](int b, int ch) {
+      const int q0 = qoff(b), nb = qcnt(b), kc0 = ch * KC, c = std::min(KC, nv_max - kc0), nt = (nb + 1) / 2;
+      MergeListArgs m{nb, kTopk, c, KC, kc0, kc0 == 0, kUnionCap};
+      e.set_pipeline(s.opt.pf_merge_filter ? "attn_topk_merge_list_f" : "attn_topk_merge_list");
+      e.set_buffer(0, s.S.sub((size_t)q0 * KC * 4, (size_t)nb * KC * 4));
+      e.set_buffer(1, s.Rk.sub((size_t)q0 * kTopk * 4, (size_t)nb * kTopk * 4));
+      e.set_buffer(2, s.Ri.sub((size_t)q0 * kTopk * 4, (size_t)nb * kTopk * 4));
+      e.set_buffer(3, s.Rc.sub((size_t)q0 * 4, (size_t)nb * 4));
+      e.set_buffer(4, s.ulist.sub((size_t)(q0 / 2) * kUnionCap * 4, (size_t)nt * kUnionCap * 4));
+      e.set_buffer(5, s.ucount.sub((size_t)(q0 / 2) * 4, (size_t)nt * 4)); e.set_value(6, m);
+      e.dispatch_groups(nb, 1, 1, 1024);
+    };
+    run_blocks(nch, score, mrg);
   }
-  for (int kc0 = 0; kc0 < len_max && !(um && s.opt.pf_cand_union); kc0 += KC) {
-    const int c = std::min(KC, len_max - kc0);
-    IdxPfArgs a{start, n, r, kc0, c, KC, um ? 1 : 0, s.mask_words, cs ? 1 : 0, s.cap[sl] + kRowPad, (n + 1) / 2 * 64};
-    e.set_pipeline("attn_idx_score_pf");
-    e.set_buffer(0, s.Qi); e.set_buffer(1, s.wq); e.set_buffer(2, s.ikey[sl]); e.set_buffer(3, s.S);
-    e.set_buffer(4, s.cand_mask); e.set_buffer(5, s.BS); e.set_value(6, a);
-    e.dispatch_groups((c + 127) / 128, (n + 1) / 2, 1, 128);
-    e.barrier();
-    merge(s.S, s.Rk, s.Ri, s.Rc, kTopk, c, KC, kc0, kc0 == 0);
-    if (cs) merge(s.BS, s.Bk, s.Bi, s.Bc, kCandBlocks, (c + 7) / 8, KC / 8, kc0 / 8, kc0 == 0);
-    e.barrier();
+  if (!(um && s.opt.pf_cand_union) && len_max > 0) {
+    const int nch = (len_max + KC - 1) / KC;
+    auto score = [&](int b, int ch) {
+      const int q0 = qoff(b), nb = qcnt(b), kc0 = ch * KC, c = std::min(KC, len_max - kc0), nt = (nb + 1) / 2;
+      IdxPfArgs a{start + q0, nb, r, kc0, c, KC, um ? 1 : 0, s.mask_words, cs ? 1 : 0, s.cap[sl] + kRowPad, nt * 64};
+      e.set_pipeline(s.pf_score_reg_ok ? "attn_idx_score_pf2" : "attn_idx_score_pf");
+      e.set_buffer(0, s.Qi.sub((size_t)q0 * kIH * kID * 2, (size_t)nt * 2 * kIH * kID * 2));
+      e.set_buffer(1, s.wq.sub((size_t)q0 * kIH * 4, (size_t)nb * kIH * 4)); e.set_buffer(2, s.ikey[sl]);
+      e.set_buffer(3, s.S.sub((size_t)q0 * KC * 4, (size_t)nb * KC * 4));
+      e.set_buffer(4, s.cand_mask.sub((size_t)q0 * s.mask_words * 4, (size_t)nb * s.mask_words * 4));
+      e.set_buffer(5, s.BS.sub((size_t)q0 * (KC / 8) * 4, (size_t)nb * (KC / 8) * 4)); e.set_value(6, a);
+      e.dispatch_groups((c + 127) / 128, nt, 1, 128);
+    };
+    auto mrg1 = [&](const Buffer& src, const Buffer& k_, const Buffer& i_, const Buffer& c_, int k, int b, int cnt, int ld,
+                    int base, int first) {
+      const int q0 = qoff(b), nb = qcnt(b);
+      MergeArgs a{nb, k, cnt, ld, base, first};
+      e.set_pipeline(s.opt.pf_merge_filter && k <= 512 ? "attn_topk_merge_f" : "attn_topk_merge");
+      e.set_buffer(0, src.sub((size_t)q0 * ld * 4, (size_t)nb * ld * 4));
+      e.set_buffer(1, k_.sub((size_t)q0 * k * 4, (size_t)nb * k * 4)); e.set_buffer(2, i_.sub((size_t)q0 * k * 4, (size_t)nb * k * 4));
+      e.set_buffer(3, c_.sub((size_t)q0 * 4, (size_t)nb * 4)); e.set_value(4, a);
+      e.dispatch_groups(nb, 1, 1, 1024);
+    };
+    auto mrg = [&](int b, int ch) {
+      const int kc0 = ch * KC, c = std::min(KC, len_max - kc0);
+      mrg1(s.S, s.Rk, s.Ri, s.Rc, kTopk, b, c, KC, kc0, kc0 == 0);
+      if (cs) mrg1(s.BS, s.Bk, s.Bi, s.Bc, kCandBlocks, b, (c + 7) / 8, KC / 8, kc0 / 8, kc0 == 0);
+    };
+    run_blocks(nch, score, mrg);
   }
   {
     FinArgs a{kTopk, 0, s.mask_words};
@@ -357,6 +434,43 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     e.set_buffer(0, s.part); e.set_buffer(1, s.ml); e.set_buffer(2, sinks); e.set_buffer(3, tab_of(s, L));
     e.set_buffer(4, out); e.set_value(5, c);
     e.dispatch_groups(kH, 1, 1, 128);
+  } else if (s.opt.pf_mpp && s.pfQ && s.pf_fold_ok && n > 1) {
+    // Folded two-pass attention, software-pipelined over query blocks of QB: stage j dispatches qprep(j),
+    // scores(j-1), pv(j-2) with no barrier between them (they touch disjoint scratch sets j%2 / (j-1)%2), one barrier
+    // per stage. Small blocks keep a block's gathered rows, P and Qh cache-resident between the two passes.
+    const int QB = std::min(s.opt.pf2_qblock, s.opt.max_chunk), nblk = (n + QB - 1) / QB;
+    const size_t qsz = (size_t)QB * kH * kD * 2, psz = (size_t)QB * kH * R * 2, msz = (size_t)QB * (R / 64) * kH * 8;
+    auto args = [&](int b) {
+      const int q0 = b * QB;
+      return PfArgs{start + q0, std::min(QB, n - q0), q0, start, ntop, R, 1.0f / std::sqrt((float)kD)};
+    };
+    for (int j = 0; j < nblk + 2; j++) {
+      if (j < nblk) {
+        PfArgs a = args(j);
+        e.set_pipeline("attn_pf_qprep");
+        e.set_buffer(0, q); e.set_buffer(1, tab_of(s, L)); e.set_buffer(2, s.pfQ.sub((j & 1) * qsz, qsz)); e.set_value(3, a);
+        e.dispatch_groups(a.nq, 1, 1, 128);
+      }
+      if (j >= 1 && j - 1 < nblk) {
+        const int b = j - 1;
+        PfArgs a = args(b);
+        e.set_pipeline("attn_pf2_scores");
+        e.set_buffer(0, s.pfQ.sub((b & 1) * qsz, qsz)); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
+        e.set_buffer(4, s.topk); e.set_buffer(5, s.pfP.sub((b & 1) * psz, psz)); e.set_buffer(6, s.pfML.sub((b & 1) * msz, msz));
+        e.set_value(7, a);
+        e.dispatch_groups(R / 64, a.nq, 1, 128);
+      }
+      if (j >= 2) {
+        const int b = j - 2;
+        PfArgs a = args(b);
+        e.set_pipeline("attn_pf2_pv");
+        e.set_buffer(0, s.pfP.sub((b & 1) * psz, psz)); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
+        e.set_buffer(4, s.topk); e.set_buffer(5, tab_of(s, L)); e.set_buffer(6, out); e.set_buffer(7, s.pfML.sub((b & 1) * msz, msz));
+        e.set_buffer(8, sinks); e.set_value(9, a);
+        e.dispatch_groups(kD / 64, a.nq, 1, 128);
+      }
+      e.barrier();
+    }
   } else if (s.opt.pf_mpp && s.pfQ) {
     const int QB = std::min(s.opt.pf_qblock, s.opt.max_chunk);
     for (int q0 = 0; q0 < n; q0 += QB) {

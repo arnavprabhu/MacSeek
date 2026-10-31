@@ -1,27 +1,20 @@
-streaming read bandwidth (attn_probe_bw, 1 GiB): 280.7 GB/s
-
-== decode, 1 token at position 200000 (all 40 layers), sustained (20 reps per command buffer) ==
-component                                          ms   MB moved     % BW
-kv window + compressor (40 layers)              0.088        0.7     2.7%
-indexer full scans 2,8,14 (100K) + 20 (200K)    0.898      132.2    52.5%
-  of which layer 2 (100K)                       0.165       26.4    57.2%
-  of which layer 20 (200K + candidate blocks)    0.356       52.8    52.8%
-indexer candidate-restricted 24,28,32,36        0.232       17.3    26.6%
-sparse attention (40 layers, split-K)           1.164      140.5    43.0%
-TOTAL (one command buffer, all 40 layers)       2.509      290.7    41.3%
-sum of components: 2.382 ms
-
+== prefill, chunk of 4096 tokens at depth 200000 (all 40 layers) ==
+component (min over rounds)                             base ms     new ms  speedup
+kv window + compressor + ring commit (40 layers)           1.82       1.85    0.98x
+indexer layer 2 (= 8, 14; dense, ~100K keys)             242.30     117.72    2.06x
+indexer layer 20 (dense ~200K keys + candidate blocks)     497.06     244.23    2.04x
+indexer layer 24 (= 28, 32, 36; candidate union)         149.74      50.28    2.98x
+indexer, all 8 index layers (3*L2 + L20 + 4*L24)        1822.91     798.50    2.28x
+sparse attention (40 layers)                            1433.76    1023.62    1.40x
+TOTAL attention side, one command buffer                3238.30    1800.08    1.80x
+tok/s attention-side: base 1265, new 2275
 == prefill, chunk of 2048 tokens at depth 200000 (all 40 layers) ==
-component                                               ms   TFLOP/s
-kv window + compressor + ring commit (40 layers)      0.98
-indexer layer 2 (full, 101K keys)                   119.35     14.20
-indexer layer 8 (full, 101K keys)                   119.01     14.24
-indexer layer 14 (full, 101K keys)                  119.18     14.22
-indexer layer 20 (full, 202K keys)                  243.79     13.90
-indexer layer 24 (cand union, 202K keys)             72.28     46.90
-indexer layer 28 (cand union, 202K keys)             72.71     46.62
-indexer layer 32 (cand union, 202K keys)             72.61     46.69
-indexer layer 36 (cand union, 202K keys)             72.51     46.75
-sparse attention (40 layers)                        780.65      8.45
-TOTAL (one command buffer)                         1712.59   (1195.9 tok/s attention-side)
-sum of components: 1673.08 ms (indexer 891.45)
+component (min over rounds)                             base ms     new ms  speedup
+kv window + compressor + ring commit (40 layers)           0.98       0.98    1.00x
+indexer layer 2 (= 8, 14; dense, ~100K keys)             118.40      58.12    2.04x
+indexer layer 20 (dense ~200K keys + candidate blocks)     242.07     121.54    1.99x
+indexer layer 24 (= 28, 32, 36; candidate union)          71.03      25.15    2.82x
+indexer, all 8 index layers (3*L2 + L20 + 4*L24)         881.40     396.48    2.22x
+sparse attention (40 layers)                             725.93     515.40    1.41x
+TOTAL attention side, one command buffer                1589.98     904.98    1.76x
+tok/s attention-side: base 1288, new 2263

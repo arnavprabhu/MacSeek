@@ -336,6 +336,134 @@ inline void attn_idx_score_pf_impl(device half* Qi, device const float* wq, devi
   }
 ATTN_IDX_PF_KERNEL(attn_idx_score_pf, 2, 128)  // (4 queries x 64 keys: -30%; 2 x 64: -3%)
 
+// Register epilogue variant (2 queries x 128 keys, 4 simdgroups). Relies on the cooperative destination layout of
+// matmul2d(64, 128, 128) on 4 simdgroups (verified at init by attn_idx_layout_check; else the TG-memory kernel is used):
+//   thread (sg, l), element i: row = R(sg,l) + 8*((i>>2)&1) + 32*(i>>5), col = C(sg,l) + (i&3) + 32*((i>>3)&3)
+//   R = ((l>>1)&3) + 4*((l>>4)&1) + 16*(sg>>1),  C = 4*(l&1) + 8*((l>>3)&1) + 16*(sg&1)
+// Head sum: in-thread (rows r, r+8), reduce-scatter over lane bits 1, 2, 4 (16 heads), then sg 2/3 -> sg 0/1 via 1 KB of
+// threadgroup memory. Each lane of sg 0/1 ends with 4 consecutive keys of one query.
+inline int attn_pf2_row(ushort sg, ushort l) { return ((l >> 1) & 3) + 4 * ((l >> 4) & 1) + 16 * (sg >> 1); }
+inline int attn_pf2_col(ushort sg, ushort l) { return 4 * (l & 1) + 8 * ((l >> 3) & 1) + 16 * (sg & 1); }
+kernel void attn_idx_score_pf2(device half* Qi [[buffer(0)]], device const float* wq [[buffer(1)]],
+                               device half* ikey [[buffer(2)]], device float* S [[buffer(3)]],
+                               device const uint* mask [[buffer(4)]], device float* BS [[buffer(5)]],
+                               constant AttnIdxPfArgs& a [[buffer(6)]], uint2 tg [[threadgroup_position_in_grid]],
+                               ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
+  constexpr int NK = 128;
+  threadgroup float4 red[64];
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qi, dextents<int32_t, 2>(ATTN_ID, a.qrows));
+  auto tB = tensor<device half, dextents<int32_t, 2>, tensor_inline>(ikey, dextents<int32_t, 2>(ATTN_ID, a.krows));
+  constexpr auto desc = matmul2d_descriptor(64, NK, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto mA = tA.template slice<ATTN_ID, 64>(0, int(tg.y) * 64);
+  auto mB = tB.template slice<ATTN_ID, NK>(0, a.kc0 + int(tg.x) * NK);
+  auto cT = op.template get_destination_cooperative_tensor<decltype(mA), decltype(mB), float>();
+  #pragma unroll
+  for (uint16_t i = 0; i < 64; ++i) cT[i] = 0;
+  op.run(mA, mB, cT);
+  const int r0 = attn_pf2_row(sg, l), q0 = int(tg.y) * 2;
+  float w[2][2];  // [query][row +0 / +8]
+  for (int qq = 0; qq < 2; qq++)
+    for (int hb = 0; hb < 2; hb++) w[qq][hb] = q0 + qq < a.n ? wq[(q0 + qq) * ATTN_IH + r0 + 8 * hb] : 0.0f;
+  float v[32];  // [q][j][c] = v[q*16 + j*4 + c]
+  #pragma unroll
+  for (int qq = 0; qq < 2; qq++)
+    #pragma unroll
+    for (int j = 0; j < 4; j++)
+      #pragma unroll
+      for (int c = 0; c < 4; c++) {
+        const int i0 = c + 8 * j + 32 * qq;
+        v[qq * 16 + j * 4 + c] = max(cT[i0], 0.0f) * w[qq][0] + max(cT[i0 + 4], 0.0f) * w[qq][1];
+      }
+  // lane bit 1: keep query b1
+  const bool b1 = (l >> 1) & 1, b2 = (l >> 2) & 1, b4 = (l >> 4) & 1;
+  float u[16];
+  #pragma unroll
+  for (int x = 0; x < 16; x++) {
+    float send = b1 ? v[x] : v[16 + x];
+    float keep = b1 ? v[16 + x] : v[x];
+    u[x] = keep + simd_shuffle_xor(send, 2);
+  }
+  // lane bit 2: keep j in {2*b2, 2*b2+1}
+  float t8[8];
+  #pragma unroll
+  for (int x = 0; x < 8; x++) {
+    float send = b2 ? u[x] : u[8 + x];
+    float keep = b2 ? u[8 + x] : u[x];
+    t8[x] = keep + simd_shuffle_xor(send, 4);
+  }
+  // lane bit 4: keep j = 2*b2 + b4
+  float4 f;
+  #pragma unroll
+  for (int x = 0; x < 4; x++) {
+    float send = b4 ? t8[x] : t8[4 + x];
+    float keep = b4 ? t8[4 + x] : t8[x];
+    f[x] = keep + simd_shuffle_xor(send, 16);
+  }
+  if (sg >= 2) red[(sg & 1) * 32 + l] = f;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sg >= 2) return;
+  f += red[(sg & 1) * 32 + l];
+  const int q = q0 + int(b1);
+  const int key0 = attn_pf2_col(sg, l) + 32 * (2 * int(b2) + int(b4));
+  const int tl = int(tg.x) * NK + key0, tabs = a.kc0 + tl;
+  const int len = (a.start + q + 1) / a.ratio;
+  const bool qok = q < a.n;
+  float4 sc;
+  #pragma unroll
+  for (int c = 0; c < 4; c++) {
+    bool vis = qok && tabs + c < len && tl + c < a.kc;
+    if (vis && a.use_mask) vis = (mask[(size_t)q * a.mask_words + ((tabs + c) >> 8)] >> (((tabs + c) >> 3) & 31)) & 1u;
+    sc[c] = vis ? f[c] : -INFINITY;
+  }
+  if (qok) {
+    device float* dst = S + (size_t)q * a.ld_s + tl;
+    if (tl + 4 <= a.kc) *(device float4*)dst = sc;
+    else for (int c = 0; c < 4; c++) if (tl + c < a.kc) dst[c] = sc[c];
+  }
+  if (a.cand_src) {  // block of 8 keys = this lane's 4 + lane^1's 4
+    float bm = max(max(sc[0], sc[1]), max(sc[2], sc[3]));
+    bm = max(bm, simd_shuffle_xor(bm, 1));
+    if (len > 0 && (tabs >> 3) == (len - 1) / 8) bm = INFINITY;
+    if (qok && tl < a.kc && (l & 1) == 0) BS[(size_t)q * (a.ld_s / 8) + (tl >> 3)] = bm;
+  }
+}
+
+// Layout check for attn_idx_score_pf2: out[t] = number of elements whose (row, col) differ from the assumed formula
+// (all zeros = layout as assumed). grid 1, 128 threads.
+kernel void attn_idx_layout_check(device half* Qi [[buffer(0)]], device half* ikey [[buffer(1)]], device int* out [[buffer(2)]],
+                                  ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qi, dextents<int32_t, 2>(ATTN_ID, 64));
+  auto tB = tensor<device half, dextents<int32_t, 2>, tensor_inline>(ikey, dextents<int32_t, 2>(ATTN_ID, 128));
+  constexpr auto desc = matmul2d_descriptor(64, 128, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+  int bad = cT.get_capacity() == 64 ? 0 : 1000;
+  for (uint16_t i = 0; i < cT.get_capacity() && i < 64; ++i) {
+    if (!cT.is_valid_element(i)) { bad++; continue; }
+    auto id = cT.get_multidimensional_index(i);
+    int row = attn_pf2_row(sg, l) + 8 * ((i >> 2) & 1) + 32 * (i >> 5);
+    int col = attn_pf2_col(sg, l) + (i & 3) + 32 * ((i >> 3) & 3);
+    if (int(id[1]) != row || int(id[0]) != col) bad++;
+  }
+  {
+    threadgroup half Kg[64 * ATTN_ID];
+    auto tB2 = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Kg, dextents<int32_t, 2>(ATTN_ID, 64));
+    constexpr auto desc2 = matmul2d_descriptor(64, 64, ATTN_ID, false, true, false);
+    matmul2d<desc2, execution_simdgroups<4>> op2;
+    auto c2 = op2.template get_destination_cooperative_tensor<decltype(tA), decltype(tB2), float>();
+    if (c2.get_capacity() != 32) bad += 1000;
+    for (uint16_t i = 0; i < c2.get_capacity() && i < 32; ++i) {
+      if (!c2.is_valid_element(i)) { bad++; continue; }
+      auto id = c2.get_multidimensional_index(i);
+      int row = attn_pf2_row(sg, l) + 8 * ((i >> 2) & 1) + 32 * ((i >> 4) & 1);
+      int col = attn_pf2_col(sg, l) + (i & 3) + 32 * ((i >> 3) & 1);
+      if (int(id[1]) != row || int(id[0]) != col) bad++;
+    }
+  }
+  out[sg * 32 + l] = bad;
+}
+
 struct AttnSrcMerge {
   device const uint* rk;
   device const int* ri;
@@ -366,6 +494,89 @@ kernel void attn_topk_merge(device const float* S [[buffer(0)]], device uint* Rk
   AttnSrcMerge src{Rk + (size_t)q * a.k, Ri + (size_t)q * a.k, rc, S + (size_t)q * a.ld_s, a.base};
   attn_select(src, rc + a.cnt, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
   int m = atomic_load_explicit(&ocnt, memory_order_relaxed);
+  for (int i = tid; i < m; i += 1024) { Rk[(size_t)q * a.k + i] = okey[i]; Ri[(size_t)q * a.k + i] = oidx[i]; }
+  if (tid == 0) Rc[q] = m;
+}
+
+// ---- threshold-filtered running merge (k <= 512): when the running list is full (rc == k), a new element can only enter
+// if its key is strictly greater than the list minimum T (ties at T lose: running entries precede the chunk in source
+// order, i.e. have lower indices). The chunk is compacted in index order to the survivors (> T), then the usual exact
+// select runs over running + survivors -> same result as the full merge. Survivor overflow -> full merge.
+constant constexpr int ATTN_MF_CAP = 2048;
+struct AttnSrcMergeTG {
+  device const uint* rk;
+  device const int* ri;
+  int rc;
+  threadgroup const uint* ck;
+  threadgroup const int* ci;
+  uint key(int i) const { return i < rc ? rk[i] : ck[i - rc]; }
+  int idx(int i) const { return i < rc ? ri[i] : ci[i - rc]; }
+};
+// Returns survivors count (> ATTN_MF_CAP: overflow). key_of(j) / idx_of(j) read chunk element j.
+template <typename KF, typename IF>
+inline int attn_mf_compact(int cnt, uint T, thread const KF& key_of, thread const IF& idx_of, threadgroup uint* ck,
+                           threadgroup int* ci, threadgroup uint* tmp, ushort tid, ushort sg, ushort ln) {
+  int base = 0;
+  for (int j0 = 0; j0 < cnt; j0 += 1024) {
+    const int j = j0 + tid;
+    uint kk = j < cnt ? key_of(j) : 0u;
+    uint f = kk > T ? 1u : 0u;
+    uint tot;
+    uint ex = attn_scan_excl(f, tmp, sg, ln, 32, tot);
+    if (f && base + int(ex) < ATTN_MF_CAP) { ck[base + ex] = kk; ci[base + ex] = idx_of(j); }
+    base += int(tot);
+    if (base > ATTN_MF_CAP) break;  // uniform
+  }
+  return base;
+}
+inline uint attn_mf_min(device const uint* rk, int rc, threadgroup uint* tmp, ushort tid, ushort ln) {
+  if (tid == 0) tmp[36] = 0xFFFFFFFFu;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  uint mn = 0xFFFFFFFFu;
+  for (int i = tid; i < rc; i += 1024) mn = min(mn, rk[i]);
+  mn = simd_min(mn);
+  if (ln == 0) atomic_fetch_min_explicit((threadgroup atomic_uint*)&tmp[36], mn, memory_order_relaxed);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  uint T = tmp[36];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  return T;
+}
+// Same contract as attn_topk_merge (k <= 512).
+kernel void attn_topk_merge_f(device const float* S [[buffer(0)]], device uint* Rk [[buffer(1)]], device int* Ri [[buffer(2)]],
+                              device int* Rc [[buffer(3)]], constant AttnMergeArgs& a [[buffer(4)]],
+                              uint q [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
+                              ushort sg [[simdgroup_index_in_threadgroup]], ushort ln [[thread_index_in_simdgroup]]) {
+  threadgroup uint hist[2048];
+  threadgroup uint tmp[40];
+  threadgroup uint okey[512];
+  threadgroup int oidx[512];
+  threadgroup uint ck[ATTN_MF_CAP];
+  threadgroup int ci[ATTN_MF_CAP];
+  threadgroup atomic_int ocnt;
+  const int rc = a.first ? 0 : Rc[q];
+  device const uint* rk = Rk + (size_t)q * a.k;
+  device const int* ri = Ri + (size_t)q * a.k;
+  device const float* sq = S + (size_t)q * a.ld_s;
+  int m;
+  bool done = false;
+  if (rc == a.k) {
+    const uint T = attn_mf_min(rk, rc, tmp, tid, ln);
+    auto kf = [&](int j) { return attn_fkey(sq[j]); };
+    auto jf = [&](int j) { return a.base + j; };
+    const int ns = attn_mf_compact(a.cnt, T, kf, jf, ck, ci, tmp, tid, sg, ln);
+    if (ns <= ATTN_MF_CAP) {
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      AttnSrcMergeTG src{rk, ri, rc, ck, ci};
+      attn_select(src, rc + ns, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+      done = true;
+    }
+  }
+  if (!done) {
+    AttnSrcMerge src{rk, ri, rc, sq, a.base};
+    attn_select(src, rc + a.cnt, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+  }
+  m = atomic_load_explicit(&ocnt, memory_order_relaxed);
+  threadgroup_barrier(mem_flags::mem_threadgroup);  // all reads of rk/ri done before overwriting them
   for (int i = tid; i < m; i += 1024) { Rk[(size_t)q * a.k + i] = okey[i]; Ri[(size_t)q * a.k + i] = oidx[i]; }
   if (tid == 0) Rc[q] = m;
 }
@@ -676,6 +887,89 @@ kernel void attn_idx_score_pf_list(device half* Qi [[buffer(0)]], device const f
   S[(size_t)q * a.ld_s + tl] = vis ? s : -INFINITY;
 }
 
+// Register-epilogue variant of attn_idx_score_pf_list (same layout family as attn_idx_score_pf2; the 64x64 destination:
+// element i -> row = R + 8*((i>>2)&1) + 32*((i>>4)&1), col = C + (i&3) + 32*((i>>3)&1); checked at init).
+kernel void attn_idx_score_pf_list2(device half* Qi [[buffer(0)]], device const float* wq [[buffer(1)]],
+                                    device const half* ikey [[buffer(2)]], device float* S [[buffer(3)]],
+                                    device const uint* mask [[buffer(4)]], device const int* ulist [[buffer(5)]],
+                                    device const int* ucount [[buffer(6)]], constant AttnIdxPfListArgs& a [[buffer(7)]],
+                                    uint2 tg [[threadgroup_position_in_grid]], ushort t [[thread_index_in_threadgroup]],
+                                    ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
+  threadgroup half Kg[64 * ATTN_ID];
+  threadgroup float2 red[64];
+  const int nvirt = ucount[tg.y] * 8;
+  const int v0 = a.kc0 + int(tg.x) * 64;
+  if (v0 >= nvirt) return;
+  {  // gather 8 blocks x 8 keys x 128 dims: thread t -> key t/2, half row (64 dims)
+    int kl = t >> 1, part = t & 1, v = v0 + kl;
+    threadgroup uint4* dst = (threadgroup uint4*)(Kg + kl * ATTN_ID + part * 64);
+    if (v < nvirt) {
+      int pos = ulist[(size_t)tg.y * a.cap + (v >> 3)] * 8 + (v & 7);
+      device const uint4* src = (device const uint4*)(ikey + (size_t)pos * ATTN_ID + part * 64);
+      for (int j = 0; j < 8; j++) dst[j] = src[j];
+    } else {
+      for (int j = 0; j < 8; j++) dst[j] = uint4(0);
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qi, dextents<int32_t, 2>(ATTN_ID, a.qrows));
+  auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Kg, dextents<int32_t, 2>(ATTN_ID, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 64, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto mA = tA.template slice<ATTN_ID, 64>(0, int(tg.y) * 64);
+  auto cT = op.template get_destination_cooperative_tensor<decltype(mA), decltype(tB), float>();
+  #pragma unroll
+  for (uint16_t i = 0; i < 32; ++i) cT[i] = 0;
+  op.run(mA, tB, cT);
+  const int r0 = attn_pf2_row(sg, l), q0 = int(tg.y) * 2;
+  float w[2][2];
+  for (int qq = 0; qq < 2; qq++)
+    for (int hb = 0; hb < 2; hb++) w[qq][hb] = q0 + qq < a.n ? wq[(q0 + qq) * ATTN_IH + r0 + 8 * hb] : 0.0f;
+  float v[16];  // [q][j][c]
+  #pragma unroll
+  for (int qq = 0; qq < 2; qq++)
+    #pragma unroll
+    for (int j = 0; j < 2; j++)
+      #pragma unroll
+      for (int c = 0; c < 4; c++) {
+        const int i0 = c + 8 * j + 16 * qq;
+        v[qq * 8 + j * 4 + c] = max(cT[i0], 0.0f) * w[qq][0] + max(cT[i0 + 4], 0.0f) * w[qq][1];
+      }
+  const bool b1 = (l >> 1) & 1, b2 = (l >> 2) & 1, b4 = (l >> 4) & 1;
+  float u[8];
+  #pragma unroll
+  for (int x = 0; x < 8; x++) { float sd = b1 ? v[x] : v[8 + x]; float kp = b1 ? v[8 + x] : v[x]; u[x] = kp + simd_shuffle_xor(sd, 2); }
+  float t4[4];
+  #pragma unroll
+  for (int x = 0; x < 4; x++) { float sd = b2 ? u[x] : u[4 + x]; float kp = b2 ? u[4 + x] : u[x]; t4[x] = kp + simd_shuffle_xor(sd, 4); }
+  float2 f;
+  #pragma unroll
+  for (int x = 0; x < 2; x++) { float sd = b4 ? t4[x] : t4[2 + x]; float kp = b4 ? t4[2 + x] : t4[x]; f[x] = kp + simd_shuffle_xor(sd, 16); }
+  if (sg >= 2) red[(sg & 1) * 32 + l] = f;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sg >= 2) return;
+  f += red[(sg & 1) * 32 + l];
+  const int q = q0 + int(b1);
+  const int key0 = attn_pf2_col(sg, l) + 32 * int(b2) + 2 * int(b4);
+  if (q >= a.n) return;
+  const int len = (a.start + q + 1) / a.ratio;
+  float2 sc;
+  for (int c = 0; c < 2; c++) {
+    const int vv = v0 + key0 + c;
+    bool vis = vv < nvirt;
+    if (vis) {
+      int blk = ulist[(size_t)tg.y * a.cap + (vv >> 3)];
+      int pos = blk * 8 + (vv & 7);
+      vis = pos < len && ((mask[(size_t)q * a.mask_words + (blk >> 5)] >> (blk & 31)) & 1u);
+    }
+    sc[c] = vis ? f[c] : -INFINITY;
+  }
+  const int tl = v0 + key0 - a.kc0;
+  device float* dst = S + (size_t)q * a.ld_s + tl;
+  if (tl + 2 <= a.kc) *(device float2*)dst = sc;
+  else if (tl < a.kc) dst[0] = sc[0];
+}
+
 struct AttnSrcMergeList {
   device const uint* rk;
   device const int* ri;
@@ -711,6 +1005,51 @@ kernel void attn_topk_merge_list(device const float* S [[buffer(0)]], device uin
   if (tid == 0) Rc[q] = m;
 }
 
+
+// Threshold-filtered variant of attn_topk_merge_list (k <= 512); see attn_topk_merge_f.
+kernel void attn_topk_merge_list_f(device const float* S [[buffer(0)]], device uint* Rk [[buffer(1)]],
+                                   device int* Ri [[buffer(2)]], device int* Rc [[buffer(3)]],
+                                   device const int* ulist [[buffer(4)]], device const int* ucount [[buffer(5)]],
+                                   constant AttnMergeListArgs& a [[buffer(6)]], uint q [[threadgroup_position_in_grid]],
+                                   ushort tid [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
+                                   ushort ln [[thread_index_in_simdgroup]]) {
+  threadgroup uint hist[2048];
+  threadgroup uint tmp[40];
+  threadgroup uint okey[512];
+  threadgroup int oidx[512];
+  threadgroup uint ck[ATTN_MF_CAP];
+  threadgroup int ci[ATTN_MF_CAP];
+  threadgroup atomic_int ocnt;
+  const int tile = int(q) / 2;
+  const int cnt = clamp(ucount[tile] * 8 - a.base, 0, a.kc);
+  const int rc = a.first ? 0 : Rc[q];
+  if (!a.first && cnt == 0) return;
+  device const uint* rk = Rk + (size_t)q * a.k;
+  device const int* ri = Ri + (size_t)q * a.k;
+  device const float* sq = S + (size_t)q * a.ld_s;
+  device const int* ul = ulist + (size_t)tile * a.cap;
+  bool done = false;
+  if (rc == a.k) {
+    const uint T = attn_mf_min(rk, rc, tmp, tid, ln);
+    auto kf = [&](int j) { return attn_fkey(sq[j]); };
+    auto jf = [&](int j) { int v = a.base + j; return ul[v >> 3] * 8 + (v & 7); };
+    const int ns = attn_mf_compact(cnt, T, kf, jf, ck, ci, tmp, tid, sg, ln);
+    if (ns <= ATTN_MF_CAP) {
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      AttnSrcMergeTG src{rk, ri, rc, ck, ci};
+      attn_select(src, rc + ns, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+      done = true;
+    }
+  }
+  if (!done) {
+    AttnSrcMergeList src{rk, ri, rc, sq, a.base, ul};
+    attn_select(src, rc + cnt, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+  }
+  const int m = atomic_load_explicit(&ocnt, memory_order_relaxed);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  for (int i = tid; i < m; i += 1024) { Rk[(size_t)q * a.k + i] = okey[i]; Ri[(size_t)q * a.k + i] = oidx[i]; }
+  if (tid == 0) Rc[q] = m;
+}
 
 // Decode fast path, candidate-list mode (layers 24..36): virtual key v -> row blist[v/8]*8 + v%8. Keys of each 64-key
 // tile (8 blocks) are gathered into threadgroup memory; histogram via device atomics. Same outputs as dec2.
