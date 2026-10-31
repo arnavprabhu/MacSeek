@@ -4,6 +4,7 @@
 # Writes logs/quick/<label>.json (+ .log). Holds the model lock.
 D=$(cd "$(dirname "$0")/.." && pwd); cd "$D"
 L=${1:-run}; shift
+export MACSEEK_ARENA_GB=${MACSEEK_ARENA_GB:-26}   # fixed arena for comparable A/B runs (auto sizing varies run to run)
 mkdir -p logs/quick/$L
 STATE=${MACSEEK_STATE:-logs/state/s200k.state}
 CORPUS=${MACSEEK_CORPUS:-tools/prompts/long_needle_d50.ids}

@@ -173,7 +173,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
     if (settled && i >= 3) break;
   }
   uint64_t planned = 2ull << 30;  // prefill transients + slack
-  uint64_t arena = o.arena_gb > 0 ? (uint64_t)(o.arena_gb * 1073741824.0) : recommend_arena_bytes(planned, (uint64_t)(env_f("MACSEEK_HEADROOM_GB", 12) * 1073741824.0), 40ull << 30);
+  uint64_t arena = o.arena_gb > 0 ? (uint64_t)(o.arena_gb * 1073741824.0) : recommend_arena_bytes(planned, (uint64_t)(env_f("MACSEEK_HEADROOM_GB", 10) * 1073741824.0), 40ull << 30);
   co.arena_bytes = arena;
   cache_ = std::make_unique<ExpertCache>(layout, co);
   if (o.verbose) {
