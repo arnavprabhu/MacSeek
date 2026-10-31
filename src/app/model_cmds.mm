@@ -51,7 +51,15 @@ int cmd_logits(int argc, char** argv) {
     std::vector<float> lg((size_t)n * V);
     m.reset();
     ms::Timer t;
-    m.prefill(toks.data(), n, lg.data());
+    // --decode K: positions 0..K-1 by prefill, the rest token by token through decode() (teacher forcing). Checks the
+    // decode kernels (hc step, router, decode attention, MoE table path) against the same oracle as prefill.
+    const int dk = std::stoi(arg(argc, argv, "--decode", "0"));
+    if (dk > 0 && dk < n) {
+      m.prefill(toks.data(), dk, lg.data());
+      for (int p = dk; p < n; p++) m.decode(toks[p], lg.data() + (size_t)p * V);
+    } else {
+      m.prefill(toks.data(), n, lg.data());
+    }
     fprintf(stderr, "logits: %s %d tokens in %.2f s (%.1f tok/s)\n", ins[i].c_str(), n, t.ms() / 1e3, n / (t.ms() / 1e3));
     write_logits(outs[i], toks, lg.data(), n, V, 0);
   }

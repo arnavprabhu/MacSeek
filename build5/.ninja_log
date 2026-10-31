@@ -166,3 +166,6 @@
 1627	7633	1793446274102107749	CMakeFiles/bench_experts_io.dir/bench/experts_io.mm.o	932ce22fc6a0e0c8
 7473	7654	1793446279947553283	test_dec_sync	3c2f341d4f3d238
 7633	7816	1793446280108192064	bench_experts_io	d513894e94f53b42
+4	38	1793446419248204705	/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/cmake.verify_globs	88c9a3cfb254549e
+59	2596	1793446419302917217	CMakeFiles/macseek.dir/src/app/model_cmds.mm.o	3abe4af7317901cf
+2596	2810	1793446421839940543	macseek	74e87f55ce71244c
