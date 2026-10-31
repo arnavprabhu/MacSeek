@@ -129,6 +129,19 @@ struct RefStack {
     }
   }
   const LayerW& weights(int L) { if (!w.count(L)) w[L] = make_weights(L); return w[L]; }
+  // state updates only (window row + compressor), no indexer / attention output
+  void token_state_only(int L, int p) {
+    const LayerW& lw = weights(L);
+    TokIn t; make_tok(L, p, t);
+    const int r = A::ratio_of(L);
+    const float* cs = &(r ? ty : tp)[(size_t)p * 64];
+    std::vector<float> row(512);
+    R::window_row(t.kv, lw.kv_norm.data(), cs, actq, row.data());
+    win[L][p] = row;
+    if (win[L].size() > 300) win[L].erase(win[L].begin());
+    if (A::is_kv_source(L))
+      R::compress_token(src[A::src_slot(L)], p, t.ckv, t.cgate, lw.c_norm.data(), lw.wk.data(), lw.knorm.data(), ty, actq);
+  }
   // one token of one layer; topk_out (index sources) gets the selected compressed rows
   void token(int L, int p, float* out, std::vector<int>* topk_out, std::vector<int>& shared_topk) {
     const LayerW& lw = weights(L);
