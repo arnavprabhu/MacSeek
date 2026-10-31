@@ -3,6 +3,7 @@
 // All encode_* functions only encode into the given Enc (no commit / wait). They insert the barriers they need
 // internally and end with a barrier, so outputs are safe to consume by the next dispatch.
 #include <cstdint>
+#include <vector>
 #include "core/metal.hpp"
 
 namespace ms::attn {
@@ -65,6 +66,11 @@ struct State {
   Buffer ulist, ucount;           // prefill: union of candidate blocks per 2-query tile, int [n/2][4096], int [n/2]
 };
 void init(State& s, const Options& o);
+// Buffers that make up the persistent attention state after `pos` tokens (for save/load snapshots), with the number
+// of meaningful bytes from the start of each buffer: 40 window rings, 4 x (compressed KV rows, index-key rows,
+// compressor partial state). Everything else in State is scratch or derived (rope tables).
+struct StateSpan { Buffer buf; size_t bytes; };
+std::vector<StateSpan> persistent_state(const State& s, int pos);
 void reset(State& s);  // zero caches + compressor state (new sequence)
 
 // Per-layer inputs/outputs. All f32. n = tokens in the call (1 = decode).

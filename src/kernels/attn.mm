@@ -119,6 +119,19 @@ void init(State& s, const Options& o) {
   s.ucount = d.alloc((size_t)(nq2 / 2) * 4, "attn.ucount");
 }
 
+std::vector<StateSpan> persistent_state(const State& s, int pos) {
+  std::vector<StateSpan> v;
+  for (int L = 0; L < kLayers; L++) v.push_back({s.win[L], s.win[L].size});
+  const int srcs[4] = {2, 8, 14, 20};
+  for (int i = 0; i < 4; i++) {
+    size_t rows = (size_t)pos / ratio_of(srcs[i]);
+    v.push_back({s.ckv[i], rows * kD * 2});
+    v.push_back({s.ikey[i], rows * kID * 2});
+    v.push_back({s.cst[i], s.cst[i].size});
+  }
+  return v;
+}
+
 void reset(State& s) {
   for (int L = 0; L < kLayers; L++) memset(s.win[L].cpu(), 0, s.win[L].size);
   for (int i = 0; i < 4; i++) {
@@ -174,12 +187,14 @@ void encode_index_decode(Enc& e, State& s, int L, const Buffer& iq, const Buffer
   const bool lm = uses_cand(L), cs = is_cand_source(L);
   const int nblocks = (len + kCandBS - 1) / kCandBS;
   const int nvirt = lm ? std::min(nblocks, kCandBlocks) * kCandBS : len;
-  if (s.opt.dec_fast_index && !lm && nvirt > 0) {
-    const int tpt = 16, tiles = (nvirt + 63) / 64;
+  if (s.opt.dec_fast_index && nvirt > 0) {
+    const int tpt = lm ? 4 : 16, tiles = (nvirt + 63) / 64;
     IdxDec2Args a{pos, len, nvirt, s.opt.actq ? 1 : 0, tpt, cs ? 1 : 0, s.cap[sl] + kRowPad};
-    e.set_pipeline("attn_idx_score_dec2");
+    e.set_pipeline(lm ? "attn_idx_score_dec2_list" : "attn_idx_score_dec2");
     e.set_buffer(0, iq); e.set_buffer(1, iw); e.set_buffer(2, tab_of(s, L)); e.set_buffer(3, s.ikey[sl]);
-    e.set_buffer(4, s.dec_scores); e.set_buffer(5, s.dec_bscores); e.set_buffer(6, s.dec_hist.sub(0, 4096 * 4));
+    e.set_buffer(4, s.dec_scores);
+    if (lm) e.set_buffer(5, s.cand_list); else e.set_buffer(5, s.dec_bscores);
+    e.set_buffer(6, s.dec_hist.sub(0, 4096 * 4));
     e.set_buffer(7, s.dec_hist.sub(4096 * 4, 4096 * 4)); e.set_value(8, a);
     e.dispatch_groups((tiles + tpt - 1) / tpt, 1, 1, 128);
     e.barrier();
@@ -193,7 +208,7 @@ void encode_index_decode(Enc& e, State& s, int L, const Buffer& iq, const Buffer
       e.dispatch_groups((n + per_tg - 1) / per_tg, 1, 1, 256);
     };
     auto fin = [&](int p, const Buffer& sc, int n, int k, const Buffer& out) {
-      FinalArgs f{n, k, 0};
+      FinalArgs f{n, k, (p == 0 && lm) ? 1 : 0};
       e.set_pipeline("attn_topk_final");
       e.set_buffer(0, sc); e.set_buffer(1, s.dec_hist.sub((size_t)p * 4096 * 4, 4096 * 4));
       e.set_buffer(2, s.dec_ctl.sub((size_t)p * 16, 16)); e.set_buffer(3, s.dec_sel.sub((size_t)p * 2048 * 4, 2048 * 4));

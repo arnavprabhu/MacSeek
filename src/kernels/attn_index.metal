@@ -711,3 +711,63 @@ kernel void attn_topk_merge_list(device const float* S [[buffer(0)]], device uin
   if (tid == 0) Rc[q] = m;
 }
 
+
+// Decode fast path, candidate-list mode (layers 24..36): virtual key v -> row blist[v/8]*8 + v%8. Keys of each 64-key
+// tile (8 blocks) are gathered into threadgroup memory; histogram via device atomics. Same outputs as dec2.
+kernel void attn_idx_score_dec2_list(device const float* qraw [[buffer(0)]], device const float* wraw [[buffer(1)]],
+                                     device const float2* tab [[buffer(2)]], device const half* ikey [[buffer(3)]],
+                                     device float* scores [[buffer(4)]], device const int* blist [[buffer(5)]],
+                                     device atomic_uint* hist [[buffer(6)]], constant AttnIdxDec2Args& a [[buffer(8)]],
+                                     uint tg [[threadgroup_position_in_grid]], ushort t [[thread_index_in_threadgroup]]) {
+  threadgroup half Qs[ATTN_IH * ATTN_ID];
+  threadgroup float T[ATTN_IH * 64];
+  threadgroup half Kg[64 * ATTN_ID];
+  {
+    float v[32];
+    attn_idx_prep_thread(qraw, tab, a.pos, a.actq, t, v);
+    threadgroup half* d = Qs + (t >> 2) * ATTN_ID + (t & 3) * 32;
+    for (int i = 0; i < 32; i++) d[i] = half(v[i]);
+  }
+  auto tA = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Qs, dextents<int32_t, 2>(ATTN_ID, ATTN_IH));
+  auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Kg, dextents<int32_t, 2>(ATTN_ID, 64));
+  constexpr auto desc = matmul2d_descriptor(ATTN_IH, 64, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  for (int tt = 0; tt < a.tiles_per_tg; tt++) {
+    const int k0 = (int(tg) * a.tiles_per_tg + tt) * 64;
+    if (k0 >= a.nvirt) break;
+    {  // gather: thread t -> key t/2, 64 dims
+      int kl = t >> 1, part = t & 1, v = k0 + kl;
+      int blk = v < a.nvirt ? blist[v >> 3] : -1;
+      threadgroup uint4* dst = (threadgroup uint4*)(Kg + kl * ATTN_ID + part * 64);
+      if (blk >= 0) {
+        device const uint4* src = (device const uint4*)(ikey + (size_t)(blk * 8 + (v & 7)) * ATTN_ID + part * 64);
+        for (int j = 0; j < 8; j++) dst[j] = src[j];
+      } else {
+        for (int j = 0; j < 8; j++) dst[j] = uint4(0);
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+    for (uint16_t i = 0; i < cT.get_capacity(); ++i) if (cT.is_valid_element(i)) cT[i] = 0;
+    op.run(tA, tB, cT);
+    for (uint16_t i = 0; i < cT.get_capacity(); ++i) {
+      if (cT.is_valid_element(i)) {
+        auto id = cT.get_multidimensional_index(i);
+        T[id[1] * 64 + id[0]] = max(cT[i], 0.0f) * (wraw[id[1]] * (1.0f / 64.0f));
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (t < 64) {
+      float s = 0;
+      for (int h = 0; h < ATTN_IH; h++) s += T[h * 64 + t];
+      const int v = k0 + t;
+      int blk = v < a.nvirt ? blist[v >> 3] : -1;
+      int pos = blk * 8 + (v & 7);
+      const bool valid = blk >= 0 && pos < a.len;
+      float sc = valid ? s : -INFINITY;
+      if (v < a.nvirt) scores[v] = sc;
+      if (valid) atomic_fetch_add_explicit(&hist[attn_fkey(sc) >> 20], 1u, memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+}
