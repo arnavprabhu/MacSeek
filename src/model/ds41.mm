@@ -159,12 +159,17 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.qa = A(n * 1280 * 4, "qa"); P.qrn = A(n * 1280 * 4, "qrn"); P.q = A(n * 32768 * 4, "q");
   P.kv = A(n * 512 * 4, "kv"); P.ckv = A(n * 512 * 4, "ckv"); P.cgate = A(n * 512 * 4, "cgate");
   P.iq = A(n * 4096 * 4, "iq"); P.iw = A(n * 32 * 4, "iw");
-  P.aout = A(n * 32768 * 4, "aout"); P.aout16 = A(n * 32768 * 2, "aout16"); P.otmp = A(n * 8192 * 4, "otmp");
+  // MACSEEK_SCRATCH_ALIAS=1: aout16/otmp live inside q (q is dead once attention has run), and prefill computes each
+  // engram layer's kv just before that layer into one shared buffer: ~0.8 GB less scratch at 4096 -> bigger arena.
+  static const bool alias = env_int("MACSEEK_SCRATCH_ALIAS", 1) != 0;
+  P.aout = A(n * 32768 * 4, "aout");
+  if (alias) { P.aout16 = P.q.sub(0, n * 32768 * 2); P.otmp = P.q.sub(n * 32768 * 2, n * 8192 * 4); }
+  else { P.aout16 = A(n * 32768 * 2, "aout16"); P.otmp = A(n * 8192 * 4, "otmp"); }
   P.oa = A(n * 8192 * 4, "oa"); P.rlog = A(n * 384 * 4, "rlog"); P.rids = A(n * 6 * 4, "rids"); P.rw = A(n * 6 * 4, "rw");
   P.embrows = A(n * 4200 + 16384, "embrows"); P.erow = A(2 * n * 24 * 144 + 16384, "erow");
   P.erow_b[0] = P.erow; P.erow_b[1] = A(2 * n * 24 * 144 + 16384, "erow2");
   P.dbg = A(80 * 5120 * 4 + 16384, "dbg"); P.dbg2 = A(3 * 8 * 32768 * 4 + 16384, "dbg2");
-  P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(2 * n * 25600 * 4, "ekv");
+  P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(alias ? (n + 1) * 25600 * 4 : 2 * n * 25600 * 4, "ekv");
   P.logits = A((size_t)std::max(o.max_logits_rows, 1) * cfg_.vocab * 4, "logits");
   P.amax_i = A(64, "amax_i"); P.amax_v = A(64, "amax_v");
   P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog"); P.plog_n = A(n * 384 * 4, "plog_n"); P.tbl = A(40 * 4096, "tbl");
@@ -300,7 +305,11 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   }
   // engram kv for both engram layers (depends only on token ids): ekv[s] = engram_kv(dequant(rows of layer s))
   Buffer ekv_l[2];
-  for (int s = 0; s < 2; s++) ekv_l[s] = P.ekv.sub((size_t)s * P.maxn * 25600 * 4, (size_t)n * 25600 * 4);
+  static const bool scr_alias = env_int("MACSEEK_SCRATCH_ALIAS", 1) != 0;
+  const bool lazy_ekv = scr_alias && n > 1;   // prefill: each engram layer's kv computed right before that layer
+  for (int s = 0; s < 2; s++)
+    ekv_l[s] = !scr_alias ? P.ekv.sub((size_t)s * P.maxn * 25600 * 4, (size_t)n * 25600 * 4)
+             : n == 1 ? P.ekv.sub((size_t)s * 25600 * 4, 25600 * 4) : P.ekv.sub(0, (size_t)n * 25600 * 4);
   // Table decode encodes each layer through model/dec_layer (docs/modules/dec_gpu.md): MACSEEK_DEC_FUSE etc. select the
   // fused variants; MACSEEK_DEC_LAYER=0 = the previous inline encoding below (same dispatch sequence as FUSE=0).
   static const bool tbl_mode = env_int("MACSEEK_DEC_TABLE", 1) != 0;
@@ -320,7 +329,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     B.ekv[0] = ekv_l[0]; B.ekv[1] = ekv_l[1]; B.moe_scratch = P.moe_dec_scratch; B.edeq = P.edeq;
     encode_dec_prologue(*e, dctx, P.erow.sub(0, 2 * 24 * 144));
   } else
-  for (int s = 0; s < 2; s++) {
+  for (int s = 0; s < 2 && !lazy_ekv; s++) {
     const int l = cfg_.engram_layers[s];
     arch::encode_iq4nl_rows(*e, P.erow.sub((size_t)s * n * 24 * 144, (size_t)n * 24 * 144), 144, P.edeq, n * 24);
     e->barrier();
@@ -374,6 +383,14 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     LayerW& L = P.L[l];
     // ---- hyper-connection boundary into attention (+ engram) ----
     if (cfg_.is_engram(l)) {
+      if (lazy_ekv) {
+        const int se = l == cfg_.engram_layers[0] ? 0 : 1;
+        E.barrier();
+        arch::encode_iq4nl_rows(E, P.erow.sub((size_t)se * n * 24 * 144, (size_t)n * 24 * 144), 144, P.edeq, n * 24);
+        E.barrier();
+        linear(E, L.engram_kv, P.edeq, ekv_l[se], n);
+        E.barrier();
+      }
       { Buffer kvb0 = l == cfg_.engram_layers[0] ? ekv_l[0] : ekv_l[1];
         dbg_pt(E, l, 3, kvb0, 25600); dbg_pt(E, l, 4, h, 20480); dbg_pt(E, l, 6, P.mixF, 24); }
       arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixF; a.n = n;
