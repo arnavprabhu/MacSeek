@@ -134,7 +134,12 @@ int main(int argc, char** argv) {
     // Interleaved A/B: base = every prefill fast path of exp/attn-prefill off (TG-memory scorer epilogues, 3-kernel
     // two-pass attention, full merges), new = defaults. Toggled at run time on the same state; min over rounds per
     // component (robust to other GPU work).
-    if (!st.pfS.size) st.pfS = d.alloc((size_t)std::min(o.pf_qblock, n) * 64 * 640 * 4, "pfS");
+    {  // the base (3-kernel) path needs pf_qblock-sized scratch; the folded path allocates only 2 x pf2_qblock
+      const size_t qb = (size_t)std::min(o.pf_qblock, n);  // (folded path keeps its own 2 x pf2_qblock sets)
+      if (!st.pfS.size) st.pfS = d.alloc(qb * 64 * 640 * 4, "pfS");
+      if (st.pfQ.size < qb * 64 * 512 * 2) { d.release(st.pfQ); st.pfQ = d.alloc(qb * 64 * 512 * 2, "pfQ"); }
+      if (st.pfP.size < qb * 64 * 640 * 2) { d.release(st.pfP); st.pfP = d.alloc(qb * 64 * 640 * 2, "pfP"); }
+    }
     const bool reg_ok = st.pf_score_reg_ok, fold_ok = st.pf_fold_ok;
     const A::Options o0 = st.opt;
     auto setv = [&](int v) {

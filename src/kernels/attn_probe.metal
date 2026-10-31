@@ -103,3 +103,12 @@ kernel void attn_probe_coop8_64x128(device int* out [[buffer(0)]], ushort t [[th
   }
   out[256 * 256 + t] = cT.get_capacity();
 }
+
+// cache-capacity probe: every thread re-reads its grid-stride share of a W-byte buffer `reps` times
+kernel void attn_probe_bw_rep(device const float4* a [[buffer(0)]], device float* out [[buffer(1)]], constant uint2& nr [[buffer(2)]],
+                              uint gid [[thread_position_in_grid]], uint gsz [[threads_per_grid]]) {
+  float4 s = 0;
+  for (uint r = 0; r < nr.y; r++)
+    for (uint i = gid; i < nr.x; i += gsz) s += a[(i + r * 4099u) % nr.x];
+  if (s.x == 1234.5f) out[0] = s.y + s.z + s.w;
+}

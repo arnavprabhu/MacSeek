@@ -3,6 +3,7 @@
 //   2. a stack of layers {0, 2, 20, 24} at depth (random 40K-position caches, candidate masking active), one prefill
 //      chunk: every fast-path switch on (defaults) vs all off: identical top-k lists, attention outputs within 5e-4
 //      rel rms; plus each switch off on its own
+//      (and the pipelined block size: bit-identical for any pf2_qblock)
 //   3. shallow (from position 0, many invalid rows / -1 top-k padding -> skipped tiles): defaults vs all off
 #include "attn_test_util.hpp"
 #include <algorithm>
@@ -127,6 +128,8 @@ int main() {
     compare(on, off, "all fast paths vs all off", 5e-4);
     A::Options v = o; v.pf_score_reg = false; compare(on, run(v, layers, 40001, 160, 9), "pf_score_reg off", 5e-4);
     v = o; v.pf_fold_softmax = false; compare(on, run(v, layers, 40001, 160, 9), "pf_fold_softmax off", 5e-4);
+    v = o; v.pf2_qblock = 16; compare(on, run(v, layers, 40001, 160, 9), "pf2_qblock 16 (10-stage pipeline) vs 64", 0.0);
+    v = o; v.pf2_qblock = 160; compare(on, run(v, layers, 40001, 160, 9), "pf2_qblock 160 (one block) vs 64", 0.0);
     v = o; v.pf_merge_filter = false; compare(on, run(v, layers, 40001, 160, 9), "pf_merge_filter off", 0.0);
   }
   {

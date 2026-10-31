@@ -49,6 +49,7 @@ Options Options::from_env() {
   o.pf_fold_softmax = env_int("MACSEEK_ATTN_PF_FOLD", 1) != 0;
 
   o.pf_merge_filter = env_int("MACSEEK_ATTN_PF_MFILTER", 1) != 0;
+  o.pf2_qblock = (int)env_int("MACSEEK_ATTN_PF2_QBLOCK", o.pf2_qblock);
   return o;
 }
 
@@ -133,7 +134,8 @@ void init(State& s, const Options& o) {
     d.release(r);
   }
   if ((o.pf_mpp && nmax > 1) || o.dec_mpp) {
-    const size_t qb = std::min(o.pf_qblock, nmax);
+    // folded path: two scratch sets of pf2_qblock queries (software pipeline); 3-kernel path: one set of pf_qblock
+    const size_t qb = s.pf_fold_ok && !o.dec_mpp ? 2 * (size_t)std::min(o.pf2_qblock, nmax) : (size_t)std::min(o.pf_qblock, nmax);
     s.pfQ = d.alloc(qb * kH * kD * 2, "attn.pfQ");
     if (!s.pf_fold_ok || o.dec_mpp) s.pfS = d.alloc(qb * kH * (kWin + kTopk) * 4, "attn.pfS");
     s.pfP = d.alloc(qb * kH * (kWin + kTopk) * 2, "attn.pfP");
@@ -381,30 +383,52 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     e.set_buffer(0, s.part); e.set_buffer(1, s.ml); e.set_buffer(2, sinks); e.set_buffer(3, tab_of(s, L));
     e.set_buffer(4, out); e.set_value(5, c);
     e.dispatch_groups(kH, 1, 1, 128);
+  } else if (s.opt.pf_mpp && s.pfQ && s.pf_fold_ok && n > 1) {
+    // Folded two-pass attention, software-pipelined over query blocks of QB: stage j dispatches qprep(j),
+    // scores(j-1), pv(j-2) with no barrier between them (they touch disjoint scratch sets j%2 / (j-1)%2), one barrier
+    // per stage. Small blocks keep a block's gathered rows, P and Qh cache-resident between the two passes.
+    const int QB = std::min(s.opt.pf2_qblock, s.opt.max_chunk), nblk = (n + QB - 1) / QB;
+    const size_t qsz = (size_t)QB * kH * kD * 2, psz = (size_t)QB * kH * R * 2, msz = (size_t)QB * (R / 64) * kH * 8;
+    auto args = [&](int b) {
+      const int q0 = b * QB;
+      return PfArgs{start + q0, std::min(QB, n - q0), q0, start, ntop, R, 1.0f / std::sqrt((float)kD)};
+    };
+    for (int j = 0; j < nblk + 2; j++) {
+      if (j < nblk) {
+        PfArgs a = args(j);
+        e.set_pipeline("attn_pf_qprep");
+        e.set_buffer(0, q); e.set_buffer(1, tab_of(s, L)); e.set_buffer(2, s.pfQ.sub((j & 1) * qsz, qsz)); e.set_value(3, a);
+        e.dispatch_groups(a.nq, 1, 1, 128);
+      }
+      if (j >= 1 && j - 1 < nblk) {
+        const int b = j - 1;
+        PfArgs a = args(b);
+        e.set_pipeline("attn_pf2_scores");
+        e.set_buffer(0, s.pfQ.sub((b & 1) * qsz, qsz)); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
+        e.set_buffer(4, s.topk); e.set_buffer(5, s.pfP.sub((b & 1) * psz, psz)); e.set_buffer(6, s.pfML.sub((b & 1) * msz, msz));
+        e.set_value(7, a);
+        e.dispatch_groups(R / 64, a.nq, 1, 128);
+      }
+      if (j >= 2) {
+        const int b = j - 2;
+        PfArgs a = args(b);
+        e.set_pipeline("attn_pf2_pv");
+        e.set_buffer(0, s.pfP.sub((b & 1) * psz, psz)); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
+        e.set_buffer(4, s.topk); e.set_buffer(5, tab_of(s, L)); e.set_buffer(6, out); e.set_buffer(7, s.pfML.sub((b & 1) * msz, msz));
+        e.set_buffer(8, sinks); e.set_value(9, a);
+        e.dispatch_groups(kD / 64, a.nq, 1, 128);
+      }
+      e.barrier();
+    }
   } else if (s.opt.pf_mpp && s.pfQ) {
     const int QB = std::min(s.opt.pf_qblock, s.opt.max_chunk);
     for (int q0 = 0; q0 < n; q0 += QB) {
       const int nb = std::min(QB, n - q0);
       PfArgs a{start + q0, nb, q0, start, ntop, R, 1.0f / std::sqrt((float)kD)};
-      const bool fold = s.pf_fold_ok && n > 1;
       e.set_pipeline("attn_pf_qprep");
       e.set_buffer(0, q); e.set_buffer(1, tab_of(s, L)); e.set_buffer(2, s.pfQ); e.set_value(3, a);
       e.dispatch_groups(nb, 1, 1, 128);
       e.barrier();
-      if (fold) {
-        e.set_pipeline("attn_pf2_scores");
-        e.set_buffer(0, s.pfQ); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
-        e.set_buffer(4, s.topk); e.set_buffer(5, s.pfP); e.set_buffer(6, s.pfML); e.set_value(7, a);
-        e.dispatch_groups(R / 64, nb, 1, 128);
-        e.barrier();
-        e.set_pipeline("attn_pf2_pv");
-        e.set_buffer(0, s.pfP); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
-        e.set_buffer(4, s.topk); e.set_buffer(5, tab_of(s, L)); e.set_buffer(6, out); e.set_buffer(7, s.pfML);
-        e.set_buffer(8, sinks); e.set_value(9, a);
-        e.dispatch_groups(kD / 64, nb, 1, 128);
-        e.barrier();
-        continue;
-      }
       e.set_pipeline("attn_pf_scores");
       e.set_buffer(0, s.pfQ); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
       e.set_buffer(4, s.topk); e.set_buffer(5, s.pfS); e.set_value(6, a);

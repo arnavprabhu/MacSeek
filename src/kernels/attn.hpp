@@ -44,6 +44,7 @@ struct Options {
                                 // P = exp(S - m_tile) half; no f32 score matrix / softmax dispatch). env MACSEEK_ATTN_PF_FOLD
   bool pf_merge_filter = true;  // prefill running top-k merge (k=512): only chunk elements above the running minimum
                                 // are compacted and merged (exact). env MACSEEK_ATTN_PF_MFILTER
+  int pf2_qblock = 64;   // folded path: queries per pipelined block (2 scratch sets of ~150 KB/query). env MACSEEK_ATTN_PF2_QBLOCK
   int pf_heads_tg = 8;     // heads per sparse-attention threadgroup, prefill (8: 128 threads | 16: 256 threads). env MACSEEK_ATTN_PF_HEADS
   static Options from_env();
 };

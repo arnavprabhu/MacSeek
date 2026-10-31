@@ -32,6 +32,13 @@ int main() {
   const int depth = (int)env_int("BENCH_DEPTH", 200000), n = (int)env_int("BENCH_CHUNK", 4096);
   A::Options o = A::Options::from_env(); o.max_chunk = n;
   A::State st; A::init(st, o);
+  {  // the base (3-kernel) path needs pf_qblock-sized scratch; the folded path allocates only 2 x pf2_qblock
+      const size_t qb = 2 * (size_t)std::min(512, n);  // also covers the folded path's 2 sets at pf2_qblock <= 512
+      if (!st.pfS.size) st.pfS = d.alloc(qb * 64 * 640 * 4, "pfS");
+      if (st.pfQ.size < qb * 64 * 512 * 2) { d.release(st.pfQ); st.pfQ = d.alloc(qb * 64 * 512 * 2, "pfQ"); }
+      if (st.pfP.size < qb * 64 * 640 * 2) { d.release(st.pfP); st.pfP = d.alloc(qb * 64 * 640 * 2, "pfP"); }
+    }
+  if (st.pf_fold_ok) { d.release(st.pfML); st.pfML = d.alloc(2 * (size_t)std::min(512, n) * 10 * 64 * 8, "pfML"); }
   for (int L = 0; L < A::kLayers; L++) { uint16_t* p = (uint16_t*)st.win[L].cpu(); for (size_t i = 0; i < st.win[L].size / 2; i++) p[i] = rh(); }
   for (int i = 0; i < 4; i++) {
     uint16_t* c = (uint16_t*)st.ckv[i].cpu(); uint16_t* k = (uint16_t*)st.ikey[i].cpu();
@@ -58,8 +65,21 @@ int main() {
     double t = tmin([&](Enc& e) { A::encode_index_prefill(e, st, L, iq, iw, start, n); });
     printf("index layer %2d total            %9.2f ms\n", L, t);
   }
+  if (env_int("BENCH_QB_SWEEP", 0)) {  // interleaved sweep of the two-pass query block (sparse layer 20 and 0), min of rounds
+    const int qbs[5] = {512, 128, 64, 32, 16};
+    double t[5][2];
+    for (auto& x : t) x[0] = x[1] = 1e9;
+    for (int rd = 0; rd < (int)env_int("BENCH_ROUNDS", 4); rd++)
+      for (int i = 0; i < 5; i++) {
+        st.opt.pf2_qblock = qbs[i];
+        t[i][0] = std::min(t[i][0], tmin([&](Enc& e) { A::encode_sparse(e, st, 20, q, sinks, out, start, n); }, 1));
+        t[i][1] = std::min(t[i][1], tmin([&](Enc& e) { A::encode_sparse(e, st, 0, q, sinks, out, start, n); }, 1));
+      }
+    for (int i = 0; i < 5; i++) printf("qblock %4d: sparse layer 20 %7.2f ms, layer 0 %6.2f ms\n", qbs[i], t[i][0], t[i][1]);
+    return 0;
+  }
   if (env_int("BENCH_AB", 0)) {  // interleaved A/B of the switchable paths (toggled at run time), min over rounds
-    if (!st.pfS.size) st.pfS = d.alloc((size_t)std::min(o.pf_qblock, n) * 64 * 640 * 4, "pfS");
+
     const int rounds = (int)env_int("BENCH_ROUNDS", 4);
     const bool reg_ok = st.pf_score_reg_ok, fold_ok = st.pf_fold_ok;
     // variants: 0 = all new paths off (baseline), 1 = all on, 2 = all on except the one named by BENCH_AB_OFF
