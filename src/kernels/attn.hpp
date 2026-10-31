@@ -42,7 +42,6 @@ struct Options {
                              // at init; 0 or layout mismatch: threadgroup-memory epilogue). env MACSEEK_ATTN_PF_SCORE_REG
   bool pf_fold_softmax = true;  // two-pass prefill attention with the softmax folded into both passes (tile max/sum,
                                 // P = exp(S - m_tile) half; no f32 score matrix / softmax dispatch). env MACSEEK_ATTN_PF_FOLD
-  bool pf_pv128 = false;  // folded path: P.V threadgroups cover 128 dims (measured slower). env MACSEEK_ATTN_PF_PV128
   bool pf_merge_filter = true;  // prefill running top-k merge (k=512): only chunk elements above the running minimum
                                 // are compacted and merged (exact). env MACSEEK_ATTN_PF_MFILTER
   int pf_heads_tg = 8;     // heads per sparse-attention threadgroup, prefill (8: 128 threads | 16: 256 threads). env MACSEEK_ATTN_PF_HEADS

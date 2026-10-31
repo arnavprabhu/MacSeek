@@ -226,83 +226,6 @@ kernel void attn_pf2_pv(device half* P [[buffer(0)]], device const half* ring [[
   }
 }
 
-// Variant of attn_pf2_pv with 128-dim slices (one 64x128 destination per threadgroup: P tiles are read half as often).
-// grid (4, nq), 128 threads. Destination layout (as attn_idx_score_pf2): element i -> row = R + 8*((i>>2)&1) + 32*(i>>5),
-// col = C + (i&3) + 32*((i>>3)&3). alpha computed per thread for its 4 heads.
-kernel void attn_pf2_pv128(device half* P [[buffer(0)]], device const half* ring [[buffer(1)]],
-                           device const half* chunk [[buffer(2)]], device const half* ckv [[buffer(3)]],
-                           device const int* topk [[buffer(4)]], device const float2* tab [[buffer(5)]],
-                           device float* out [[buffer(6)]], device const float2* ML [[buffer(7)]],
-                           device const float* sinks [[buffer(8)]], constant AttnPf2Args& a [[buffer(9)]],
-                           uint2 tg [[threadgroup_position_in_grid]], ushort t [[thread_index_in_threadgroup]],
-                           ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
-  threadgroup half Vt[2][64 * 128];
-  const int qb = int(tg.y), d0 = int(tg.x) * 128, nt = a.R / 64;
-  const int rl = t >> 1, part = t & 1;
-  device const float2* mlq = ML + (size_t)qb * nt * ATTN_H;
-  const int R0 = attn_pf2_r(sg, l);
-  float Mh[4], iL[4];
-  #pragma unroll
-  for (int hh = 0; hh < 4; hh++) {
-    const int h = R0 + 8 * (hh & 1) + 32 * (hh >> 1);
-    float M = sinks[h];
-    for (int k = 0; k < nt; k++) M = max(M, mlq[k * ATTN_H + h].x);
-    float L = exp(sinks[h] - M);
-    for (int k = 0; k < nt; k++) { float2 v = mlq[k * ATTN_H + h]; L += v.y * exp(v.x - M); }  // v.x=-inf -> 0
-    Mh[hh] = M; iL[hh] = 1.0f / L;
-  }
-  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(P, dextents<int32_t, 2>(a.R, a.nq * ATTN_H));
-  auto tB0 = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Vt[0], dextents<int32_t, 2>(128, 64));
-  auto tB1 = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Vt[1], dextents<int32_t, 2>(128, 64));
-  constexpr auto desc = matmul2d_descriptor(64, 128, 64, false, false, false, matmul2d_descriptor::mode::multiply);
-  matmul2d<desc, execution_simdgroups<4>> op;
-  auto mA0 = tA.template slice<64, 64>(0, qb * ATTN_H);
-  auto acc = op.template get_destination_cooperative_tensor<decltype(mA0), decltype(tB0), float>();
-  auto tmp = op.template get_destination_cooperative_tensor<decltype(mA0), decltype(tB0), float>();
-  #pragma unroll
-  for (uint16_t i = 0; i < 64; ++i) acc[i] = 0;
-  uint4 reg[8];
-  auto load = [&](int k) {  // row rl, dims d0 + part*64 .. +63
-    device const half* src = attn_pf2_rowp(a, qb, k * 64 + rl, ring, chunk, ckv, topk);
-    if (src) { device const uint4* s4 = (device const uint4*)(src + d0 + part * 64); for (int j = 0; j < 8; j++) reg[j] = s4[j]; }
-    else for (int j = 0; j < 8; j++) reg[j] = uint4(0);
-  };
-  auto next_valid = [&](int k) { while (k < nt && mlq[k * ATTN_H].x == -INFINITY) k++; return k; };
-  int k = next_valid(0);
-  if (k < nt) load(k);
-  int buf = 0;
-  while (k < nt) {
-    const int kn = next_valid(k + 1);
-    threadgroup uint4* dst = (threadgroup uint4*)(Vt[buf] + rl * 128 + part * 64);
-    for (int j = 0; j < 8; j++) dst[j] = reg[j];
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (kn < nt) load(kn);
-    float al[4];
-    #pragma unroll
-    for (int hh = 0; hh < 4; hh++) al[hh] = exp(mlq[k * ATTN_H + R0 + 8 * (hh & 1) + 32 * (hh >> 1)].x - Mh[hh]) * iL[hh];
-    auto mA = tA.template slice<64, 64>(k * 64, qb * ATTN_H);
-    if (buf) op.run(mA, tB1, tmp); else op.run(mA, tB0, tmp);
-    #pragma unroll
-    for (uint16_t i = 0; i < 64; ++i) acc[i] += al[((i >> 2) & 1) | ((i >> 5) << 1)] * tmp[i];
-    buf ^= 1;
-    k = kn;
-  }
-  const int C0 = attn_pf2_c(sg, l);
-  const int p = a.start + qb;
-  device float* oq = out + (size_t)(a.q0 + qb) * ATTN_H * ATTN_D;
-  #pragma unroll
-  for (int g = 0; g < 16; g++) {
-    const int i = 4 * g, h = R0 + 8 * ((i >> 2) & 1) + 32 * (i >> 5), d = d0 + C0 + (i & 3) + 32 * ((i >> 3) & 3);
-    float4 v = float4(acc[i], acc[i + 1], acc[i + 2], acc[i + 3]);
-    if (d >= ATTN_D - ATTN_RD) {
-      const int pi = (d - (ATTN_D - ATTN_RD)) / 2;
-      v.xy = attn_rot_inv(v.xy, tab[(size_t)p * 32 + pi]);
-      v.zw = attn_rot_inv(v.zw, tab[(size_t)p * 32 + pi + 1]);
-    }
-    *(device float4*)(oq + (size_t)h * ATTN_D + d) = v;
-  }
-}
-
 // Layout check for the pf2 kernels: out[t] = elements of the (64,64,64) NT multiply-accumulate and NN multiply
 // destinations whose (row, col) differ from attn_pf2_r/c/ri/ci. grid 1, 128 threads.
 template <bool TR, bool ACC>
@@ -324,20 +247,5 @@ inline int attn_pf2_check_one(threadgroup half* X, ushort sg, ushort l) {
 kernel void attn_pf2_layout_check(device int* out [[buffer(0)]], ushort sg [[simdgroup_index_in_threadgroup]],
                                   ushort l [[thread_index_in_simdgroup]]) {
   threadgroup half X[64 * 64];
-  int bad = attn_pf2_check_one<true, true>(X, sg, l) + attn_pf2_check_one<false, false>(X, sg, l);
-  {
-    auto tA = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(64, 64));
-    auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(128, 64));
-    constexpr auto desc = matmul2d_descriptor(64, 128, 64, false, false, false, matmul2d_descriptor::mode::multiply);
-    matmul2d<desc, execution_simdgroups<4>> op;
-    auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
-    if (cT.get_capacity() != 64) bad += 1000;
-    for (uint16_t i = 0; i < cT.get_capacity() && i < 64; ++i) {
-      if (!cT.is_valid_element(i)) { bad++; continue; }
-      auto id = cT.get_multidimensional_index(i);
-      if (int(id[1]) != attn_pf2_r(sg, l) + 8 * ((i >> 2) & 1) + 32 * (i >> 5) ||
-          int(id[0]) != attn_pf2_c(sg, l) + (i & 3) + 32 * ((i >> 3) & 3)) bad++;
-    }
-  }
-  out[sg * 32 + l] = bad;
+  out[sg * 32 + l] = attn_pf2_check_one<true, true>(X, sg, l) + attn_pf2_check_one<false, false>(X, sg, l);
 }

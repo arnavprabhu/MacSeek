@@ -88,3 +88,18 @@ kernel void attn_probe_coop_64x64(device half* A [[buffer(0)]], device half* B [
                                   ushort t [[thread_index_in_threadgroup]]) { probe_coop_layout<64, 64>(A, B, out, t); }
 kernel void attn_probe_coop_128x64(device half* A [[buffer(0)]], device half* B [[buffer(1)]], device int* out [[buffer(2)]],
                                    ushort t [[thread_index_in_threadgroup]]) { probe_coop_layout<128, 64>(A, B, out, t); }
+// 8-simdgroup NN 64x128 (K=64) destination layout: out[t * 256 + i] = row * 4096 + col, out[256*256 + t] = capacity
+kernel void attn_probe_coop8_64x128(device int* out [[buffer(0)]], ushort t [[thread_index_in_threadgroup]]) {
+  threadgroup half X[64 * 128];
+  auto tA = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(64, 64));
+  auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(128, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 128, 64, false, false, false, matmul2d_descriptor::mode::multiply);
+  matmul2d<desc, execution_simdgroups<8>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) {
+    int v = -1;
+    if (cT.is_valid_element(i)) { auto id = cT.get_multidimensional_index(i); v = id[1] * 4096 + id[0]; }
+    if (i < 256) out[t * 256 + i] = v;
+  }
+  out[256 * 256 + t] = cT.get_capacity();
+}

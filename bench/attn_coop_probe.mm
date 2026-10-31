@@ -16,4 +16,16 @@ int main(int argc, char** argv) {
       printf("\n");
     }
   }
+  {
+    auto o8 = d.alloc((256 * 256 + 256) * 4);
+    { ms::Enc e; e.set_pipeline("attn_probe_coop8_64x128"); e.set_buffer(0, o8); e.dispatch_groups(1, 1, 1, 256); e.wait(); }
+    int* p = (int*)o8.cpu(); int bad = 0;
+    printf("coop8 64x128 capacity %d\n", p[256 * 256]);
+    for (int t = 0; t < 256; t++) for (int i = 0; i + 1 < p[256 * 256 + t]; i += 2) {
+      int a = p[t * 256 + i], b = p[t * 256 + i + 1];
+      if (a < 0 || b != a + 1 || (a % 4096) % 2) bad++;
+    }
+    printf("pairs (i, i+1) = (d even, d+1) same row: %s (%d bad)\n", bad ? "NO" : "yes", bad);
+    for (int t : {0, 1, 2, 32, 64, 128, 224}) { printf(" t%3d:", t); for (int i = 0; i < p[256 * 256 + t] && i < 32; i++) { int v = p[t * 256 + i]; printf(" (%d,%d)", v / 4096, v % 4096); } printf("\n"); }
+  }
 }

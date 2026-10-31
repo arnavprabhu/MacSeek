@@ -78,7 +78,6 @@ int main() {
           std::string f = off;
           if (f == "reg") st.pf_score_reg_ok = false;
           if (f == "fold") st.pf_fold_ok = false;
-          if (f == "pv128") st.opt.pf_pv128 = !st.opt.pf_pv128;
           if (f == "mfilter") st.opt.pf_merge_filter = false;
         }
         t[0][v] = std::min(t[0][v], tmin([&](Enc& e) { A::encode_index_prefill(e, st, 20, iq, iw, start, n); }, 1));

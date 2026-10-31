@@ -47,7 +47,7 @@ Options Options::from_env() {
   o.pf_qblock = (int)env_int("MACSEEK_ATTN_PF_QBLOCK", o.pf_qblock);
   o.pf_score_reg = env_int("MACSEEK_ATTN_PF_SCORE_REG", 1) != 0;
   o.pf_fold_softmax = env_int("MACSEEK_ATTN_PF_FOLD", 1) != 0;
-  o.pf_pv128 = env_int("MACSEEK_ATTN_PF_PV128", 0) != 0;
+
   o.pf_merge_filter = env_int("MACSEEK_ATTN_PF_MFILTER", 1) != 0;
   return o;
 }
@@ -397,12 +397,11 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
         e.set_buffer(4, s.topk); e.set_buffer(5, s.pfP); e.set_buffer(6, s.pfML); e.set_value(7, a);
         e.dispatch_groups(R / 64, nb, 1, 128);
         e.barrier();
-        const bool pv128 = s.opt.pf_pv128;
-        e.set_pipeline(pv128 ? "attn_pf2_pv128" : "attn_pf2_pv");
+        e.set_pipeline("attn_pf2_pv");
         e.set_buffer(0, s.pfP); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
         e.set_buffer(4, s.topk); e.set_buffer(5, tab_of(s, L)); e.set_buffer(6, out); e.set_buffer(7, s.pfML);
         e.set_buffer(8, sinks); e.set_value(9, a);
-        e.dispatch_groups(kD / (pv128 ? 128 : 64), nb, 1, 128);
+        e.dispatch_groups(kD / 64, nb, 1, 128);
         e.barrier();
         continue;
       }
