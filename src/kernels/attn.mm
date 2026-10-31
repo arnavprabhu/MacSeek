@@ -23,6 +23,10 @@ struct FinalArgs { int n, k, list_mode; };
 struct IdxQArgs { int start, n, actq; };
 struct IdxPfArgs { int start, n, ratio, kc0, kc, ld_s, use_mask, mask_words, cand_src, krows, qrows; };
 struct MergeArgs { int n, k, cnt, ld_s, base, first; };
+struct UnionArgs { int n, mask_words, cap; };
+struct IdxPfListArgs { int start, n, ratio, kc0, kc, ld_s, mask_words, cap, qrows; };
+struct MergeListArgs { int n, k, kc, ld_s, base, first, cap; };
+constexpr int kUnionCap = 2 * kCandBlocks;
 struct FinArgs { int k, mode, mask_words; };
 struct SparseArgs { int start, nq, chunk_start, ntop, splits, rows_per_split; float scale; };
 struct CombArgs { int pos, splits; };
@@ -36,6 +40,7 @@ Options Options::from_env() {
   o.dec_heads_tg = (int)env_int("MACSEEK_ATTN_DEC_HEADS", o.dec_heads_tg);
   o.pf_heads_tg = (int)env_int("MACSEEK_ATTN_PF_HEADS", o.pf_heads_tg);
   o.dec_fast_index = env_int("MACSEEK_ATTN_DEC_FAST", 1) != 0;
+  o.pf_cand_union = env_int("MACSEEK_ATTN_PF_UNION", 1) != 0;
   return o;
 }
 
@@ -110,6 +115,8 @@ void init(State& s, const Options& o) {
   s.Bk = d.alloc((size_t)nmax * kCandBlocks * 4, "attn.Bk");
   s.Bi = d.alloc((size_t)nmax * kCandBlocks * 4, "attn.Bi");
   s.Bc = d.alloc((size_t)nmax * 4, "attn.Bc");
+  s.ulist = d.alloc((size_t)(nq2 / 2) * kUnionCap * 4, "attn.ulist");
+  s.ucount = d.alloc((size_t)(nq2 / 2) * 4, "attn.ucount");
 }
 
 void reset(State& s) {
@@ -251,13 +258,39 @@ void encode_index_prefill(Enc& e, State& s, int L, const Buffer& iq, const Buffe
     if (cs) merge(s.BS, s.Bk, s.Bi, s.Bc, kCandBlocks, 0, KC / 8, 0, 1);
     e.barrier();
   }
-  for (int kc0 = 0; kc0 < len_max; kc0 += KC) {
+  if (um && s.opt.pf_cand_union && len_max > 0) {
+    const int ntiles = (n + 1) / 2;
+    {
+      UnionArgs a{n, s.mask_words, kUnionCap};
+      e.set_pipeline("attn_cand_union");
+      e.set_buffer(0, s.cand_mask); e.set_buffer(1, s.ulist); e.set_buffer(2, s.ucount); e.set_value(3, a);
+      e.dispatch_groups(ntiles, 1, 1, 1024);
+      e.barrier();
+    }
+    const int nv_max = std::min(kUnionCap, (len_max + kCandBS - 1) / kCandBS) * kCandBS;
+    for (int kc0 = 0; kc0 < nv_max; kc0 += KC) {
+      const int c = std::min(KC, nv_max - kc0);
+      IdxPfListArgs a{start, n, r, kc0, c, KC, s.mask_words, kUnionCap, ntiles * 64};
+      e.set_pipeline("attn_idx_score_pf_list");
+      e.set_buffer(0, s.Qi); e.set_buffer(1, s.wq); e.set_buffer(2, s.ikey[sl]); e.set_buffer(3, s.S);
+      e.set_buffer(4, s.cand_mask); e.set_buffer(5, s.ulist); e.set_buffer(6, s.ucount); e.set_value(7, a);
+      e.dispatch_groups((c + 63) / 64, ntiles, 1, 128);
+      e.barrier();
+      MergeListArgs m{n, kTopk, c, KC, kc0, kc0 == 0, kUnionCap};
+      e.set_pipeline("attn_topk_merge_list");
+      e.set_buffer(0, s.S); e.set_buffer(1, s.Rk); e.set_buffer(2, s.Ri); e.set_buffer(3, s.Rc);
+      e.set_buffer(4, s.ulist); e.set_buffer(5, s.ucount); e.set_value(6, m);
+      e.dispatch_groups(n, 1, 1, 1024);
+      e.barrier();
+    }
+  }
+  for (int kc0 = 0; kc0 < len_max && !(um && s.opt.pf_cand_union); kc0 += KC) {
     const int c = std::min(KC, len_max - kc0);
     IdxPfArgs a{start, n, r, kc0, c, KC, um ? 1 : 0, s.mask_words, cs ? 1 : 0, s.cap[sl] + kRowPad, (n + 1) / 2 * 64};
     e.set_pipeline("attn_idx_score_pf");
     e.set_buffer(0, s.Qi); e.set_buffer(1, s.wq); e.set_buffer(2, s.ikey[sl]); e.set_buffer(3, s.S);
     e.set_buffer(4, s.cand_mask); e.set_buffer(5, s.BS); e.set_value(6, a);
-    e.dispatch_groups((c + 63) / 64, (n + 1) / 2, 1, 128);
+    e.dispatch_groups((c + 127) / 128, (n + 1) / 2, 1, 128);
     e.barrier();
     merge(s.S, s.Rk, s.Ri, s.Rc, kTopk, c, KC, kc0, kc0 == 0);
     if (cs) merge(s.BS, s.Bk, s.Bi, s.Bc, kCandBlocks, (c + 7) / 8, KC / 8, kc0 / 8, kc0 == 0);
@@ -292,7 +325,7 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     e.set_buffer(0, q); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.win[L]); e.set_buffer(3, ckv);
     e.set_buffer(4, s.topk); e.set_buffer(5, sinks); e.set_buffer(6, tab_of(s, L)); e.set_buffer(7, out);
     e.set_buffer(8, s.part); e.set_buffer(9, s.ml); e.set_value(10, a);
-    e.dispatch_groups(kH / hg, splits, 1, 128);
+    e.dispatch_groups(kH / hg, splits, 1, hg == 16 ? 256 : 128);
     e.barrier();
     CombArgs c{start, splits};
     e.set_pipeline("attn_sparse_combine");
@@ -306,7 +339,7 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     e.set_buffer(0, q); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
     e.set_buffer(4, s.topk); e.set_buffer(5, sinks); e.set_buffer(6, tab_of(s, L)); e.set_buffer(7, out);
     e.set_buffer(8, s.part); e.set_buffer(9, s.ml); e.set_value(10, a);
-    e.dispatch_groups(kH / hg, 1, n, 128);
+    e.dispatch_groups(kH / hg, 1, n, hg == 16 ? 256 : 128);
   }
   e.barrier();
 }

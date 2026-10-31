@@ -9,7 +9,7 @@ namespace ms::attn {
 
 constexpr int kLayers = 40, kD = 512, kRD = 64, kH = 64, kWin = 128;
 constexpr int kIH = 32, kID = 128, kTopk = 512, kCandBlocks = 2048, kCandBS = 8;
-constexpr int kRowPad = 64;  // extra rows allocated past each cache's capacity (tile over-read)
+constexpr int kRowPad = 128; // extra rows allocated past each cache capacity (128-key tile over-read)
 
 // ---- layer roles (DeepSeek-V4.1-Flash) ----
 inline int ratio_of(int L) { return L < 2 ? 0 : (L < 20 ? 2 : 1); }
@@ -31,15 +31,17 @@ struct Options {
   bool dec_fast_index = true;  // tensor-op decode scorer + histogram/compaction top-k (0: simdgroup scorer +
                                // single-threadgroup radix select). env MACSEEK_ATTN_DEC_FAST
   int dec_cand_cap = 32768;    // candidate capacity of the decode compaction (overflow -> exact fallback)
-  int pf_heads_tg = 8;     // heads per sparse-attention threadgroup, prefill (8|16; 16 spills registers). env MACSEEK_ATTN_PF_HEADS
+  bool pf_cand_union = true;  // prefill layers 24..36 score only the per-tile union of candidate blocks (0: dense
+                              // scoring of all keys + mask). env MACSEEK_ATTN_PF_UNION
+  int pf_heads_tg = 8;     // heads per sparse-attention threadgroup, prefill (8: 128 threads | 16: 256 threads). env MACSEEK_ATTN_PF_HEADS
   static Options from_env();
 };
 
 // All attention-side state + scratch. Layouts (all row-major, little endian):
 //   rope_plain / rope_yarn : float2 [max_pos][32] (cos, sin) — theta 1e4 (layers 0,1) / theta 1.6e5 + YaRN (layers 2..39)
 //   win[L]                 : half [128][512]   window KV ring, slot = pos % 128 (fp8-sim values, exact in f16)
-//   ckv[s]                 : half [cap_s + 64][512] compressed KV of source s (slot 0..3 = layer 2,8,14,20), row j = group j
-//   ikey[s]                : half [cap_s + 64][128] index keys (fp4-sim values)
+//   ckv[s]                 : half [cap_s + 128][512] compressed KV of source s (slot 0..3 = layer 2,8,14,20), row j = group j
+//   ikey[s]                : half [cap_s + 128][128] index keys (fp4-sim values)
 //   cst[s]                 : f32 [2][ratio][512] compressor partial group (kv then gate score), slot = pos % ratio
 // cap_s = max_pos / ratio_s. Only rows < (pos+1)/ratio are meaningful.
 struct State {
@@ -60,6 +62,7 @@ struct State {
   Buffer Qi, wq;               // half [round2(max_chunk)][32][128], f32 [max_chunk][32]
   Buffer S, BS;                // f32 [max_chunk][key_chunk], [max_chunk][key_chunk/8]
   Buffer Rk, Ri, Rc, Bk, Bi, Bc;  // running top-k (positions k=512, blocks k=2048) per query
+  Buffer ulist, ucount;           // prefill: union of candidate blocks per 2-query tile, int [n/2][4096], int [n/2]
 };
 void init(State& s, const Options& o);
 void reset(State& s);  // zero caches + compressor state (new sequence)

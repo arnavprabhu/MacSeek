@@ -120,10 +120,11 @@ int main(int argc, char** argv) {
   const int n = nchunk, start = depth;
   g_reps = 1;  // prefill command buffers are long enough to run at full clock
   printf("\n== prefill, chunk of %d tokens at depth %d (all 40 layers) ==\n", n, start);
+  const int parts = (int)env_int("BENCH_PF_PARTS", 15);  // 1 kv, 2 indexer, 4 sparse attention, 8 total
   auto pall = [&](Enc& e) { for (int L = 0; L < A::kLayers; L++) A::encode_layer(e, st, io_of(L), start, n); };
-  time_med(1, pall);
-  double p_all = time_med(3, pall);
-  double p_kv = time_med(3, [&](Enc& e) {
+  double p_all = 0, p_kv = 0, p_attn = 0;
+  if (parts & 8) { time_med(1, pall); p_all = time_med(3, pall); }
+  if (parts & 1) p_kv = time_med(3, [&](Enc& e) {
     for (int L = 0; L < A::kLayers; L++) {
       A::encode_kv_window(e, st, L, kv, w512, start, n);
       if (A::is_kv_source(L)) A::encode_compress(e, st, L, io_of(L), start, n);
@@ -131,9 +132,9 @@ int main(int argc, char** argv) {
       A::encode_window_commit(e, st, L, start, n);
     }
   });
-  double p_idx[8]; const int idxL[8] = {2, 8, 14, 20, 24, 28, 32, 36};
-  for (int i = 0; i < 8; i++) p_idx[i] = time_med(3, [&](Enc& e) { A::encode_index_prefill(e, st, idxL[i], iq, iw, start, n); });
-  double p_attn = time_med(3, [&](Enc& e) { for (int L = 0; L < A::kLayers; L++) A::encode_sparse(e, st, L, q, sinks, out, start, n); });
+  double p_idx[8] = {0}; const int idxL[8] = {2, 8, 14, 20, 24, 28, 32, 36};
+  if (parts & 2) for (int i = 0; i < 8; i++) p_idx[i] = time_med(3, [&](Enc& e) { A::encode_index_prefill(e, st, idxL[i], iq, iw, start, n); });
+  if (parts & 4) p_attn = time_med(3, [&](Enc& e) { for (int L = 0; L < A::kLayers; L++) A::encode_sparse(e, st, L, q, sinks, out, start, n); });
   printf("%-48s %9s %9s\n", "component", "ms", "TFLOP/s");
   printf("%-48s %9.2f\n", "kv window + compressor + ring commit (40 layers)", p_kv);
   double idx_sum = 0;
@@ -141,7 +142,7 @@ int main(int argc, char** argv) {
     int r = A::ratio_of(idxL[i]);
     double keys = (double)(start + n) / r;
     double fl = 2.0 * n * 32 * 128 * keys;
-    char nm[64]; snprintf(nm, sizeof nm, "indexer layer %d (%s, %.0fK keys)", idxL[i], A::uses_cand(idxL[i]) ? "dense+mask" : "full", keys / 1e3);
+    char nm[64]; snprintf(nm, sizeof nm, "indexer layer %d (%s, %.0fK keys)", idxL[i], A::uses_cand(idxL[i]) ? (o.pf_cand_union ? "cand union" : "dense+mask") : "full", keys / 1e3);
     printf("%-48s %9.2f %9.2f\n", nm, p_idx[i], fl / (p_idx[i] * 1e-3) / 1e12);
     idx_sum += p_idx[i];
   }

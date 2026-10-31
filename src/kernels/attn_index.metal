@@ -279,19 +279,19 @@ struct AttnIdxPfArgs {
   int cand_src;
   int krows, qrows;  // tensor extents (allocated rows) of ikey and Qi
 };
-// grid (ceil(kc/64), ceil(n/2)), 128 threads. S[q][t-kc0] = sum_h relu(q_h.k_t) w_h (or -inf if invisible/masked).
-kernel void attn_idx_score_pf(device half* Qi [[buffer(0)]], device const float* wq [[buffer(1)]],
-                              device half* ikey [[buffer(2)]], device float* S [[buffer(3)]],
-                              device const uint* mask [[buffer(4)]], device float* BS [[buffer(5)]],
-                              constant AttnIdxPfArgs& a [[buffer(6)]], uint2 tg [[threadgroup_position_in_grid]],
-                              ushort t [[thread_index_in_threadgroup]]) {
-  threadgroup float T[64 * 64];
+// grid (ceil(kc/128), ceil(n/2)), 128 threads. S[q][t-kc0] = sum_h relu(q_h.k_t) w_h (or -inf if invisible/masked).
+// Tile: QT queries (QT*32 rows of Qi) x NK keys, tensor-op matmul, relu*w epilogue through threadgroup memory.
+template <int QT, int NK>
+inline void attn_idx_score_pf_impl(device half* Qi, device const float* wq, device half* ikey, device float* S,
+                                   device const uint* mask, device float* BS, constant AttnIdxPfArgs& a, uint2 tg,
+                                   ushort t, threadgroup float* T) {
+  constexpr int M = QT * 32;
   auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qi, dextents<int32_t, 2>(ATTN_ID, a.qrows));
   auto tB = tensor<device half, dextents<int32_t, 2>, tensor_inline>(ikey, dextents<int32_t, 2>(ATTN_ID, a.krows));
-  constexpr auto desc = matmul2d_descriptor(64, 64, ATTN_ID, false, true, false);
+  constexpr auto desc = matmul2d_descriptor(M, NK, ATTN_ID, false, true, false);
   matmul2d<desc, execution_simdgroups<4>> op;
-  auto mA = tA.template slice<ATTN_ID, 64>(0, int(tg.y) * 64);
-  auto mB = tB.template slice<ATTN_ID, 64>(0, a.kc0 + int(tg.x) * 64);
+  auto mA = tA.template slice<ATTN_ID, M>(0, int(tg.y) * M);
+  auto mB = tB.template slice<ATTN_ID, NK>(0, a.kc0 + int(tg.x) * NK);
   auto cT = op.template get_destination_cooperative_tensor<decltype(mA), decltype(mB), float>();
   for (uint16_t i = 0; i < cT.get_capacity(); ++i) if (cT.is_valid_element(i)) cT[i] = 0;
   op.run(mA, mB, cT);
@@ -299,30 +299,42 @@ kernel void attn_idx_score_pf(device half* Qi [[buffer(0)]], device const float*
     if (cT.is_valid_element(i)) {
       auto id = cT.get_multidimensional_index(i);
       int col = id[0], row = id[1];
-      int q = int(tg.y) * 2 + row / 32;
+      int q = int(tg.y) * QT + row / 32;
       float w = q < a.n ? wq[q * ATTN_IH + (row & 31)] : 0.0f;
-      T[row * 64 + col] = max(cT[i], 0.0f) * w;
+      T[row * NK + col] = max(cT[i], 0.0f) * w;
     }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  const int ql = t >> 6, key = t & 63;
-  const int q = int(tg.y) * 2 + ql;
-  float s = 0;
-  for (int h = 0; h < 32; h++) s += T[(ql * 32 + h) * 64 + key];
-  const int tl = int(tg.x) * 64 + key, tabs = a.kc0 + tl;
-  const int len = (a.start + q + 1) / a.ratio;
-  bool vis = q < a.n && tabs < len && tl < a.kc;
-  if (vis && a.use_mask) vis = (mask[(size_t)q * a.mask_words + (tabs >> 8)] >> ((tabs >> 3) & 31)) & 1u;
-  float sc = vis ? s : -INFINITY;
-  const bool live = q < a.n && tl < a.kc;
-  if (live) S[(size_t)q * a.ld_s + tl] = sc;
-  if (a.cand_src) {
-    float bm = sc;
-    bm = max(bm, simd_shuffle_xor(bm, 1)); bm = max(bm, simd_shuffle_xor(bm, 2)); bm = max(bm, simd_shuffle_xor(bm, 4));
-    if (len > 0 && (tabs >> 3) == (len - 1) / 8) bm = INFINITY;
-    if (live && (key & 7) == 0) BS[(size_t)q * (a.ld_s / 8) + (tl >> 3)] = bm;
+  for (int o = t; o < QT * NK; o += 128) {
+    const int ql = o / NK, key = o % NK;
+    const int q = int(tg.y) * QT + ql;
+    float s = 0;
+    for (int h = 0; h < 32; h++) s += T[(ql * 32 + h) * NK + key];
+    const int tl = int(tg.x) * NK + key, tabs = a.kc0 + tl;
+    const int len = (a.start + q + 1) / a.ratio;
+    bool vis = q < a.n && tabs < len && tl < a.kc;
+    if (vis && a.use_mask) vis = (mask[(size_t)q * a.mask_words + (tabs >> 8)] >> ((tabs >> 3) & 31)) & 1u;
+    float sc = vis ? s : -INFINITY;
+    const bool live = q < a.n && tl < a.kc;
+    if (live) S[(size_t)q * a.ld_s + tl] = sc;
+    if (a.cand_src) {  // 8 consecutive keys = 8 consecutive lanes
+      float bm = sc;
+      bm = max(bm, simd_shuffle_xor(bm, 1)); bm = max(bm, simd_shuffle_xor(bm, 2)); bm = max(bm, simd_shuffle_xor(bm, 4));
+      if (len > 0 && (tabs >> 3) == (len - 1) / 8) bm = INFINITY;
+      if (live && (key & 7) == 0) BS[(size_t)q * (a.ld_s / 8) + (tl >> 3)] = bm;
+    }
   }
 }
+#define ATTN_IDX_PF_KERNEL(NAME, QT, NK)                                                                          \
+  kernel void NAME(device half* Qi [[buffer(0)]], device const float* wq [[buffer(1)]],                            \
+                   device half* ikey [[buffer(2)]], device float* S [[buffer(3)]],                                 \
+                   device const uint* mask [[buffer(4)]], device float* BS [[buffer(5)]],                          \
+                   constant AttnIdxPfArgs& a [[buffer(6)]], uint2 tg [[threadgroup_position_in_grid]],             \
+                   ushort t [[thread_index_in_threadgroup]]) {                                                     \
+    threadgroup float T[QT * 32 * NK];                                                                             \
+    attn_idx_score_pf_impl<QT, NK>(Qi, wq, ikey, S, mask, BS, a, tg, t, T);                                        \
+  }
+ATTN_IDX_PF_KERNEL(attn_idx_score_pf, 2, 128)  // (4 queries x 64 keys: -30%; 2 x 64: -3%)
 
 struct AttnSrcMerge {
   device const uint* rk;
@@ -572,3 +584,130 @@ kernel void attn_topk_final(device const float* scores [[buffer(0)]], device uin
   for (int b = tid; b < 4096; b += 1024) hist[b] = 0;
   if (tid < 4) ctl[tid] = 0;
 }
+
+// ------------------------------------------------------------------------------------------------------------------
+// Prefill, candidate-restricted index layers (24..36): score only the union of the candidate blocks of each 2-query
+// tile (instead of all keys + mask).
+struct AttnUnionArgs { int n; int mask_words; int cap; };  // cap = max blocks per union list (4096)
+// grid (ceil(n/2)), 1024 threads: ulist[tile][0..ucount) = sorted union of the candidate blocks of queries 2t, 2t+1
+kernel void attn_cand_union(device const uint* mask [[buffer(0)]], device int* ulist [[buffer(1)]],
+                            device int* ucount [[buffer(2)]], constant AttnUnionArgs& a [[buffer(3)]],
+                            uint tile [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
+                            ushort sg [[simdgroup_index_in_threadgroup]], ushort ln [[thread_index_in_simdgroup]]) {
+  threadgroup uint tmp[40];
+  const int q0 = int(tile) * 2, q1 = min(q0 + 1, a.n - 1);
+  int base = 0;
+  for (int w0 = 0; w0 < a.mask_words; w0 += 1024) {
+    int w = w0 + tid;
+    uint bits = w < a.mask_words ? (mask[(size_t)q0 * a.mask_words + w] | mask[(size_t)q1 * a.mask_words + w]) : 0u;
+    uint tot;
+    uint ex = attn_scan_excl(popcount(bits), tmp, sg, ln, 32, tot);
+    int o = base + int(ex);
+    while (bits) {
+      int b = ctz(bits);
+      bits &= bits - 1;
+      if (o < a.cap) ulist[(size_t)tile * a.cap + o] = w * 32 + b;
+      o++;
+    }
+    base += int(tot);
+  }
+  if (tid == 0) ucount[tile] = min(base, a.cap);
+}
+
+struct AttnIdxPfListArgs {
+  int start, n, ratio;
+  int kc0, kc;       // virtual key chunk
+  int ld_s, mask_words, cap, qrows;
+};
+// grid (kc/64, ceil(n/2)), 128 threads. Virtual key v of tile y -> position ulist[y][v/8]*8 + v%8.
+kernel void attn_idx_score_pf_list(device half* Qi [[buffer(0)]], device const float* wq [[buffer(1)]],
+                                   device const half* ikey [[buffer(2)]], device float* S [[buffer(3)]],
+                                   device const uint* mask [[buffer(4)]], device const int* ulist [[buffer(5)]],
+                                   device const int* ucount [[buffer(6)]], constant AttnIdxPfListArgs& a [[buffer(7)]],
+                                   uint2 tg [[threadgroup_position_in_grid]], ushort t [[thread_index_in_threadgroup]]) {
+  threadgroup half Kg[64 * ATTN_ID];
+  threadgroup float T[64 * 64];
+  const int nvirt = ucount[tg.y] * 8;
+  const int v0 = a.kc0 + int(tg.x) * 64;
+  if (v0 >= nvirt) return;
+  {  // gather 8 blocks x 8 keys x 128 dims: thread t -> key t/2, half row (64 dims)
+    int kl = t >> 1, part = t & 1, v = v0 + kl;
+    threadgroup uint4* dst = (threadgroup uint4*)(Kg + kl * ATTN_ID + part * 64);
+    if (v < nvirt) {
+      int pos = ulist[(size_t)tg.y * a.cap + (v >> 3)] * 8 + (v & 7);
+      device const uint4* src = (device const uint4*)(ikey + (size_t)pos * ATTN_ID + part * 64);
+      for (int j = 0; j < 8; j++) dst[j] = src[j];
+    } else {
+      for (int j = 0; j < 8; j++) dst[j] = uint4(0);
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qi, dextents<int32_t, 2>(ATTN_ID, a.qrows));
+  auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Kg, dextents<int32_t, 2>(ATTN_ID, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 64, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto mA = tA.template slice<ATTN_ID, 64>(0, int(tg.y) * 64);
+  auto cT = op.template get_destination_cooperative_tensor<decltype(mA), decltype(tB), float>();
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) if (cT.is_valid_element(i)) cT[i] = 0;
+  op.run(mA, tB, cT);
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) {
+    if (cT.is_valid_element(i)) {
+      auto id = cT.get_multidimensional_index(i);
+      int col = id[0], row = id[1];
+      int q = int(tg.y) * 2 + row / 32;
+      float w = q < a.n ? wq[q * ATTN_IH + (row & 31)] : 0.0f;
+      T[row * 64 + col] = max(cT[i], 0.0f) * w;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int ql = t >> 6, key = t & 63;
+  const int q = int(tg.y) * 2 + ql;
+  float s = 0;
+  for (int h = 0; h < 32; h++) s += T[(ql * 32 + h) * 64 + key];
+  const int v = v0 + key, tl = v - a.kc0;
+  if (q >= a.n || tl >= a.kc) return;
+  bool vis = v < nvirt;
+  if (vis) {
+    int blk = ulist[(size_t)tg.y * a.cap + (v >> 3)];
+    int pos = blk * 8 + (v & 7);
+    int len = (a.start + q + 1) / a.ratio;
+    vis = pos < len && ((mask[(size_t)q * a.mask_words + (blk >> 5)] >> (blk & 31)) & 1u);
+  }
+  S[(size_t)q * a.ld_s + tl] = vis ? s : -INFINITY;
+}
+
+struct AttnSrcMergeList {
+  device const uint* rk;
+  device const int* ri;
+  int rc;
+  device const float* s;
+  int base;
+  device const int* ul;
+  uint key(int i) const { return i < rc ? rk[i] : attn_fkey(s[i - rc]); }
+  int idx(int i) const { if (i < rc) return ri[i]; int v = base + (i - rc); return ul[v >> 3] * 8 + (v & 7); }
+};
+struct AttnMergeListArgs { int n, k, kc, ld_s, base, first, cap; };
+// list-mode merge: chunk element count per query = clamp(ucount[q/2]*8 - base, 0, kc)
+kernel void attn_topk_merge_list(device const float* S [[buffer(0)]], device uint* Rk [[buffer(1)]],
+                                 device int* Ri [[buffer(2)]], device int* Rc [[buffer(3)]],
+                                 device const int* ulist [[buffer(4)]], device const int* ucount [[buffer(5)]],
+                                 constant AttnMergeListArgs& a [[buffer(6)]], uint q [[threadgroup_position_in_grid]],
+                                 ushort tid [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
+                                 ushort ln [[thread_index_in_simdgroup]]) {
+  threadgroup uint hist[2048];
+  threadgroup uint tmp[40];
+  threadgroup uint okey[2048];
+  threadgroup int oidx[2048];
+  threadgroup atomic_int ocnt;
+  const int tile = int(q) / 2;
+  const int cnt = clamp(ucount[tile] * 8 - a.base, 0, a.kc);
+  const int rc = a.first ? 0 : Rc[q];
+  if (!a.first && cnt == 0) return;
+  AttnSrcMergeList src{Rk + (size_t)q * a.k, Ri + (size_t)q * a.k, rc, S + (size_t)q * a.ld_s, a.base,
+                       ulist + (size_t)tile * a.cap};
+  attn_select(src, rc + cnt, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+  int m = atomic_load_explicit(&ocnt, memory_order_relaxed);
+  for (int i = tid; i < m; i += 1024) { Rk[(size_t)q * a.k + i] = okey[i]; Ri[(size_t)q * a.k + i] = oidx[i]; }
+  if (tid == 0) Rc[q] = m;
+}
+
