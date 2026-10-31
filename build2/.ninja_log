@@ -1,0 +1,27 @@
+# ninja log v7
+2	27	1793434860224022581	/Users/arnav/Desktop/Projects/MacSeek/build2/CMakeFiles/cmake.verify_globs	7e7cf11ef60b4026
+27	537	1793434860248830717	CMakeFiles/metalc.dir/tools/metalc/metalc.mm.o	ca068c1181200df0
+556	792	1793434860778069208	metalc	96b000ec10459f4d
+792	2497	1793434862714223893	macseek.metal	fb5dd8d5450e3836
+792	2497	1793434862714223893	/Users/arnav/Desktop/Projects/MacSeek/build2/macseek.metal	fb5dd8d5450e3836
+2513	6024	1793434862734539555	CMakeFiles/macseek_lib.dir/src/tok/tokenizer.cpp.o	2b7181773847c166
+2509	6032	1793434862730979749	CMakeFiles/macseek_lib.dir/src/store/policy.cpp.o	50efdcfa500ceaed
+2497	6056	1793434862718996287	CMakeFiles/macseek_lib.dir/src/gguf/gguf.cpp.o	c00f0cbf8adb669d
+2498	6057	1793434862719525872	CMakeFiles/macseek_lib.dir/src/kernels/arch.mm.o	dc091d35b1ad5ff6
+2511	6061	1793434862732838173	CMakeFiles/macseek_lib.dir/src/tok/json.cpp.o	ad356698bc6919a8
+2510	6160	1793434862731531626	CMakeFiles/macseek_lib.dir/src/store/weights.cpp.o	fd557ffef2cb0e03
+2498	6184	1793434862719983165	CMakeFiles/macseek_lib.dir/src/kernels/attn.mm.o	1e5d25e8c68f1795
+2509	6184	1793434862730367372	CMakeFiles/macseek_lib.dir/src/store/memguard.cpp.o	259560ec1a168b0a
+2502	6193	1793434862723965389	CMakeFiles/macseek_lib.dir/src/server/http.cpp.o	b0486daef8c94b30
+2515	6228	1793434862736770438	CMakeFiles/macseek.dir/src/app/model_cmds.mm.o	3bf68f1015a6344
+2508	6243	1793434862729309410	CMakeFiles/macseek_lib.dir/src/store/io_pool.cpp.o	357a859eb8d8da5
+2514	6280	1793434862735176557	CMakeFiles/macseek.dir/src/app/main.cpp.o	caa5fffda6de2007
+2510	6283	1793434862732067837	CMakeFiles/macseek_lib.dir/src/tok/chat.cpp.o	e4123be61ec8d6d0
+2501	6289	1793434862722723301	CMakeFiles/macseek_lib.dir/src/model/engram_hash.cpp.o	acbd11821abb2f2e
+2504	6352	1793434862725533937	CMakeFiles/macseek_lib.dir/src/store/engram.cpp.o	734ce466e8045822
+2499	6847	1793434862720420459	CMakeFiles/macseek_lib.dir/src/kernels/quant.mm.o	4eaf8848466a7225
+2506	6903	1793434862727157610	CMakeFiles/macseek_lib.dir/src/store/experts.mm.o	ffb5e854533d4bc5
+2497	8416	1793434862718470409	CMakeFiles/macseek_lib.dir/src/core/metal.mm.o	b57f913f153e003f
+2500	10025	1793434862721243129	CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o	54236ac9621a277e
+10026	10196	1793434870247160404	libmacseek_lib.a	c92379b5ad390a08
+10196	10416	1793434870417437183	macseek	74e87f55ce71244c

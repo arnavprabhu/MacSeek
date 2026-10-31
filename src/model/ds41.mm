@@ -60,7 +60,9 @@ struct Model::Impl {
   // activations
   Buffer h, x, sub, mixA, mixF, qa, qrn, q, kv, ckv, cgate, iq, iw, aout, aout16, otmp, oa, rlog, rids, rw;
   Buffer embrows, erow, edeq, ekv, logits, amax_i, amax_v, moe_dec_scratch;
-  Buffer moe_scr[2], route_dev[2];   // prefill MoE scratch + routing tables (double-buffered)
+  Buffer moe_scr[2], route_dev[2];
+  Buffer pids, pw;                   // decode: predicted next-layer expert ids (router of l+1 on layer l's FFN input)
+  arch::Scratch asc2;                // second scratch for the predictor router (same kernel family)   // prefill MoE scratch + routing tables (double-buffered)
 };
 
 static W wt(const Weights& w, const std::string& name) {
@@ -147,6 +149,8 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(2 * n * 25600 * 4, "ekv");
   P.logits = A((size_t)std::max(o.max_logits_rows, 1) * cfg_.vocab * 4, "logits");
   P.amax_i = A(64, "amax_i"); P.amax_v = A(64, "amax_v");
+  P.pids = A(64, "pids"); P.pw = A(64, "pw");
+  P.asc2 = arch::Scratch::create(64, 1);
   P.moe_dec_scratch = A(q::moe_decode_scratch_bytes(), "moe_dec");
   const int total = (int)n * 6;
   for (int i = 0; i < 2; i++) {
@@ -244,6 +248,14 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     e->barrier();
   }
 
+  static const int pf_prefetch_min = (int)env_int("MACSEEK_PF_PREFETCH", 1) ? (int)env_int("MACSEEK_PF_PREFETCH_MIN", 1024) : 1 << 30;
+  // Prefill waits for expert reads on the CPU: a GPU command buffer blocked on an I/O event for long trips the GPU
+  // watchdog ("GPU Timeout Error"). MACSEEK_PF_GPU_WAIT=1 restores GPU-side waits. MACSEEK_CPU_WAIT_IO=1 also makes
+  // decode wait on the CPU (profiling: GPU times are only valid for command buffers without event waits).
+  static const bool cpu_wait_io = env_int("MACSEEK_PF_GPU_WAIT", 0) == 0;
+  static const bool dec_cpu_wait = env_int("MACSEEK_CPU_WAIT_IO", 0) != 0;
+  static const bool pred_on = env_int("MACSEEK_PRED", 0) != 0;   // decode next-layer expert prefetch
+  static std::vector<int> all_ids = [] { std::vector<int> v(384); for (int i = 0; i < 384; i++) v[i] = i; return v; }();
   // Attention side of layer l for this call: hc boundary (+engram), attention, hc boundary into the FFN, router,
   // and zeroing of `sub` (the MoE accumulates into it). Encodes into E; no commit.
   auto encode_attn_side = [&](Enc& E, int l) {
@@ -306,7 +318,14 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       arch::encode_hc_step(E, a, P.asc); E.barrier();
     }
     // ---- router ----
-    if (dec) arch::encode_router_fused(E, P.x, L.gate_inp.b, L.bias.b, P.rids, P.rw, P.asc);
+    if (dec) {
+      arch::encode_router_fused(E, P.x, L.gate_inp.b, L.bias.b, P.rids, P.rw, P.asc);
+      // next-layer expert prediction: layer l+1's router applied to this layer's (normed) FFN input
+      if (pred_on && l + 1 < cfg_.n_layers) {
+        E.barrier();
+        arch::encode_router_fused(E, P.x, P.L[l + 1].gate_inp.b, P.L[l + 1].bias.b, P.pids, P.pw, P.asc2);
+      }
+    }
     else {
       linear(E, L.gate_inp, P.x, P.rlog, n); E.barrier();
       arch::encode_router_topk(E, P.rlog, L.bias.b, P.rids, P.rw, n);
@@ -316,13 +335,6 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   };
 
   const bool pipe = dec && env_int("MACSEEK_DEC_PIPE", 0) != 0;
-  static const int pf_prefetch_min = (int)env_int("MACSEEK_PF_PREFETCH", 1) ? (int)env_int("MACSEEK_PF_PREFETCH_MIN", 1024) : 1 << 30;
-  // Prefill waits for expert reads on the CPU: a GPU command buffer blocked on an I/O event for long trips the GPU
-  // watchdog ("GPU Timeout Error"). MACSEEK_PF_GPU_WAIT=1 restores GPU-side waits. MACSEEK_CPU_WAIT_IO=1 also makes
-  // decode wait on the CPU (profiling: GPU times are only valid for command buffers without event waits).
-  static const bool cpu_wait_io = env_int("MACSEEK_PF_GPU_WAIT", 0) == 0;
-  static const bool dec_cpu_wait = env_int("MACSEEK_CPU_WAIT_IO", 0) != 0;
-  static std::vector<int> all_ids = [] { std::vector<int> v(384); for (int i = 0; i < 384; i++) v[i] = i; return v; }();
   if (pipe) {
     // Pipelined decode (docs/integration.md): GPU-ordered chain att(0) moe(0) att(1) ... ; att(l+1) is encoded and
     // committed while att(l) runs; moe(l) is reserved in the queue before att(l+1) and encoded once the router ids are
@@ -366,6 +378,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       Timer tx;
       const int* ids = (const int*)P.rids.cpu();
       ExpertLease lease = cache_->ensure(l, ids, 6);
+      if (pred_on && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, (const int*)P.pids.cpu(), 6);
       const uint64_t wv = c0 + 2 + 2 * (uint64_t)l, sv = wv + 1;
       moe->between([&](void* cb) {
         [(__bridge id<MTLCommandBuffer>)cb encodeWaitForEvent:chain value:wv];
@@ -414,6 +427,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     const int* ids = (const int*)P.rids.cpu();
     if (dec) {
       ExpertLease lease = cache_->ensure(l, ids, 6);
+      if (pred_on && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, (const int*)P.pids.cpu(), 6);
       e = std::make_unique<Enc>();
       if (dec_cpu_wait) lease.wait();
       else e->between([&](void* cb) { lease.encode_wait(cb); });
