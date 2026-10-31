@@ -98,20 +98,21 @@ void encode_matvec_n(Enc& e, QType t, const Buffer& W, int rows, int cols, const
   const char* kn = kname(t);
   if (!kn || n < 1 || n > 16 || cols % gpu_qk(t) != 0 || groups < 1 || rows % groups != 0) die("matvec_n", t, rows, cols);
   const int nt = n <= 2 ? 2 : n <= 4 ? 4 : n <= 8 ? 8 : 16;
-  MvCfg a = auto_cfg(t, rows, cols);
-  a.nr = nt >= 8 ? 1 : 2;
-  static const long env_nr = env_int("MACSEEK_MVN_NR", 0);
-  if (env_nr) a.nr = (int)env_nr;
-  if (groups > 1) while ((rows / groups) % a.nr) a.nr /= 2;
+  static const long env_nr = env_int("MACSEEK_MVN_NR", 0), env_sg = env_int("MACSEEK_MVN_SG", 0);
+  int nr = env_nr ? (int)env_nr : (nt >= 8 ? 1 : 2);
+  int nsg = env_sg ? (int)env_sg : 8;
+  while (nsg > 1 && (long)rows / (nr * nsg) < 160) nsg /= 2;  // keep enough threadgroups for small matrices
+  if (groups > 1) while ((rows / groups) % (nr * nsg)) { if (nsg > 1) nsg /= 2; else nr /= 2; }
   QMvArgs args{(uint32_t)rows, (uint32_t)cols, (uint32_t)row_bytes(t, cols), (uint32_t)(rows / groups), (uint32_t)cols,
-               accumulate ? 1u : 0u, (uint32_t)a.ks, (uint32_t)n, (uint32_t)(cols * groups), (uint32_t)rows};
-  std::string fn = std::string("q_mvn_") + kn + "_r" + std::to_string(a.nr) + "_n" + std::to_string(nt);
+               accumulate ? 1u : 0u, 1u, (uint32_t)n, (uint32_t)(cols * groups), (uint32_t)rows};
+  std::string fn = std::string("q_mvn_") + kn + "_r" + std::to_string(nr) + "_n" + std::to_string(nt);
   e.set_pipeline(fn.c_str());
   e.set_buffer(0, W); e.set_buffer(1, X); e.set_buffer(2, Y);
   e.set_value(3, args);
-  const int rows_per_tg = a.nr * a.rsg;
-  e.set_threadgroup_memory(0, sizeof(float) * rows_per_tg * a.ks * nt);
-  e.dispatch_groups((rows + rows_per_tg - 1) / rows_per_tg, 1, 1, 32 * a.rsg * a.ks);
+  const int ck = (32 / gpu_lpb(t)) * gpu_qk(t);
+  e.set_threadgroup_memory(0, sizeof(uint16_t) * n * ck);
+  const int rows_per_tg = nr * nsg;
+  e.dispatch_groups((rows + rows_per_tg - 1) / rows_per_tg, 1, 1, 32 * nsg);
 }
 
 // ---------------------------------------------------------------- prefill matmul

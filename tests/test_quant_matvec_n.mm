@@ -1,4 +1,6 @@
 // matvec_n (n = 2..16 activation columns, one weight read) vs CPU reference, all types, incl. block-diagonal + acc.
+// The kernel stages x in threadgroup memory as half: checked tightly against a reference with x rounded to half,
+// and loosely (documented error) against the pure F32 reference.
 #include <cstdio>
 #include <vector>
 #include "quant_test_util.hpp"
@@ -26,16 +28,21 @@ int main() {
     auto Y0 = randvec((size_t)c.rows * c.n, 41);
     Buffer bw = upload(W.data(), W.size()), bx = upload(X.data(), X.size() * 4), by = upload(Y0.data(), Y0.size() * 4);
     { ms::Enc e; ms::q::encode_matvec_n(e, c.t, bw, c.rows, c.cols, bx, by, c.n, c.acc, c.groups); e.wait(); }
-    double err = 0;
+    double err = 0, errf = 0;
+    std::vector<float> xh(X.size());
+    for (size_t i = 0; i < X.size(); i++) xh[i] = (float)(_Float16)X[i];
     for (int t = 0; t < c.n; t++) {
-      std::vector<double> ry, mag;
-      ref_matvec(c.t, W.data(), c.rows, c.cols, X.data() + xs * t, ry, mag, c.groups);
-      if (c.acc) for (int i = 0; i < c.rows; i++) { ry[i] += Y0[(size_t)t * c.rows + i]; mag[i] += std::fabs(Y0[(size_t)t * c.rows + i]); }
-      err = std::max(err, max_norm_err((float*)by.cpu() + (size_t)t * c.rows, ry, mag, c.rows));
+      for (int hv = 0; hv < 2; hv++) {
+        std::vector<double> ry, mag;
+        ref_matvec(c.t, W.data(), c.rows, c.cols, (hv ? xh.data() : X.data()) + xs * t, ry, mag, c.groups);
+        if (c.acc) for (int i = 0; i < c.rows; i++) { ry[i] += Y0[(size_t)t * c.rows + i]; mag[i] += std::fabs(Y0[(size_t)t * c.rows + i]); }
+        double e = max_norm_err((float*)by.cpu() + (size_t)t * c.rows, ry, mag, c.rows);
+        if (hv) err = std::max(err, e); else errf = std::max(errf, e);
+      }
     }
-    bool ok = err <= 2e-5;
-    printf("  %-8s [%5d -> %5d] g%d n=%-2d %s max_err %.2e %s\n", ms::q::type_name(c.t), c.cols, c.rows, c.groups, c.n,
-           c.acc ? "acc" : "   ", err, ok ? "ok" : "FAIL");
+    bool ok = err <= 2e-6 && errf <= 2e-4;
+    printf("  %-8s [%5d -> %5d] g%d n=%-2d %s err(x half) %.2e  err(vs F32) %.2e %s\n", ms::q::type_name(c.t), c.cols,
+           c.rows, c.groups, c.n, c.acc ? "acc" : "   ", err, errf, ok ? "ok" : "FAIL");
     fails += !ok;
     dev.release(bw); dev.release(bx); dev.release(by);
   }
