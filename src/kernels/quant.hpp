@@ -59,26 +59,31 @@ size_t moe_decode_scratch_bytes();
 // barrier between them. swiglu: u = clamp(up, -10, 10), g = min(gate, 10), h = silu(g) * u * weight.
 void encode_moe_decode(Enc& e, const MoeDecodeArgs& a);
 
-// Prefill MoE (grouped GEMM over experts). Routing is given in expert-sorted order: for routed expert j (0..n_exp-1)
-// its tokens are entries [offs[j], offs[j+1]) of tok[] (token row in X) and wt[] (routing weight).
+// Prefill MoE (grouped GEMM over experts, tensor API). Routing is given in expert-sorted order: routed expert j
+// (0..n_exp-1, any subset of the layer's experts) owns entries [offs[j], offs[j+1]) of tok[] (token row in X) and
+// wt[] (routing weight). slot_of[t*k_per_token + k] = entry index of token t's k-th routed expert (-1 = none); the
+// final reduction sums Y[t] += shared(t) + sum_k Z[slot_of[t][k]] in that fixed order (deterministic).
+// Scratch layout (caller-owned, shared storage; must not be in use by an in-flight command buffer because the host
+// writes the expert pointer / tile tables into its header at encode time):
+//   header | Xg half[(total+n) x 5120] | H half[(total+n) x 2304] | Z f32[(total+n) x 5120]
 struct MoePrefillArgs {
   QType t_gate_up = QType::IQ1_S, t_down = QType::IQ1_S;
-  int n_tokens = 0;                 // rows of X / Y
-  int n_exp = 0;                    // number of experts with >= 1 token
-  const ExpertSlot* slots = nullptr;  // [n_exp]
-  const int* offs = nullptr;        // host [n_exp + 1] (host needs counts to size the grids)
-  Buffer tok;                       // device int32[total] token ids, expert-sorted (total = offs[n_exp])
-  Buffer wt;                        // device F32[total] routing weights, same order
-  Buffer slot_of;                   // device int32[n_tokens * k_per_token]: for token t, its entries' positions in
-  int k_per_token = 6;              //   tok[] (-1 = unused); used by the deterministic final reduction
+  int n_tokens = 0;                   // rows of X / Y
+  int n_exp = 0;                      // routed experts with >= 1 token
+  const ExpertSlot* slots = nullptr;  // host [n_exp]
+  const int* offs = nullptr;          // host [n_exp + 1], offs[0] = 0, offs[n_exp] = total
+  Buffer tok;                         // device int32[total]
+  Buffer wt;                          // device F32[total]
+  Buffer slot_of;                     // device int32[n_tokens * k_per_token]
+  int k_per_token = 6;
   bool has_shared = true;
   QType t_shared = QType::Q6_K;
   ExpertSlot shared;
-  Buffer X;                         // F32[n_tokens x 5120]
-  Buffer Y;                         // F32[n_tokens x 5120], ACCUMULATED
-  Buffer scratch;                   // >= moe_prefill_scratch_bytes(total, n_tokens)
+  Buffer X;                           // F32[n_tokens x 5120]
+  Buffer Y;                           // F32[n_tokens x 5120], ACCUMULATED
+  Buffer scratch;                     // >= moe_prefill_scratch_bytes(total, n_tokens, n_exp)
 };
-size_t moe_prefill_scratch_bytes(int total_entries, int n_tokens);
+size_t moe_prefill_scratch_bytes(int total_entries, int n_tokens, int n_exp = 384);
 void encode_moe_prefill(Enc& e, const MoePrefillArgs& a);
 
 }  // namespace ms::q

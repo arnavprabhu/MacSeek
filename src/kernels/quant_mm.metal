@@ -1,8 +1,5 @@
 // Prefill matmul probes / plain F16 GEMM (peak reference) using the Metal 4 tensor API (MetalPerformancePrimitives).
-#include "quant_blocks.h"
-#include <metal_tensor>
-#include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
-using namespace mpp::tensor_ops;
+#include "quant_tile.h"
 
 // C[n x m] = A[n x k] . B[m x k]^T  (A = activations half, B = weights half, both k-contiguous; C float m-contiguous)
 // Threadgroup tile TM (tokens) x TN (weight rows), NSG simdgroups, K loop in chunks of TK.
@@ -84,25 +81,6 @@ struct QMmArgs {
 kernel void q_f32_to_f16(device const float4* x [[buffer(0)]], device half4* y [[buffer(1)]], constant uint& n4 [[buffer(2)]],
                          uint i [[thread_position_in_grid]]) {
   if (i < n4) y[i] = half4(x[i]);
-}
-
-// Dequantize rows [r0, r0+TN) x K range [k0, k0+128) of W into a half tile (row stride TKP). Each work unit is one
-// lane-slice (EPL elements) of the Q decoder; for every supported block type the slices that cover a 128-element chunk
-// are LPC = 128/EPL consecutive lane indices, so g = k0/EPL + s enumerates them.
-template <typename Q, int TN, int TKP, int NT>
-static inline void q_tile_deq(device const uchar* W, uint row_bytes, uint rows, uint r0, uint k0,
-                              threadgroup half* tile, ushort tid) {
-  constexpr int LPC = 128 / Q::EPL;
-  for (int u = tid; u < TN * LPC; u += NT) {
-    const int row = u / LPC, s = u - row * LPC;
-    const uint g = k0 / Q::EPL + s, blk = g / Q::LPB;
-    const ushort sub = g - blk * Q::LPB;
-    device const uchar* b = W + (ulong)min(r0 + row, rows - 1) * row_bytes + (ulong)blk * Q::BB;
-    float4 w[Q::EPL / 4];
-    Q::deq(b, sub, w);
-    threadgroup half* trow = tile + row * TKP + (int)(blk * Q::QK) - (int)k0;
-    for (int q = 0; q < Q::EPL / 4; q++) *(threadgroup half4*)(trow + Q::pos(sub, 4 * q)) = half4(w[q]);
-  }
 }
 
 // Y[n x rows] (+)= X16[n x cols] . dequant(W)^T. TG tile: TM tokens x TN weight rows, K step 128, NBUF tile buffers.

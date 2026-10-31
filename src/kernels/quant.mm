@@ -1,9 +1,12 @@
 // Host encode functions of the quant module.
+#import <Metal/Metal.h>
 #include "kernels/quant.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <unordered_set>
+#include <vector>
 #include "core/env.hpp"
 
 namespace ms::q {
@@ -262,6 +265,117 @@ void encode_moe_decode(Enc& e, const MoeDecodeArgs& a) {
     e.set_threadgroup_memory(0, sizeof(float) * rows_per_tg * ks);
     e.dispatch_groups((kExpertDim + rows_per_tg - 1) / rows_per_tg, 1, 1, 32 * rsg * ks);
   }
+}
+
+// ---------------------------------------------------------------- MoE prefill
+namespace {
+constexpr int kMoeTM = 64, kMoeTN = 64;
+struct QMoePArgs { uint32_t n, total, dim, inter, rb_gu, rb_d, k_per_token; };
+const char* mm_moe_name(QType t) {
+  switch (t) {
+    case QType::IQ1_S: return "iq1_s"; case QType::IQ2_XXS: return "iq2_xxs";
+    case QType::Q6_K: return "q6_k"; case QType::Q8_0: return "q8_0";
+    default: return nullptr;
+  }
+}
+size_t align256(size_t v) { return (v + 255) & ~(size_t)255; }
+size_t moe_header_bytes(int total, int n, int n_exp) {
+  const size_t tiles = (size_t)n_exp + total / kMoeTM + n / kMoeTM + 4;
+  return align256(24 * (size_t)(n_exp + 1) + 4 * (size_t)(n_exp + 2) + 8 * tiles);
+}
+}  // namespace
+
+size_t moe_prefill_scratch_bytes(int total, int n, int n_exp) {
+  const size_t rows = (size_t)total + n;
+  return moe_header_bytes(total, n, n_exp) + align256(rows * kExpertDim * 2) + align256(rows * kExpertInter * 2) +
+         align256(rows * kExpertDim * 4);
+}
+
+void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
+  const int n = a.n_tokens, ne = a.n_exp;
+  if (n <= 0) return;
+  const int total = ne > 0 ? a.offs[ne] : 0;
+  const char *k_gu = mm_moe_name(a.t_gate_up), *k_d = mm_moe_name(a.t_down), *k_s = mm_moe_name(a.t_shared);
+  if (!k_gu || !k_d || !k_s) die("moe_prefill types", a.t_gate_up, 0, 0);
+  if (a.scratch.size < moe_prefill_scratch_bytes(total, n, ne)) die("moe_prefill scratch too small", a.t_gate_up, total, n);
+  // ---- host-written header: expert pointer table, offsets, tile tables
+  uint8_t* hdr = (uint8_t*)a.scratch.cpu();
+  const size_t hbytes = moe_header_bytes(total, n, ne);
+  uint64_t* ptrs = (uint64_t*)hdr;
+  uint32_t* offs = (uint32_t*)(hdr + 24 * (ne + 1));
+  uint32_t* tiles = (uint32_t*)(hdr + 24 * (ne + 1) + 4 * (ne + 2));
+  std::unordered_set<void*> bufs;
+  auto addr = [&](const Buffer& b) -> uint64_t {
+    bufs.insert(b.buf);
+    return [(__bridge id<MTLBuffer>)b.buf gpuAddress] + b.off;
+  };
+  for (int j = 0; j < ne; j++) {
+    ptrs[3 * j] = addr(a.slots[j].gate); ptrs[3 * j + 1] = addr(a.slots[j].up); ptrs[3 * j + 2] = addr(a.slots[j].down);
+    offs[j] = (uint32_t)a.offs[j];
+  }
+  offs[ne] = (uint32_t)total;
+  offs[ne + 1] = (uint32_t)(total + n);
+  if (a.has_shared) { ptrs[3 * ne] = addr(a.shared.gate); ptrs[3 * ne + 1] = addr(a.shared.up); ptrs[3 * ne + 2] = addr(a.shared.down); }
+  int nt_r = 0;
+  for (int j = 0; j < ne; j++)
+    for (int t0 = 0; t0 < a.offs[j + 1] - a.offs[j]; t0 += kMoeTM) { tiles[2 * nt_r] = j; tiles[2 * nt_r + 1] = t0; nt_r++; }
+  int nt_s = 0;
+  if (a.has_shared)
+    for (int t0 = 0; t0 < n; t0 += kMoeTM) { tiles[2 * (nt_r + nt_s)] = ne; tiles[2 * (nt_r + nt_s) + 1] = t0; nt_s++; }
+  const size_t rows = (size_t)total + n;
+  const Buffer s_hdr = a.scratch.sub(0, hbytes);
+  const Buffer s_xg = a.scratch.sub(hbytes, rows * kExpertDim * 2);
+  const size_t off_h = hbytes + align256(rows * kExpertDim * 2);
+  const Buffer s_h = a.scratch.sub(off_h, rows * kExpertInter * 2);
+  const size_t off_z = off_h + align256(rows * kExpertInter * 2);
+  const Buffer s_z = a.scratch.sub(off_z, rows * kExpertDim * 4);
+  const Buffer b_ptrs = s_hdr;
+  const Buffer b_offs = a.scratch.sub(24 * (ne + 1), 4 * (ne + 2));
+  const Buffer b_tiles_r = a.scratch.sub(24 * (ne + 1) + 4 * (ne + 2), 8 * (size_t)std::max(nt_r, 1));
+  const Buffer b_tiles_s = a.scratch.sub(24 * (ne + 1) + 4 * (ne + 2) + 8 * (size_t)nt_r, 8 * (size_t)std::max(nt_s, 1));
+  id<MTLComputeCommandEncoder> enc = (__bridge id<MTLComputeCommandEncoder>)e.encoder();
+  for (void* b : bufs) [enc useResource:(__bridge id<MTLBuffer>)b usage:MTLResourceUsageRead];
+
+  QMoePArgs args{(uint32_t)n, (uint32_t)total, (uint32_t)kExpertDim, (uint32_t)kExpertInter, 0, 0, (uint32_t)a.k_per_token};
+  // 1) gather + convert
+  e.set_pipeline("q_moe_gather");
+  e.set_buffer(0, a.X); e.set_buffer(1, s_xg); e.set_buffer(2, a.tok.buf ? a.tok : a.scratch); e.set_value(3, args);
+  e.dispatch_threads(kExpertDim / 4, (uint32_t)(a.has_shared ? rows : total), 1, 64, 1);
+  e.barrier();
+  // 2) gate + up + swiglu -> H (routed and shared dispatches run concurrently)
+  auto gu = [&](const char* kn, QType t, const Buffer& tl, int nt) {
+    if (nt == 0) return;
+    std::string fn = std::string("q_moe_mm_gu_") + kn;
+    QMoePArgs ar = args; ar.rb_gu = (uint32_t)row_bytes(t, kExpertDim);
+    e.set_pipeline(fn.c_str());
+    e.set_buffer(0, s_xg); e.set_buffer(1, s_h); e.set_value(2, ar); e.set_buffer(3, a.wt.buf ? a.wt : a.scratch);
+    e.set_buffer(4, b_ptrs); e.set_buffer(5, b_offs); e.set_buffer(6, tl);
+    e.set_threadgroup_memory(0, 2 * 2 * kMoeTN * 128);
+    e.dispatch_groups(kExpertInter / kMoeTN, nt, 1, 128);
+  };
+  gu(k_gu, a.t_gate_up, b_tiles_r, nt_r);
+  gu(k_s, a.t_shared, b_tiles_s, nt_s);
+  e.barrier();
+  // 3) down -> Z
+  auto dn = [&](const char* kn, QType t, const Buffer& tl, int nt) {
+    if (nt == 0) return;
+    std::string fn = std::string("q_moe_mm_down_") + kn;
+    QMoePArgs ar = args; ar.rb_d = (uint32_t)row_bytes(t, kExpertInter);
+    e.set_pipeline(fn.c_str());
+    e.set_buffer(0, s_h); e.set_buffer(1, s_z); e.set_value(2, ar);
+    e.set_buffer(4, b_ptrs); e.set_buffer(5, b_offs); e.set_buffer(6, tl);
+    e.set_threadgroup_memory(0, 2 * 2 * kMoeTN * 128);
+    e.dispatch_groups(kExpertDim / kMoeTN, nt, 1, 128);
+  };
+  dn(k_d, a.t_down, b_tiles_r, nt_r);
+  dn(k_s, a.t_shared, b_tiles_s, nt_s);
+  e.barrier();
+  // 4) deterministic reduction into Y
+  uint32_t hs = a.has_shared ? 1u : 0u;
+  e.set_pipeline("q_moe_reduce");
+  e.set_buffer(0, s_z); e.set_buffer(1, a.Y); e.set_value(2, args);
+  e.set_buffer(3, a.slot_of.buf ? a.slot_of : a.scratch); e.set_value(4, hs);
+  e.dispatch_threads(kExpertDim / 4, n, 1, 64, 1);
 }
 
 }  // namespace ms::q
