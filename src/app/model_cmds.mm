@@ -101,7 +101,13 @@ int cmd_bench(int argc, char** argv) {
   m.profile().reset();
   m.experts().reset_stats();
   ms::Timer td;
-  for (int i = 0; i < nd; i++) tok = m.decode(tok);
+  uint64_t th = 1469598103934665603ull;   // FNV-1a over the generated ids: equal hash = identical greedy output
+  std::string first;
+  for (int i = 0; i < nd; i++) {
+    tok = m.decode(tok);
+    th = (th ^ (uint32_t)tok) * 1099511628211ull;
+    if (i < 12) first += (i ? "," : "") + std::to_string(tok);
+  }
   double dec_s = td.ms() / 1e3;
   auto& p = m.profile();
   ms::LayerStats es = m.experts().total_stats();
@@ -118,11 +124,11 @@ int cmd_bench(int argc, char** argv) {
   ms::MemStatus m1 = ms::mem_status();
   printf("{\"depth\": %d, \"decode_tokens\": %d, \"decode_tok_s\": %.3f, \"ms_per_token\": %.2f, \"gpu_wait_ms\": %.2f, "
          "\"expert_ms\": %.2f, \"engram_ms\": %.3f, \"encode_ms\": %.3f, \"gpu_ms\": %.2f, \"io_stall_ms\": %.2f, \"expert_hit_rate\": %.4f, \"miss_GB_per_token\": %.4f, "
-         "\"prefill_tokens\": %d, \"prefill_tok_s\": %.2f, \"load_s\": %.2f, \"swap_grew\": %s}\n",
+         "\"prefill_tokens\": %d, \"prefill_tok_s\": %.2f, \"load_s\": %.2f, \"swap_grew\": %s, \"tok_hash\": \"%016llx\", \"first\": \"%s\"}\n",
          depth, nd, nd / dec_s, 1e3 * dec_s / nd, p.gpu_wait_ms / std::max(1, p.tokens), p.expert_ms / std::max(1, p.tokens),
          p.engram_ms / std::max(1, p.tokens), p.encode_ms / std::max(1, p.tokens), p.gpu_ms / std::max(1, p.tokens),
          p.io_stall_ms / std::max(1, p.tokens), es.hit_rate(),
-         es.bytes_read / 1e9 / std::max(1, nd), np, np > 0 ? np / pf_s : 0.0, load_s, ms::swap_grew(m0, m1) ? "true" : "false");
+         es.bytes_read / 1e9 / std::max(1, nd), np, np > 0 ? np / pf_s : 0.0, load_s, ms::swap_grew(m0, m1) ? "true" : "false", (unsigned long long)th, first.c_str());
   if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
   return 0;
 }
