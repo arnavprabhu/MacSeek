@@ -1,3 +1,4 @@
+#include <algorithm>
 // Model-backed CLI commands: gen, logits, snapshot, bench. Hooked from main.cpp.
 #include <cstdio>
 #include <cstring>
@@ -119,6 +120,20 @@ int cmd_bench(int argc, char** argv) {
   double dec_s = td.ms() / 1e3;
   auto& p = m.profile();
   ms::LayerStats es = m.experts().total_stats();
+  // --verify K: cost of K-token forward passes through the multi-token path right after decode (speculative-verify
+  // cost model): 16 consecutive passes over the corpus continuation, warm expert cache. Printed to stderr.
+  const int vk = std::stoi(arg(argc, argv, "--verify", "0"));
+  if (vk > 0) {
+    int at = m.pos();
+    std::vector<double> ts;
+    for (int r = 0; r < 16 && at + vk <= (int)corpus.size(); r++, at += vk) {
+      ms::Timer tv;
+      m.prefill(corpus.data() + at, vk);
+      ts.push_back(tv.ms());
+    }
+    std::sort(ts.begin(), ts.end());
+    if (!ts.empty()) fprintf(stderr, "verify: K=%d passes %zu median %.1f ms min %.1f ms max %.1f ms\n", vk, ts.size(), ts[ts.size() / 2], ts[0], ts.back());
+  }
   // prefill chunk at depth
   double pf_s = 0;
   if (np > 0) {
