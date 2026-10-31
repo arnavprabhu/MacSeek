@@ -20,7 +20,12 @@ This file is the contract between modules. If you change an interface, update th
   `MetalPerformancePrimitives` matmul2d) available, bf16 available. recommendedMaxWorkingSetSize = 56.6 GB.
 - SSD (F_NOCACHE pread): sequential 16 MB blocks 11.5 GB/s; random 2.3 MB reads 6.9 GB/s @1 thread, 14.1 @4,
   14.7 @8, 15.1 @16; random 16 KB: 15K IOPS @1 thread, ~95K IOPS @8-32 threads.
-- RAM bandwidth (GPU): TO MEASURE (kernels agent, `bench/membw`).
+- RAM bandwidth (GPU, `bench_membw`, 1 GiB streaming read, idle machine): **~285 GB/s** sustained (chunked read 284
+  median / 293 best; grid-stride float4 268-283; copy 260-265 GB/s counted as read+write). Use 285 GB/s as the decode
+  roofline input. Note: GPU benchmarks are badly skewed while a model process (llama-bench) runs; take best-of-N.
+- GPU matmul peak (`bench_qmatmul --peak`, Metal 4 tensor API MPP matmul2d, half x half -> float, 64x128 tiles,
+  K-step 128): **~31 TFLOPS**; float activations as the left operand drop to ~8 TFLOPS (convert to half first).
+  This is the prefill roofline input.
 
 ## 2. Model facts (from the GGUF; full tables in docs/tensors.txt and docs/metadata.txt)
 
@@ -148,12 +153,18 @@ bench/         microbenchmarks (membw, matvec, matmul, attention)
 - `Buffer { id<MTLBuffer> buf; size_t off; size_t size; }` — kernels bind `buf` at `off`.
 
 ### 4.2 Kernel families (kernels agents)
-1. `encode_matvec(e, qtype, W, rows, cols, x, y, accumulate=false)`  y[rows] = W[rows x cols] . x[cols]  (decode, n=1)
-2. `encode_matvec_n(e, qtype, W, rows, cols, X, Y, n)` for n in 2..16 (verify/draft blocks, small prefill tails)
-3. `encode_matmul(e, qtype, W, rows, cols, X[n x cols], Y[n x rows], n)` prefill, n >= 32; tensor-API/simdgroup tiles
-4. `encode_moe_decode(e, qtype_gate, qtype_up, qtype_down, slot_ptrs[6], weights[6], x, y)` fused gate+up+swiglu+clamp
-   then down, accumulating into y (6 experts + optional shared expert in one dispatch chain)
-5. `encode_moe_prefill(e, ..., routing table: per expert list of token ids + weights, X, Y)` grouped GEMM over experts
+Quant kernels live in `src/kernels/quant.hpp` (namespace `ms::q`, full docs: `docs/modules/quant.md`):
+1. `encode_matvec(e, qtype, W, rows, cols, x, y, accumulate=false, groups=1)`  y[rows] (+)= W[rows x cols] . x  (decode,
+   n=1, F32 math). `groups=8` = block-diagonal attn_output_a (group g reads x[g*cols..]).
+2. `encode_matvec_n(e, qtype, W, rows, cols, X, Y, n, accumulate=false, groups=1)` n in 1..16; x staged as half;
+   n >= 8 (groups==1) is routed to the tensor-API tile path.
+3. `encode_matmul(e, qtype, W, rows, cols, X[n x cols], Y[n x rows], n, accumulate=false)` prefill (any n; tuned for
+   n >= 32): Metal 4 tensor API (MPP matmul2d), half operands / F32 accumulate. `encode_f32_to_f16` +
+   `encode_matmul_h` let one converted X16 feed several matmuls. n >= 512: weight dequantized once to half + dense GEMM.
+4. `encode_moe_decode(e, MoeDecodeArgs{types, slot[6]{gate,up,down Buffers}, weights(device F32[6]), shared slot, x, y,
+   scratch})`: 2 dispatches (fused gate+up+clamp+swiglu*w for all 7 experts; down for all experts accumulated into y).
+5. `encode_moe_prefill(e, MoePrefillArgs{expert-sorted tok/wt, host offs, slot_of, slots, shared, X, Y, scratch})`:
+   gather -> grouped fused gate/up GEMM -> grouped down GEMM -> deterministic reduce into Y (accumulates).
 6. Elementwise/small: rmsnorm, rope (interleaved, table-driven), hc_mixes (F32 20480->24 matvec + sinkhorn), hc_pre,
    hc_post, router (sqrtsoftplus + bias top-6 + normalize), engram gate, compressor pool, fp8/fp4 quant-dequant sims.
 7. Attention: indexer scoring (decode: split over positions; prefill: tiled q x k with causal mask), top-k (512 of up to
