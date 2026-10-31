@@ -104,3 +104,12 @@
 61	4951	1793441926285690695	CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o	dbab83f6ae148215
 4951	5078	1793441931175715880	libmacseek_lib.a	c92379b5ad390a08
 5078	5277	1793441931302843342	macseek	74e87f55ce71244c
+6	39	1793442182456022869	/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/cmake.verify_globs	88c9a3cfb254549e
+61	2779	1793442182511828929	CMakeFiles/macseek.dir/src/app/model_cmds.mm.o	3abe4af7317901cf
+60	5097	1793442182510836175	CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o	dbab83f6ae148215
+5097	5233	1793442187547962013	libmacseek_lib.a	c92379b5ad390a08
+5233	5440	1793442187683170002	macseek	74e87f55ce71244c
+6	40	1793442422320887702	/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/cmake.verify_globs	88c9a3cfb254549e
+59	4923	1793442422374275670	CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o	dbab83f6ae148215
+4923	5046	1793442427238224351	libmacseek_lib.a	c92379b5ad390a08
+5046	5235	1793442427361156633	macseek	74e87f55ce71244c

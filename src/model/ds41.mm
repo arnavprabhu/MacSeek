@@ -65,6 +65,8 @@ struct Model::Impl {
   Buffer pids, pw;                   // (unused)
   Buffer plog;                       // decode: router logits of layers l+1..l+D applied to layer l's FFN input
   Buffer plog_n;
+  Buffer erow_b[2]; int erow_cur = 0;   // engram row buffers: current chunk / next chunk prefetch
+  struct EPend { bool active = false; const int32_t* toks = nullptr; int n = 0, pos = 0, b = 0; EngramFetcher::Ticket t0, t1; } epend;
   Buffer tbl;                        // decode table mode: [40][6][3] device addresses of the routed experts                     // prefill: router logits of layer l+1 on layer l's FFN input, [n][384]
   arch::Scratch asc2;                // second scratch for the predictor router (same kernel family)   // prefill MoE scratch + routing tables (double-buffered)
 };
@@ -171,6 +173,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.aout = A(n * 32768 * 4, "aout"); P.aout16 = A(n * 32768 * 2, "aout16"); P.otmp = A(n * 8192 * 4, "otmp");
   P.oa = A(n * 8192 * 4, "oa"); P.rlog = A(n * 384 * 4, "rlog"); P.rids = A(n * 6 * 4, "rids"); P.rw = A(n * 6 * 4, "rw");
   P.embrows = A(n * 4200 + 16384, "embrows"); P.erow = A(2 * n * 24 * 144 + 16384, "erow");
+  P.erow_b[0] = P.erow; P.erow_b[1] = A(2 * n * 24 * 144 + 16384, "erow2");
   P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(2 * n * 25600 * 4, "ekv");
   P.logits = A((size_t)std::max(o.max_logits_rows, 1) * cfg_.vocab * 4, "logits");
   P.amax_i = A(64, "amax_i"); P.amax_v = A(64, "amax_v");
@@ -218,8 +221,11 @@ int32_t Model::prefill(const int32_t* toks, int n, float* logits_all, float* log
   for (int i = 0; i < n; i += o_.max_chunk) {
     int m = std::min(o_.max_chunk, n - i);
     bool last = i + m == n;
+    next_toks_ = last ? nullptr : toks + i + m;
+    next_n_ = last ? 0 : std::min(o_.max_chunk, n - i - m);
     next = forward(toks + i, m, logits_all ? logits_all + (size_t)i * cfg_.vocab : nullptr, last ? logits_last : nullptr, 0.f, 0);
   }
+  next_toks_ = nullptr; next_n_ = 0;
   return next;
 }
 
@@ -237,16 +243,40 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
 
   // ---- CPU: engram hashes + rows (async), token embedding rows ----
   Timer te;
-  std::vector<uint32_t> hashes((size_t)n * 48);
-  hasher_->hash(toks, n, hashes.data());
-  std::vector<uint64_t> rows0((size_t)n * 24), rows1((size_t)n * 24);
-  for (int t = 0; t < n; t++)
-    for (int c = 0; c < 24; c++) { rows0[t * 24 + c] = hashes[t * 48 + c]; rows1[t * 24 + c] = hashes[t * 48 + 24 + c]; }
-  char* erow = (char*)P.erow.cpu();
-  auto tk0 = ef_->fetch(rows0.data(), rows0.size(), erow);
-  auto tk1 = ef_->fetch(rows1.data(), rows1.size(), erow + (size_t)n * 24 * 144);
+  // Engram rows depend only on token ids. A multi-chunk prefill fetches chunk i+1's rows while chunk i computes
+  // (MACSEEK_ENGRAM_AHEAD=0 disables): the hasher state after chunk i is known before chunk i runs.
+  static const bool engram_ahead = env_int("MACSEEK_ENGRAM_AHEAD", 1) != 0;
+  auto launch = [&](const int32_t* tk, int m, EngramHasher::State* from, int b, EngramFetcher::Ticket& t0, EngramFetcher::Ticket& t1) {
+    std::vector<uint32_t> hs((size_t)m * 48);
+    if (from) hasher_->hash_from(*from, tk, m, hs.data());
+    else hasher_->hash(tk, m, hs.data());
+    std::vector<uint64_t> r0((size_t)m * 24), r1((size_t)m * 24);
+    for (int t = 0; t < m; t++)
+      for (int c = 0; c < 24; c++) { r0[t * 24 + c] = hs[t * 48 + c]; r1[t * 24 + c] = hs[t * 48 + 24 + c]; }
+    char* dst = (char*)P.erow_b[b].cpu();
+    t0 = ef_->fetch(r0.data(), r0.size(), dst);
+    t1 = ef_->fetch(r1.data(), r1.size(), dst + (size_t)m * 24 * 144);
+  };
+  EngramFetcher::Ticket tk0, tk1;
+  if (P.epend.active && P.epend.toks == toks && P.epend.n == n && P.epend.pos == pos_) {
+    P.erow_cur = P.epend.b; tk0 = P.epend.t0; tk1 = P.epend.t1;
+    std::vector<uint32_t> tmp((size_t)n * 48);
+    hasher_->hash(toks, n, tmp.data());   // advance the streaming state
+  } else {
+    if (P.epend.active) { P.epend.t0.wait(); P.epend.t1.wait(); }   // stale prefetch: let it finish (buffer reuse)
+    P.erow_cur = 0;
+    launch(toks, n, nullptr, 0, tk0, tk1);
+  }
+  P.epend.active = false;
+  P.erow = P.erow_b[P.erow_cur];
   te_->fetch(toks, n, P.embrows.cpu());
   tk0.wait(); tk1.wait();
+  if (engram_ahead && next_toks_ && next_n_ > 0) {
+    EngramHasher::State st = hasher_->state();
+    const int b = 1 - P.erow_cur;
+    launch(next_toks_, next_n_, &st, b, P.epend.t0, P.epend.t1);
+    P.epend.active = true; P.epend.toks = next_toks_; P.epend.n = next_n_; P.epend.pos = pos_ + n; P.epend.b = b;
+  }
   double engram_ms = te.ms();
 
   const bool dec = n == 1;
@@ -644,7 +674,10 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       std::vector<int> used;
       for (int x = 0; x < 384; x++) if (!toks_of[x].empty()) used.push_back(x);
       // cached experts first, so the GPU starts while misses load
-      std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
+      // MACSEEK_PF_CACHED_FIRST=1: process cached experts first (GPU starts sooner) - but then the order in which groups
+      // accumulate into Y depends on cache timing, so outputs are not bit-reproducible. Default: fixed id order.
+      static const bool cached_first = env_int("MACSEEK_PF_CACHED_FIRST", 0) != 0;
+      if (cached_first) std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
       const int G = std::max(1, o_.moe_group);
       const int ngroups = ((int)used.size() + G - 1) / G;
       route_ms += troute.ms();
