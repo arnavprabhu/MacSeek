@@ -1,0 +1,16 @@
+mem before: total 64.0 GiB | avail 32.1 (free 2.4 inactive 29.5 spec 0.0 purg 0.1) | active 22.8 wired 3.6 compressed 5.1 | swap 0.34/2.00 | self rss 0.01 footprint 0.00
+resident weights: 921 tensors, 6.154 GiB (6.609 GB read incl. 16K rounding) in 986 ms = 6.70 GB/s; 1 MTLBuffers; threads 8 chunk 8 MiB; token_embd pread-on-demand; mlock off
+mem after: total 64.0 GiB | avail 25.4 (free 0.1 inactive 25.1 spec 0.0 purg 0.2) | active 24.7 wired 3.4 compressed 10.2 | swap 0.34/2.00 | self rss 1.39 footprint 6.18
+swap grew: no
+mem before: total 64.0 GiB | avail 34.2 (free 5.6 inactive 27.6 spec 0.7 purg 0.3) | active 23.0 wired 3.3 compressed 4.0 | swap 0.34/2.00 | self rss 0.01 footprint 0.00
+resident weights: 921 tensors, 6.154 GiB (6.609 GB read incl. 16K rounding) in 1201 ms = 5.50 GB/s; 1 MTLBuffers; threads 16 chunk 16 MiB; token_embd pread-on-demand; mlock ok (1179 ms)
+mem after: total 64.0 GiB | avail 25.2 (free 0.7 inactive 23.7 spec 0.5 purg 0.2) | active 23.9 wired 9.8 compressed 5.3 | swap 0.34/2.00 | self rss 6.16 footprint 6.18
+swap grew: no
+mem before: total 64.0 GiB | avail 29.6 (free 2.4 inactive 26.7 spec 0.5 purg 0.0) | active 26.8 wired 3.1 compressed 4.5 | swap 0.34/2.00 | self rss 0.01 footprint 0.00
+resident weights: 921 tensors, 6.154 GiB (6.609 GB read incl. 16K rounding) in 2383 ms = 2.77 GB/s; 1 MTLBuffers; threads 8 chunk 8 MiB; prefault 1; token_embd pread-on-demand; mlock off (0 ms)
+mem after: total 64.0 GiB | avail 25.8 (free 0.5 inactive 24.9 spec 0.4 purg 0.0) | active 24.9 wired 3.1 compressed 10.1 | swap 0.34/2.00 | self rss 0.63 footprint 6.18
+swap grew: no
+mem before: total 64.0 GiB | avail 33.9 (free 3.7 inactive 30.1 spec 0.0 purg 0.0) | active 23.6 wired 3.0 compressed 3.0 | swap 0.34/2.00 | self rss 0.01 footprint 0.00
+resident weights: 921 tensors, 6.154 GiB (6.609 GB read incl. 16K rounding) in 614 ms = 10.76 GB/s; 1 MTLBuffers; threads 8 chunk 8 MiB; prefault 0; token_embd pread-on-demand; mlock ok (372 ms)
+mem after: total 64.0 GiB | avail 26.2 (free 0.7 inactive 25.4 spec 0.0 purg 0.0) | active 25.2 wired 9.1 compressed 3.0 | swap 0.34/2.00 | self rss 6.18 footprint 6.18
+swap grew: no

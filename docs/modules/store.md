@@ -152,8 +152,8 @@ after a run.
   arrays, u64 multipliers, 43-item compress_ratios, chat template).
 - `test_store_experts`: synthetic 2-class expert file with byte-exact checks. Covers: miss/hit/data/stats, io_event
   GPU wait, LRU order, in-use protection (held lease + a GPU command buffer blocked on an event), prefetch
-  used/wasted, LFU keeps a hot expert where LRU does not, static pinning from a stats file (+ stats write/read),
-  alignment {1, 4K, 16K} x chunk {whole, 16K, 1M}, stream with a CPU consumer (cached + ring, file order, ring reuse
+  used/wasted, demand on a still-loading prefetch (promotion), LFU keeps a hot expert where LRU does not, static pinning from a stats file (+ stats write/read),
+  alignment {1, 4K, 16K} x chunk {whole, 16K, 1M}, mlock-wired arena, stream with a CPU consumer (cached + ring, file order, ring reuse
   across layers), stream with a GPU consumer (Metal kernel, 3-slot ring, one command buffer). Plus 5 real experts from
   all 3 classes vs plain preads.
 - `test_store_engram`: synthetic table, all 3 modes. Covers: dedupe, cache hits (no reads on repeat), batch of
@@ -163,19 +163,24 @@ after a run.
 
 ## 7. Benchmarks (real SSD; page-cache hygiene: experts/rows resident in the page cache (mincore) are avoided and nothing is read twice)
 
-All runs held the model lock (exclusive SSD) unless noted. Raw logs: `logs/bench_*.txt` in the worktree (not committed).
+All runs held the model lock (exclusive SSD). Raw outputs: `docs/modules/store-bench/*.txt`.
 
-**Resident weights (`bench_weights_load`, 921 tensors, 6.154 GiB, 6.609 GB read incl. 16 KiB rounding):**
+**Resident weights (`bench_weights_load`, 921 tensors, 6.154 GiB, 6.609 GB read incl. 16 KiB rounding).**
+Caveat: every run happened right after llama.cpp oracle/baseline runs that mmap the model. A mincore check showed
+**100% of the weight pages in the page cache**, and F_NOCACHE preads are served from cached pages. So these are *warm*
+numbers (memory copy + VM cost), not SSD numbers. They are still valid for comparing the variants:
 
-| config | load | GB/s | after load |
+| config (warm page cache) | load | GB/s | after load |
 |---|---|---|---|
 | 8 thr x 8 MiB, no mlock | 986 ms | 6.70 | rss 1.39 GiB / footprint 6.18: **~4.8 GB compressed by macOS within 1 s** |
 | 16 thr x 16 MiB, mlock after read | 1201 ms + 1179 ms mlock | 5.50 | rss 6.16 = footprint 6.18 (wired) |
 | 8 thr x 8 MiB, prefault (touch) first | 2383 ms | 2.77 | rss 0.63: idle zero pages compressed, then refaulted |
-| 8 thr x 8 MiB, mlock BEFORE read (new default) | WEIGHTS_MLOCK_FIRST |
+| **8 thr x 8 MiB, mlock BEFORE read (default)** | **614 ms** (372 mlock + 242 read) | 10.8 | rss 6.18 = footprint 6.18, nothing compressed |
 
-Hence `mlock` (wire before reading) is the default (`MACSEEK_WEIGHTS_MLOCK=0` to disable). Prefault without wiring
-is off.
+So wiring before the reads is both the fastest and the only variant that stays uncompressed. It is the default
+(`MACSEEK_WEIGHTS_MLOCK=0` to disable). A cold start should be ~6.6 GB / ~11.5 GB/s sequential ≈ 0.6 s + 0.37 s mlock
+≈ **1 s**, but that was not measured: the model lock was busy. `bench_weights_load` now prints the page-cache
+residency first, so a cold run qualifies itself.
 
 **Expert misses (`bench_experts_io lat`): 6 cold misses in one random layer, ensure() -> lease.wait() (12-20 iters per
 config, 41-55 MB per call):**
@@ -236,8 +241,9 @@ Prompt batch, 256 tokens = 12288 rows in one async request:
 | 16 KiB | 69.8 ms (176K) | 58.4 ms (210K) | 52.9 ms (232K) | 202.7 MB |
 
 - Decode target (< 1 ms) met with margin: **0.32 ms p50 / 0.41 ms p99 at QD 32**. Default: exact mode, 32
-  threads. Small reads are IOPS-bound (~237K IOPS at QD 64, well above the ~95K of 16 KiB reads). Exact 144 B reads
-  cost nothing extra in latency and move 100x fewer bytes than 16 KiB pages.
+  threads. Small reads are IOPS-bound: ~210K IOPS at QD 32 and ~235K at QD 64, for 144 B and 16 KiB reads alike (more
+  than the ~95K in SPEC §1, which came from a different probe). Exact 144 B reads move 100x fewer bytes than 16 KiB
+  pages at the same latency, so exact is the default.
 - Long prompts: 48 rows/token at ~237K rows/s ≈ **0.2 ms/token, about 40 s for a 200K-token prompt** before dedupe.
   This has to overlap with prefill compute: issue chunk k+1's rows while chunk k runs. Try QD 128 next.
 
