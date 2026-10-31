@@ -214,12 +214,19 @@ int32_t Model::prefill(const int32_t* toks, int n, float* logits_all, float* log
     next_toks_ = last ? nullptr : toks + i + m;
     next_n_ = last ? 0 : std::min(o_.max_chunk, n - i - m);
     next = forward(toks + i, m, logits_all ? logits_all + (size_t)i * cfg_.vocab : nullptr, last ? logits_last : nullptr, 0.f, 0);
+    // Scan-resistant expert cache across chunks (MACSEEK_PF_PIN=1): a chunk streams ~all 15K experts through an arena
+    // that holds a fraction of them, so LRU keeps nothing for the next chunk. Instead pin what is resident (most used
+    // first), keeping MACSEEK_PF_PIN_FREE slots per class unpinned for streaming. Released at the next decode.
+    static const bool pf_pin = env_int("MACSEEK_PF_PIN", 1) != 0;
+    static const int pf_pin_free = (int)env_int("MACSEEK_PF_PIN_FREE", 1200);
+    if (pf_pin && m >= 1024) pinned_ += cache_->pin_resident(pf_pin_free);
   }
   next_toks_ = nullptr; next_n_ = 0;
   return next;
 }
 
 int32_t Model::decode(int32_t tok, float* logits, float temperature, uint64_t seed) {
+  if (pinned_) { cache_->unpin_resident(); pinned_ = 0; }
   return forward(&tok, 1, nullptr, logits, temperature, seed);
 }
 

@@ -72,6 +72,7 @@ class Model {
   PrefillProfile pprof_;
   const int32_t* next_toks_ = nullptr;   // prefill: the next chunk (engram row prefetch)
   int next_n_ = 0;
+  long pinned_ = 0;   // experts pinned by a multi-chunk prefill (released at the next decode)
   int32_t forward(const int32_t* toks, int n, float* logits_all, float* logits_last, float temperature, uint64_t seed);
   std::unique_ptr<Gguf> g_;
   std::unique_ptr<Weights> w_;

@@ -473,6 +473,43 @@ void ExpertCache::unpin(int layer, const int* ids, int n) {
   cv_.notify_all();
 }
 
+int ExpertCache::pin_resident(int keep_unpinned) {
+  std::lock_guard<std::mutex> g(mu_);
+  int total = 0;
+  for (int c = 0; c < (int)classes_.size(); c++) {
+    int unpinned = 0, ready = 0;
+    std::vector<std::pair<double, int>> cand;
+    for (int s = 0; s < (int)slots_.size(); s++) {
+      const Slot& x = slots_[s];
+      if (x.cls != c || x.pinned) continue;
+      unpinned++;
+      if (x.state == Ready && x.key != ~0u) { cand.push_back({access_[x.key], s}); ready++; }
+    }
+    std::sort(cand.begin(), cand.end(), [](auto& a, auto& b) { return a.first > b.first; });
+    int pc = 0;
+    for (auto& pr : cand) {
+      if (unpinned <= keep_unpinned) break;
+      Slot& x = slots_[pr.second];
+      x.pinned = true; x.res_pin = true;
+      p_->policy->on_evict(pr.second, x.key);   // leaves the policy's candidate set
+      unpinned--; total++; pc++;
+    }
+    if (getenv("MACSEEK_VERBOSE")) fprintf(stderr, "pin_resident: class %d: %d unpinned (%d ready) -> pinned %d\n", c, unpinned + pc, ready, pc);
+  }
+  return total;
+}
+
+void ExpertCache::unpin_resident() {
+  std::lock_guard<std::mutex> g(mu_);
+  for (int s = 0; s < (int)slots_.size(); s++) {
+    Slot& x = slots_[s];
+    if (!x.res_pin) continue;
+    x.res_pin = false; x.pinned = false;
+    if (x.key != ~0u) p_->policy->on_insert(s, x.key);
+  }
+  cv_.notify_all();
+}
+
 bool ExpertCache::contains(int layer, int e) const { std::lock_guard<std::mutex> g(mu_); return map_[key(layer, e)] >= 0; }
 
 int ExpertCache::n_pinned() const {

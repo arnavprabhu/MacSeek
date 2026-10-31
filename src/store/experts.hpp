@@ -174,6 +174,10 @@ class ExpertCache {
   // Pin/unpin: pinned slots are never evicted (pin loads absent experts at low priority). Returns slots pinned.
   int pin(int layer, const int* ids, int n);
   void unpin(int layer, const int* ids, int n);
+  // Scan-resistant multi-chunk prefill: pin resident (Ready, unpinned) experts, most-accessed first, leaving at least
+  // keep_unpinned slots per class for streaming. Returns slots pinned. unpin_resident() releases them all.
+  int pin_resident(int keep_unpinned);
+  void unpin_resident();
   bool contains(int layer, int expert) const;       // present (ready or loading)
   void drain();                                     // wait until no load is in flight
 
@@ -208,7 +212,7 @@ class ExpertCache {
   enum State : uint8_t { Empty, Loading, Ready };
   struct Slot {
     int cls = 0; uint32_t key = ~0u; State state = Empty;
-    int ref = 0; bool pinned = false, prefetched = false, used = false;
+    int ref = 0; bool pinned = false, prefetched = false, used = false, res_pin = false;
     char* host = nullptr; Buffer buf; uint64_t gpu = 0;   // slot base
     std::vector<uint64_t> waiters;                       // lease tickets waiting for this slot
     IoRequest* req = nullptr;                            // in-flight request (for promotion)
