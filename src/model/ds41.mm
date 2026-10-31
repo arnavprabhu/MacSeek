@@ -54,6 +54,7 @@ struct LayerW {
 struct Model::Impl {
   std::vector<LayerW> L;
   W out_norm, head;
+  std::vector<W> pred_w;             // Q8_0 copies of each layer's router (prediction only: never affects outputs)
   attn::State ast;
   arch::Scratch asc;
   int maxn = 0;
@@ -120,6 +121,27 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   }
   P.out_norm = wt(*w_, "output_norm.weight");
   P.head = wt(*w_, "output.weight");
+  {  // Q8_0 router copies for next-layer prediction: 2.1 MB instead of 7.9 MB per layer read each decode token
+    const int R = 384, C = 5120, nb = C / 32;
+    const size_t rb = (size_t)nb * 34;
+    Buffer all = d.alloc(rb * R * cfg_.n_layers, "pred_w");
+    P.pred_w.resize(cfg_.n_layers);
+    for (int l = 0; l < cfg_.n_layers; l++) {
+      const float* src = (const float*)P.L[l].gate_inp.b.cpu();
+      uint8_t* dst = (uint8_t*)all.cpu() + (size_t)l * rb * R;
+      for (int r = 0; r < R; r++)
+        for (int b = 0; b < nb; b++) {
+          const float* x = src + (size_t)r * C + b * 32;
+          float amax = 0; for (int i = 0; i < 32; i++) amax = std::max(amax, std::fabs(x[i]));
+          float dd = amax / 127.f, id = dd > 0 ? 1.f / dd : 0.f;
+          uint8_t* blk = dst + (size_t)r * rb + (size_t)b * 34;
+          __fp16 h = (__fp16)dd; memcpy(blk, &h, 2);
+          for (int i = 0; i < 32; i++) ((int8_t*)blk)[2 + i] = (int8_t)std::lround(x[i] * id);
+        }
+      W w; w.b = all.sub((size_t)l * rb * R, rb * R); w.t = QType::Q8_0; w.rows = R; w.cols = C;
+      P.pred_w[l] = w;
+    }
+  }
 
   // engram hashing
   ehp_ = std::make_unique<EngramHashParams>();
@@ -350,7 +372,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       // (logits only; the CPU picks the top pred_k by score+bias after the router handoff)
       if (pred_on)
         for (int d = 1; d <= pred_depth && l + d < cfg_.n_layers; d++) {
-          const W& g = P.L[l + d].gate_inp;
+          static const bool pred_q8 = env_int("MACSEEK_PRED_Q8", 1) != 0;
+          const W& g = pred_q8 ? P.pred_w[l + d] : P.L[l + d].gate_inp;
           q::encode_matvec(E, g.t, g.b, g.rows, g.cols, P.x, P.plog.sub((size_t)(d - 1) * 384 * 4, 384 * 4));
         }
     }

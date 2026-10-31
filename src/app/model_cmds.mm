@@ -149,23 +149,40 @@ int cmd_gen(int argc, char** argv) {
   }
   int n = std::stoi(arg(argc, argv, "-n", "64"));
   float temp = std::stof(arg(argc, argv, "--temp", "0"));
+  bool ignore_eos = flag(argc, argv, "--ignore-eos");
   ms::ds41::Model m;
+  // --state S: continue from a snapshot; the prompt is ids[pos..] (the snapshot holds ids[0..pos))
+  std::string st = arg(argc, argv, "--state");
+  size_t from = 0;
+  if (!st.empty()) { if (!m.load_state(st)) { fprintf(stderr, "load_state failed\n"); return 1; } from = (size_t)m.pos(); }
   ms::Timer t;
-  int32_t tok = m.prefill(ids.data(), (int)ids.size());
+  int32_t tok = m.prefill(ids.data() + from, (int)(ids.size() - from));
   double pf = t.ms() / 1e3;
-  fprintf(stderr, "prefill: %zu tokens in %.2f s (%.1f tok/s)\n", ids.size(), pf, ids.size() / pf);
+  fprintf(stderr, "prefill: %zu tokens in %.2f s (%.1f tok/s)\n", ids.size() - from, pf, (ids.size() - from) / pf);
+  std::string text;
+  std::vector<double> win;  // tok/s per 64-token window (sustained-speed check)
+  ms::Timer tw;
   ms::tok::StreamDecoder dec(*tk);
   ms::Timer td;
   int i = 0;
   for (; i < n; i++) {
-    if (tk->is_eog(tok)) break;
+    if (!ignore_eos && tk->is_eog(tok)) break;
     std::string s = dec.push(tok);
-    fwrite(s.data(), 1, s.size(), stdout); fflush(stdout);
+    text += s;
+    if (!flag(argc, argv, "--quiet")) { fwrite(s.data(), 1, s.size(), stdout); fflush(stdout); }
     tok = m.decode(tok, nullptr, temp, 1234 + i);
+    if ((i + 1) % 64 == 0) { win.push_back(64 / (tw.ms() / 1e3)); tw.reset(); }
   }
-  std::string s = dec.flush(); fwrite(s.data(), 1, s.size(), stdout);
+  std::string s = dec.flush(); text += s;
+  if (!flag(argc, argv, "--quiet")) fwrite(s.data(), 1, s.size(), stdout);
   printf("\n");
   fprintf(stderr, "decode: %d tokens, %.2f tok/s\n", i, i / (td.ms() / 1e3));
+  if (!win.empty()) {
+    std::string w; for (size_t k = 0; k < win.size(); k++) { char b[32]; snprintf(b, sizeof b, "%s%.2f", k ? "," : "", win[k]); w += b; }
+    fprintf(stderr, "decode windows (tok/s per 64): %s\n", w.c_str());
+  }
+  std::string out = arg(argc, argv, "--out");
+  if (!out.empty()) { std::ofstream f(out); f << text; }
   if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
   return 0;
 }
