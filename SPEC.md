@@ -122,10 +122,15 @@ src/core/      metal.hpp/.mm   Device/queue/library/pipeline cache, Buffer (MTLB
                arena.hpp/.cpp  page-aligned allocations wrapped as no-copy shared MTLBuffers; residency set
                timer.hpp, log.hpp, env.hpp (MACSEEK_* env flags)
 src/gguf/      gguf.hpp/.cpp   mmap-free parser of all splits: metadata map, tensor table {name,type,dims,file,offset,nbytes}
-src/store/     weights.*       loads resident (dense) tensors into arena buffers, optional repack per kernel layout
-               experts.*       expert cache: slot arena (one slot = gate+up+down of one (layer,expert)), pread pool
-                               (F_NOCACHE, 8-16 threads), policy (LFU/LRU/frequency-pinned), stats, prefetch API
-               engram.*        engram row fetcher: hashes -> rows (pread 144 B rows, row cache), batch prefetch for prompts
+src/store/     weights.*       loads resident (dense) tensors into arena buffers, optional repack per kernel layout;
+                               TokenEmbd = token_embd rows by pread (not resident by default)
+               experts.*       expert cache: slot arena (one slot = gate+up+down of one (layer,expert), per-size-class
+                               pools), pread pool (F_NOCACHE, 8-16 threads), policy.cpp (LRU / sampled LFU with aging /
+                               static frequency-pinned), stats, ensure/prefetch/pin, leases released by command-buffer
+                               completion, io_event (MTLSharedEvent) GPU waits, bulk stream ring for prefill
+               engram.*        engram row fetcher: rows -> packed 144 B rows (dedupe, 8-way row cache, async batches)
+               io_pool.*       pread thread pool (2 priorities);  memguard.* free RAM / swap / arena sizing
+                               (full API + bench numbers: docs/modules/store.md)
 src/kernels/   *.metal         all GPU kernels;  kernels.hpp/.mm  host-side `encode_*` functions (one per kernel family)
 src/model/     ds41.hpp/.mm    model state (KV rings, compressed caches, indexer caches, compressor states, engram hash
                                history), forward_decode(token), forward_prefill(tokens chunk), save/load state snapshot
@@ -173,7 +178,9 @@ bit-exactly (enables the 1-minute loop: load 200K snapshot, decode 128, time a 2
 ## 5. Memory plan (64 GB)
 OS/apps headroom >= 8 GB (never swap: check `sysctl vm.swapusage` before/after every run). Resident dense weights
 ~6.5 GB; token_embd stays mmap/pread (lookup only). Activations/scratch for prefill chunk <= 2 GB. State at 200K < 1 GB.
-Expert slot arena = remainder, target ~38-42 GB (~40% of all experts). Engram row cache <= 1 GB.
+Expert slot arena = remainder, target ~38-42 GB (~40% of all experts; 40 GiB = 141 slots/layer = 36.7%), sized at
+startup with `ms::recommend_arena_bytes(planned_other)` (available - 8 GiB headroom - what is still to be allocated).
+Engram row cache <= 1 GB.
 
 ## 6. Correctness gates
 - (A) kernels: every kernel has a CPU reference (tests/ref) and a ctest with abs/rel tolerances on random data and the

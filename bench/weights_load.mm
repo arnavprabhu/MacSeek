@@ -27,9 +27,9 @@ int main(int argc, char** argv) {
   Weights w(g, o);
   MemStatus m1 = mem_status();
   printf("resident weights: %zu tensors, %.3f GiB (%.3f GB read incl. 16K rounding) in %.0f ms = %.2f GB/s; %zu MTLBuffers; "
-         "threads %d chunk %zu MiB; token_embd %s; mlock %s\n",
+         "threads %d chunk %zu MiB; token_embd %s; mlock %s (%.0f ms)\n",
          w.all().size(), w.bytes() / 1073741824.0, w.bytes_read() / 1e9, w.load_ms(), w.gbps(), w.buffers().size(), o.threads,
-         o.read_chunk >> 20, o.token_embd_resident ? "resident" : "pread-on-demand", o.mlock ? (w.locked() ? "ok" : "FAILED") : "off");
+         o.read_chunk >> 20, o.token_embd_resident ? "resident" : "pread-on-demand", o.mlock ? (w.locked() ? "ok" : "FAILED") : "off", w.lock_ms());
   printf("mem after: %s\nswap grew: %s\n", m1.str().c_str(), swap_grew(m0, m1) ? "YES" : "no");
   return 0;
 }

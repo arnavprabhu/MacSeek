@@ -118,8 +118,8 @@ Weights::Weights(const Gguf& g, const WeightsOptions& o) {
       tensors_.push_back(std::move(w));
     }
   }
-  if (o.mlock) locked_ = mlock(arena_, arena_size_) == 0;
   load_ms_ = timer.ms();
+  if (o.mlock) { Timer tl; locked_ = mlock(arena_, arena_size_) == 0; lock_ms_ = tl.ms(); }
 }
 
 Weights::~Weights() {

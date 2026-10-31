@@ -61,7 +61,8 @@ class Weights {
   uint64_t bytes() const { return bytes_; }              // tensor bytes loaded
   uint64_t bytes_read() const { return bytes_read_; }    // bytes actually read (incl. 16K rounding)
   uint64_t arena_bytes() const { return arena_size_; }
-  double load_ms() const { return load_ms_; }
+  double load_ms() const { return load_ms_; }            // read + wrap (excludes mlock)
+  double lock_ms() const { return lock_ms_; }
   double gbps() const { return load_ms_ > 0 ? bytes_read_ / (load_ms_ * 1e6) : 0; }
   bool locked() const { return locked_; }
 
@@ -71,7 +72,7 @@ class Weights {
   std::vector<Buffer> bufs_;
   char* arena_ = nullptr;
   uint64_t arena_size_ = 0, bytes_ = 0, bytes_read_ = 0;
-  double load_ms_ = 0;
+  double load_ms_ = 0, lock_ms_ = 0;
   bool locked_ = false;
 };
 
