@@ -37,4 +37,27 @@ with open(sys.argv[2], 'w') as f:
     f.write('#define Q_KSIGNS_IQ2XS_VALUES \\\n  ' + fmt(ksigns, 2) + '\n\n')
     f.write('// derived: 7-bit sign index -> 8 byte masks (0xFF = negate element j)\n')
     f.write('#define Q_IQ2_SIGNMASK_VALUES \\\n  ' + fmt(signmask, 16) + '\n')
+    # derived: IQ1_S grid as 8 halfs per entry (4 x uint32, little endian: element 2i in the low half of word i)
+    H = {0xff: 0xBC00, 0x00: 0x0000, 0x01: 0x3C00}
+    words = []
+    for v in iq1s:
+        b = [(v >> (8 * j)) & 0xff for j in range(8)]
+        for i in range(4): words.append(H[b[2 * i]] | (H[b[2 * i + 1]] << 16))
+    f.write('\n// derived: IQ1_S grid as half values, 4 x uint32 (= 8 halfs) per entry\n')
+    f.write('#define Q_IQ1S_GRID_HALF_VALUES \\\n  ' + fmt(words, 8) + '\n')
+    import struct as _st
+    def h(v): return _st.unpack('<H', _st.pack('<e', float(v)))[0]
+    words = []
+    for v in iq2xxs:
+        b = [(v >> (8 * j)) & 0xff for j in range(8)]
+        for i in range(4): words.append(h(b[2 * i]) | (h(b[2 * i + 1]) << 16))
+    f.write('\n// derived: IQ2_XXS grid as half values, 4 x uint32 per entry\n')
+    f.write('#define Q_IQ2XXS_GRID_HALF_VALUES \\\n  ' + fmt(words, 8) + '\n')
+    words = []
+    for sg in ksigns:
+        for i in range(4):
+            w = (0x8000 if sg & (1 << (2 * i)) else 0) | (0x80000000 if sg & (1 << (2 * i + 1)) else 0)
+            words.append(w)
+    f.write('\n// derived: 7-bit sign index -> half sign-bit masks (4 x uint32 = 8 halfs)\n')
+    f.write('#define Q_IQ2_SIGNH_VALUES \\\n  ' + fmt(words, 8) + '\n')
 print('ok')

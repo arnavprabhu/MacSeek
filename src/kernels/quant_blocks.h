@@ -135,63 +135,80 @@ struct QB_Q5K {
   }
 };
 
-// ---------------- IQ1_S: {half d; qs[32]; u16 qh[8]} 50 B. 16 lanes; lane = (sub-block ib = sub>>1, half hf):
-// 16 contiguous elements 32ib + 16hf + i = 2 grid groups. xr[4].x holds sum(x) for the delta term ----------------
-struct QB_IQ1S {
-  static constexpr constant int QK = 256, BB = 50, LPB = 16, EPL = 16, X4 = 5;
-  static inline ushort pos(ushort sub, ushort i) { return 16 * sub + i; }
+// ---------------- IQ1_S {half d; qs[32]; u16 qh[8]} 50 B and IQ2_XXS {half d; u16 qs[32]} 66 B.
+// L lanes per block (16 -> 2 grid groups per lane, 8 -> 4 groups = one sub-block),
+// half-valued grid tables (one uint4 constant load per 8 weights, half->float conversion is free) ----
+template <int L>
+struct QB_IQ1S_T {
+  static constexpr constant int QK = 256, BB = 50, LPB = L, EPL = 256 / L, X4 = 256 / L / 4 + 1, G = 256 / L / 8;
+  static inline ushort pos(ushort sub, ushort i) { return EPL * sub + i; }
   static inline void load_x(device const float* xb, ushort sub, thread float4* xr) {
-    device const float4* p = (device const float4*)(xb + 16 * sub);
-    xr[0] = p[0]; xr[1] = p[1]; xr[2] = p[2]; xr[3] = p[3];
-    xr[4] = float4(metal::dot((xr[0] + xr[1]) + (xr[2] + xr[3]), float4(1.f)), 0, 0, 0);
+    device const float4* p = (device const float4*)(xb + EPL * sub);
+    float4 s = 0;
+    for (int k = 0; k < EPL / 4; k++) { xr[k] = p[k]; s += xr[k]; }
+    xr[EPL / 4] = float4(metal::dot(s, float4(1.f)), 0, 0, 0);
   }
-  static inline void grid(device const uchar* b, ushort sub, thread uint2& g0, thread uint2& g1, thread float& dl,
-                          thread float& delta) {
-    const int ib = sub >> 1, l = 2 * (sub & 1);
-    const uint qh = q_ld16(b + 34 + 2 * ib), qs = q_ld16(b + 2 + 4 * ib + 2 * (sub & 1));
-    g0 = as_type<uint2>(q_iq1s_grid[(qs & 0xFF) | (((qh >> (3 * l)) & 7) << 8)]);
-    g1 = as_type<uint2>(q_iq1s_grid[(qs >> 8) | (((qh >> (3 * l + 3)) & 7) << 8)]);
-    dl = q_ldh(b) * float(2 * ((qh >> 12) & 7) + 1);
-    delta = (qh & 0x8000) ? -0.125f : 0.125f;
+  static inline uint qsbytes(device const uchar* b, int ib, int l0) {
+    return G == 4 ? q_ld32(b + 2 + 4 * ib) : uint(q_ld16(b + 2 + 4 * ib + l0));
   }
   static inline void deq(device const uchar* b, ushort sub, thread float4* w) {
-    uint2 g0, g1; float dl, delta; grid(b, sub, g0, g1, dl, delta);
-    w[0] = dl * (q_i8x4(g0.x) + delta); w[1] = dl * (q_i8x4(g0.y) + delta);
-    w[2] = dl * (q_i8x4(g1.x) + delta); w[3] = dl * (q_i8x4(g1.y) + delta);
+    const int ib = (EPL * sub) >> 5, l0 = ((EPL * sub) & 31) >> 3;
+    const uint qh = q_ld16(b + 34 + 2 * ib), qs = qsbytes(b, ib, l0);
+    const float dl = q_ldh(b) * float(2 * ((qh >> 12) & 7) + 1), delta = (qh & 0x8000) ? -0.125f : 0.125f;
+    for (int g = 0; g < G; g++) {
+      const uint4 e = q_tbl4(q_iq1s_gridh, ((qs >> (8 * g)) & 0xFF) | (((qh >> (3 * (l0 + g))) & 7) << 8));
+      w[2 * g] = dl * (float4(as_type<half4>(e.xy)) + delta);
+      w[2 * g + 1] = dl * (float4(as_type<half4>(e.zw)) + delta);
+    }
   }
   static inline float dot(device const uchar* b, ushort sub, thread const float4* xr) {
-    uint2 g0, g1; float dl, delta; grid(b, sub, g0, g1, dl, delta);
-    const float s = metal::dot(q_i8x4(g0.x), xr[0]) + metal::dot(q_i8x4(g0.y), xr[1]) +
-                    metal::dot(q_i8x4(g1.x), xr[2]) + metal::dot(q_i8x4(g1.y), xr[3]);
-    return dl * (s + delta * xr[4].x);
+    const int ib = (EPL * sub) >> 5, l0 = ((EPL * sub) & 31) >> 3;
+    const uint qh = q_ld16(b + 34 + 2 * ib), qs = qsbytes(b, ib, l0);
+    float s = 0;
+    for (int g = 0; g < G; g++) {
+      const uint4 e = q_tbl4(q_iq1s_gridh, ((qs >> (8 * g)) & 0xFF) | (((qh >> (3 * (l0 + g))) & 7) << 8));
+      s += metal::dot(float4(as_type<half4>(e.xy)), xr[2 * g]) + metal::dot(float4(as_type<half4>(e.zw)), xr[2 * g + 1]);
+    }
+    const float dl = q_ldh(b) * float(2 * ((qh >> 12) & 7) + 1);
+    return dl * (s + ((qh & 0x8000) ? -0.125f : 0.125f) * xr[EPL / 4].x);
   }
 };
 
-// ---------------- IQ2_XXS: {half d; u16 qs[32]} 66 B. 16 lanes; lane = (ib = sub>>1, hf): 2 grid groups ----------------
-struct QB_IQ2XXS {
-  static constexpr constant int QK = 256, BB = 66, LPB = 16, EPL = 16, X4 = 4;
-  static inline ushort pos(ushort sub, ushort i) { return 16 * sub + i; }
+template <int L>
+struct QB_IQ2XXS_T {
+  static constexpr constant int QK = 256, BB = 66, LPB = L, EPL = 256 / L, X4 = 256 / L / 4, G = 256 / L / 8;
+  static inline ushort pos(ushort sub, ushort i) { return EPL * sub + i; }
   static inline void load_x(device const float* xb, ushort sub, thread float4* xr) {
-    device const float4* p = (device const float4*)(xb + 16 * sub);
-    xr[0] = p[0]; xr[1] = p[1]; xr[2] = p[2]; xr[3] = p[3];
+    device const float4* p = (device const float4*)(xb + EPL * sub);
+    for (int k = 0; k < EPL / 4; k++) xr[k] = p[k];
   }
-  // signed grid bytes: g ^ m + (m & 1) negates the bytes selected by m (grid bytes are >= 8, so no carries)
-  static inline void grid(device const uchar* b, ushort sub, thread uint2& s0, thread uint2& s1, thread float& db) {
-    const int ib = sub >> 1, l = 2 * (sub & 1);
-    const uint a1 = q_ld32(b + 6 + 8 * ib), idx = q_ld16(b + 2 + 8 * ib + 2 * (sub & 1));
-    const ulong m0 = q_iq2_signmask[(a1 >> (7 * l)) & 127], m1 = q_iq2_signmask[(a1 >> (7 * l + 7)) & 127];
-    const ulong g0 = q_iq2xxs_grid[idx & 0xFF], g1 = q_iq2xxs_grid[idx >> 8];
-    s0 = as_type<uint2>((g0 ^ m0) + (m0 & 0x0101010101010101ul));
-    s1 = as_type<uint2>((g1 ^ m1) + (m1 & 0x0101010101010101ul));
-    db = q_ldh(b) * (0.5f + float(a1 >> 28)) * 0.25f;
+  static inline uint idxbytes(device const uchar* b, int ib, int l0) {
+    return G == 4 ? q_ld32(b + 2 + 8 * ib) : uint(q_ld16(b + 2 + 8 * ib + l0));
+  }
+  static inline uint4 sgrid(uint idx, uint a1, int l) {
+    return q_tbl4(q_iq2xxs_gridh, idx) ^ q_tbl4(q_iq2_signh, (a1 >> (7 * l)) & 127);
   }
   static inline void deq(device const uchar* b, ushort sub, thread float4* w) {
-    uint2 s0, s1; float db; grid(b, sub, s0, s1, db);
-    w[0] = db * q_i8x4(s0.x); w[1] = db * q_i8x4(s0.y); w[2] = db * q_i8x4(s1.x); w[3] = db * q_i8x4(s1.y);
+    const int ib = (EPL * sub) >> 5, l0 = ((EPL * sub) & 31) >> 3;
+    const uint a1 = q_ld32(b + 6 + 8 * ib), idx = idxbytes(b, ib, l0);
+    const float db = q_ldh(b) * (0.5f + float(a1 >> 28)) * 0.25f;
+    for (int g = 0; g < G; g++) {
+      const uint4 e = sgrid((idx >> (8 * g)) & 0xFF, a1, l0 + g);
+      w[2 * g] = db * float4(as_type<half4>(e.xy)); w[2 * g + 1] = db * float4(as_type<half4>(e.zw));
+    }
   }
   static inline float dot(device const uchar* b, ushort sub, thread const float4* xr) {
-    uint2 s0, s1; float db; grid(b, sub, s0, s1, db);
-    return db * (metal::dot(q_i8x4(s0.x), xr[0]) + metal::dot(q_i8x4(s0.y), xr[1]) +
-                 metal::dot(q_i8x4(s1.x), xr[2]) + metal::dot(q_i8x4(s1.y), xr[3]));
+    const int ib = (EPL * sub) >> 5, l0 = ((EPL * sub) & 31) >> 3;
+    const uint a1 = q_ld32(b + 6 + 8 * ib), idx = idxbytes(b, ib, l0);
+    float s = 0;
+    for (int g = 0; g < G; g++) {
+      const uint4 e = sgrid((idx >> (8 * g)) & 0xFF, a1, l0 + g);
+      s += metal::dot(float4(as_type<half4>(e.xy)), xr[2 * g]) + metal::dot(float4(as_type<half4>(e.zw)), xr[2 * g + 1]);
+    }
+    return q_ldh(b) * (0.5f + float(a1 >> 28)) * 0.25f * s;
   }
 };
+
+// production choice (bench_qmatvec: 16 lanes beat 8 on the expert shapes; half tables beat int8 + convert by ~30%)
+typedef QB_IQ1S_T<16> QB_IQ1S;
+typedef QB_IQ2XXS_T<16> QB_IQ2XXS;

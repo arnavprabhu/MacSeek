@@ -3,9 +3,11 @@
 #include "common.h"
 #include "quant_grids.h"
 
-constant ulong q_iq1s_grid[2048] = {Q_IQ1S_GRID_VALUES};
-constant ulong q_iq2xxs_grid[256] = {Q_IQ2XXS_GRID_VALUES};
-constant ulong q_iq2_signmask[128] = {Q_IQ2_SIGNMASK_VALUES};
+// half-valued tables (16-byte aligned so one entry = one uint4 load)
+constant uint q_iq1s_gridh[8192] __attribute__((aligned(16))) = {Q_IQ1S_GRID_HALF_VALUES};
+constant uint q_iq2xxs_gridh[1024] __attribute__((aligned(16))) = {Q_IQ2XXS_GRID_HALF_VALUES};
+constant uint q_iq2_signh[512] __attribute__((aligned(16))) = {Q_IQ2_SIGNH_VALUES};
+static inline uint4 q_tbl4(constant uint* t, uint i) { return ((constant uint4*)t)[i]; }
 
 // ---- unaligned-safe loads: GGUF blocks are only 2-byte aligned (34/50/66/176/210-byte blocks) ----
 static inline uint q_ld32(device const uchar* p) {
