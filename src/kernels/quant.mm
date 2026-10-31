@@ -269,7 +269,8 @@ void encode_moe_decode(Enc& e, const MoeDecodeArgs& a) {
 
 // ---------------------------------------------------------------- MoE prefill
 namespace {
-constexpr int kMoeTM = 64, kMoeTN = 64;
+constexpr int kMoeTN = 64;
+int moe_tm() { static const int v = (int)env_int("MACSEEK_MOEP_TM", 64); return v; }
 struct QMoePArgs { uint32_t n, total, dim, inter, rb_gu, rb_d, k_per_token; };
 const char* mm_moe_name(QType t) {
   switch (t) {
@@ -280,7 +281,7 @@ const char* mm_moe_name(QType t) {
 }
 size_t align256(size_t v) { return (v + 255) & ~(size_t)255; }
 size_t moe_header_bytes(int total, int n, int n_exp) {
-  const size_t tiles = (size_t)n_exp + total / kMoeTM + n / kMoeTM + 4;
+  const size_t tiles = (size_t)n_exp + total / 64 + n / 64 + 4;
   return align256(24 * (size_t)(n_exp + 1) + 4 * (size_t)(n_exp + 2) + 8 * tiles);
 }
 }  // namespace
@@ -316,12 +317,13 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
   offs[ne] = (uint32_t)total;
   offs[ne + 1] = (uint32_t)(total + n);
   if (a.has_shared) { ptrs[3 * ne] = addr(a.shared.gate); ptrs[3 * ne + 1] = addr(a.shared.up); ptrs[3 * ne + 2] = addr(a.shared.down); }
+  const int tm = moe_tm();
   int nt_r = 0;
   for (int j = 0; j < ne; j++)
-    for (int t0 = 0; t0 < a.offs[j + 1] - a.offs[j]; t0 += kMoeTM) { tiles[2 * nt_r] = j; tiles[2 * nt_r + 1] = t0; nt_r++; }
+    for (int t0 = 0; t0 < a.offs[j + 1] - a.offs[j]; t0 += tm) { tiles[2 * nt_r] = j; tiles[2 * nt_r + 1] = t0; nt_r++; }
   int nt_s = 0;
   if (a.has_shared)
-    for (int t0 = 0; t0 < n; t0 += kMoeTM) { tiles[2 * (nt_r + nt_s)] = ne; tiles[2 * (nt_r + nt_s) + 1] = t0; nt_s++; }
+    for (int t0 = 0; t0 < n; t0 += tm) { tiles[2 * (nt_r + nt_s)] = ne; tiles[2 * (nt_r + nt_s) + 1] = t0; nt_s++; }
   const size_t rows = (size_t)total + n;
   const Buffer s_hdr = a.scratch.sub(0, hbytes);
   const Buffer s_xg = a.scratch.sub(hbytes, rows * kExpertDim * 2);
@@ -345,7 +347,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
   // 2) gate + up + swiglu -> H (routed and shared dispatches run concurrently)
   auto gu = [&](const char* kn, QType t, const Buffer& tl, int nt) {
     if (nt == 0) return;
-    std::string fn = std::string("q_moe_mm_gu_") + kn;
+    std::string fn = std::string("q_moe_mm_gu_") + kn + "_m" + std::to_string(tm);
     QMoePArgs ar = args; ar.rb_gu = (uint32_t)row_bytes(t, kExpertDim);
     e.set_pipeline(fn.c_str());
     e.set_buffer(0, s_xg); e.set_buffer(1, s_h); e.set_value(2, ar); e.set_buffer(3, a.wt.buf ? a.wt : a.scratch);
@@ -359,7 +361,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
   // 3) down -> Z
   auto dn = [&](const char* kn, QType t, const Buffer& tl, int nt) {
     if (nt == 0) return;
-    std::string fn = std::string("q_moe_mm_down_") + kn;
+    std::string fn = std::string("q_moe_mm_down_") + kn + "_m" + std::to_string(tm);
     QMoePArgs ar = args; ar.rb_d = (uint32_t)row_bytes(t, kExpertInter);
     e.set_pipeline(fn.c_str());
     e.set_buffer(0, s_h); e.set_buffer(1, s_z); e.set_value(2, ar);

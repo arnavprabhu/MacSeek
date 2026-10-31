@@ -118,13 +118,14 @@ kernel void q_moe_reduce(device const float* Z [[buffer(0)]], device float* Y [[
   *y += s;
 }
 
-#define Q_MOEP_INST(Q, name)                                                                                      \
-  template [[host_name("q_moe_mm_gu_" name)]] kernel void q_moe_mm_gu<Q, 64, 64, 4>(device const half*,           \
+#define Q_MOEP_INST1(Q, name, TM)                                                                                 \
+  template [[host_name("q_moe_mm_gu_" name "_m" #TM)]] kernel void q_moe_mm_gu<Q, TM, 64, 4>(device const half*,  \
       device half*, constant QMoePArgs&, device const float*, device const QExpPtr*, device const uint*,           \
       device const uint2*, threadgroup half*, uint2, ushort);                                                      \
-  template [[host_name("q_moe_mm_down_" name)]] kernel void q_moe_mm_down<Q, 64, 64, 4>(device const half*,       \
-      device float*, constant QMoePArgs&, device const QExpPtr*, device const uint*, device const uint2*,          \
-      threadgroup half*, uint2, ushort);
+  template [[host_name("q_moe_mm_down_" name "_m" #TM)]] kernel void q_moe_mm_down<Q, TM, 64, 4>(                 \
+      device const half*, device float*, constant QMoePArgs&, device const QExpPtr*, device const uint*,           \
+      device const uint2*, threadgroup half*, uint2, ushort);
+#define Q_MOEP_INST(Q, name) Q_MOEP_INST1(Q, name, 64) Q_MOEP_INST1(Q, name, 128)
 Q_MOEP_INST(QB_IQ1S, "iq1_s")
 Q_MOEP_INST(QB_IQ2XXS, "iq2_xxs")
 Q_MOEP_INST(QB_Q6K, "q6_k")

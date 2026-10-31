@@ -53,15 +53,72 @@ static double peak_f16(bool verbose) {
   return best;
 }
 
+// MoE prefill: n tokens, E experts, top-6 random routing (+ shared Q6_K), IQ1_S experts.
+static void bench_moe(double peak) {
+  auto& d = Device::get();
+  printf("MoE prefill (IQ1_S experts + Q6_K shared, top-6 random routing)\n");
+  printf("  %-6s %-8s %-12s %10s %9s %8s\n", "n", "experts", "tok/expert", "ms", "TFLOPS", "%peak");
+  for (auto [n, E] : {std::pair{512, 96}, {2048, 96}, {2048, 32}, {4096, 64}}) {
+    const int D = q::kExpertDim, I = q::kExpertInter, K = 6;
+    const size_t gu = q::row_bytes(QType::IQ1_S, D) * I, dn = q::row_bytes(QType::IQ1_S, I) * D;
+    const size_t sgu = q::row_bytes(QType::Q6_K, D) * I, sdn = q::row_bytes(QType::Q6_K, I) * D;
+    Buffer arena = d.alloc((size_t)E * (2 * gu + dn) + 2 * sgu + sdn);
+    fill_rand(arena, 9);
+    std::vector<q::ExpertSlot> slots(E);
+    size_t off = 0;
+    for (int j = 0; j < E; j++) {
+      slots[j].gate = arena.sub(off, gu); off += gu; slots[j].up = arena.sub(off, gu); off += gu;
+      slots[j].down = arena.sub(off, dn); off += dn;
+    }
+    q::ExpertSlot sh{arena.sub(off, sgu), arena.sub(off + sgu, sgu), arena.sub(off + 2 * sgu, sdn)};
+    uint32_t st = 1;
+    std::vector<std::vector<int>> per(E);
+    std::vector<int> slot_of(n * K);
+    std::vector<std::pair<int, int>> ent;  // (token, k) per expert
+    std::vector<std::vector<std::pair<int, int>>> pe(E);
+    for (int t = 0; t < n; t++) {
+      std::vector<int> used;
+      while ((int)used.size() < K) {
+        st = st * 1664525u + 1013904223u;
+        int j = (int)((st >> 8) % E);
+        if (std::find(used.begin(), used.end(), j) == used.end()) { used.push_back(j); pe[j].push_back({t, (int)used.size() - 1}); }
+      }
+    }
+    std::vector<int> offs(E + 1), tok; std::vector<float> wt;
+    int ne = 0; std::vector<q::ExpertSlot> used_slots;
+    for (int j = 0; j < E; j++) {
+      if (pe[j].empty()) continue;
+      offs[ne] = (int)tok.size(); used_slots.push_back(slots[j]);
+      for (auto [t, k] : pe[j]) { slot_of[t * K + k] = (int)tok.size(); tok.push_back(t); wt.push_back(0.16f); }
+      ne++;
+    }
+    offs[ne] = (int)tok.size();
+    const int total = (int)tok.size();
+    Buffer btok = d.alloc(total * 4), bwt = d.alloc(total * 4), bslot = d.alloc(n * K * 4);
+    memcpy(btok.cpu(), tok.data(), total * 4); memcpy(bwt.cpu(), wt.data(), total * 4); memcpy(bslot.cpu(), slot_of.data(), n * K * 4);
+    Buffer X = d.alloc((size_t)n * D * 4), Y = d.alloc((size_t)n * D * 4);
+    Buffer scratch = d.alloc(q::moe_prefill_scratch_bytes(total, n, ne));
+    q::MoePrefillArgs a;
+    a.n_tokens = n; a.n_exp = ne; a.slots = used_slots.data(); a.offs = offs.data(); a.tok = btok; a.wt = bwt;
+    a.slot_of = bslot; a.k_per_token = K; a.shared = sh; a.X = X; a.Y = Y; a.scratch = scratch;
+    double ms = best_ms(4, [&](Enc& e) { q::encode_moe_prefill(e, a); });
+    double fl = 2.0 * 3 * D * I * (double)(total + n);
+    printf("  %-6d %-8d %-12.0f %10.2f %9.2f %7.0f%%\n", n, E, (double)total / ne, ms, fl / ms / 1e9, 100 * fl / ms / 1e9 / peak);
+    for (Buffer* b : {&arena, &btok, &bwt, &bslot, &X, &Y, &scratch}) d.release(*b);
+  }
+}
+
 int main(int argc, char** argv) {
-  bool only_peak = false; const char* filt = nullptr;
+  bool only_peak = false, moe = false; const char* filt = nullptr;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--peak")) only_peak = true;
+    else if (!strcmp(argv[i], "--moe")) moe = true;
     else filt = argv[i];
   }
   double peak = peak_f16(true);
   printf("F16 GEMM peak: %.2f TFLOPS\n", peak);
   if (only_peak) return 0;
+  if (moe) { bench_moe(peak); return 0; }
   struct Shape { QType t; int rows, cols; const char* what; };
   const Shape shapes[] = {
       {QType::Q6_K, 32768, 1280, "attn_q_b"}, {QType::Q6_K, 5120, 8192, "attn_output_b"},
