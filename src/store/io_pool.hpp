@@ -58,6 +58,7 @@ class IoPool {
   std::condition_variable cv_;
   std::deque<IoRequestPtr> q_[2];
   bool stop_ = false;
+  int idle_ = 0;
   size_t scratch_;
   std::vector<std::thread> workers_;
   std::atomic<uint64_t> reads_{0}, bytes_{0};

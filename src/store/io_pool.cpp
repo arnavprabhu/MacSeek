@@ -31,7 +31,8 @@ void IoPool::submit(IoRequestPtr r) {
     r->next = 0; r->queued = true;
     q_[p].push_back(std::move(r));
   }
-  if (n == 1) cv_.notify_one(); else cv_.notify_all();
+  (void)n;
+  cv_.notify_one();
 }
 
 void IoPool::submit(std::vector<IoRequestPtr>& rs) {
@@ -45,7 +46,7 @@ void IoPool::submit(std::vector<IoRequestPtr>& rs) {
       q_[r->priority ? 1 : 0].push_back(r);
     }
   }
-  if (chunks == 1) cv_.notify_one(); else if (chunks) cv_.notify_all();
+  if (chunks) cv_.notify_one();   // chain wake-up: woken workers wake the next one while work remains
   rs.clear();
 }
 
@@ -65,16 +66,20 @@ void IoPool::run(int id) {
   char* scratch = (char*)mmap(nullptr, sb, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
   if (scratch == MAP_FAILED) { perror("io scratch"); abort(); }
   for (;;) {
-    IoRequestPtr r; size_t idx;
+    IoRequestPtr r; size_t idx; bool wake;
     {
       std::unique_lock<std::mutex> lk(mu_);
+      idle_++;
       cv_.wait(lk, [&] { return stop_ || !q_[0].empty() || !q_[1].empty(); });
-      if (stop_ && q_[0].empty() && q_[1].empty()) break;
+      idle_--;
+      if (stop_ && q_[0].empty() && q_[1].empty()) { cv_.notify_all(); break; }
       auto& q = !q_[0].empty() ? q_[0] : q_[1];
       r = q.front();
       idx = r->next++;
       if (r->next == r->chunks.size()) { r->queued = false; q.pop_front(); }
+      wake = idle_ > 0 && (!q_[0].empty() || !q_[1].empty());
     }
+    if (wake) cv_.notify_one();   // pass the wake-up on (keeps the submitter's critical path at one wake)
     const IoChunk& c = r->chunks[idx];
     char* dst = c.dst ? c.dst : scratch;
     if (!c.dst && c.len > sb) { fprintf(stderr, "io: chunk %u > scratch %zu\n", c.len, sb); abort(); }

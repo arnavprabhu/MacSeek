@@ -60,7 +60,7 @@ std::unique_ptr<EvictionPolicy> make_policy(PolicyKind k, double lfu_decay, uint
 
 struct ExpertCacheOptions {
   size_t arena_bytes = 4ull << 30;  // production ~38-42 GiB (see recommend_arena_bytes); tests keep it small
-  int io_threads = 12;              // 8-16: random 2.3 MB reads saturate ~14-15 GB/s at >= 8 threads
+  int io_threads = 8;               // measured: 8 = same 6-miss latency as 16 at half the CPU (339 vs 766 µs/miss)
   size_t read_chunk = 1 << 20;      // split each matrix read into chunks (0 = one pread per matrix)
   uint32_t align = 16384;           // round file ranges out to this (power of 2 <= 16384; 1 = exact byte ranges)
   PolicyKind policy = PolicyKind::LRU;
@@ -75,6 +75,8 @@ struct ExpertCacheOptions {
   bool dry_io = false;              // policy simulation: no reads, slots become ready immediately
   bool prefault = true;             // touch every arena page at startup (parallel): no zero-fill faults on the miss
                                     // path (~2 µs per 16 KiB page = ~1 ms per expert otherwise); env MACSEEK_ARENA_PREFAULT
+  bool wire = false;                // mlock the arena at startup (implies prefault; never compressed/paged out);
+                                    // env MACSEEK_ARENA_MLOCK=1. Recommended in production once sized by memguard
   std::shared_ptr<EvictionPolicy> custom_policy;   // overrides `policy` (Static pinning still uses stats_path)
   static ExpertCacheOptions from_env();   // MACSEEK_ARENA_GB, MACSEEK_IO_THREADS, MACSEEK_READ_CHUNK_KB,
                                           // MACSEEK_IO_ALIGN, MACSEEK_POLICY=lru|lfu|static, MACSEEK_ROUTING_STATS,

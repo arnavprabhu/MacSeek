@@ -66,6 +66,7 @@ ExpertCacheOptions ExpertCacheOptions::from_env() {
   o.stats_path = env_str("MACSEEK_ROUTING_STATS", "");
   o.ring_slots = (int)env_int("MACSEEK_RING_SLOTS", o.ring_slots);
   o.prefault = env_int("MACSEEK_ARENA_PREFAULT", 1) != 0;
+  o.wire = env_int("MACSEEK_ARENA_MLOCK", 0) != 0;
   return o;
 }
 
@@ -180,7 +181,12 @@ ExpertCache::ExpertCache(const ExpertLayout& layout, const ExpertCacheOptions& o
       arena_bytes_ += bytes;
     }
   }
-  if (o_.prefault && !o_.dry_io) {   // parallel first touch of every page
+  bool wired = false;
+  if (o_.wire && !o_.dry_io) {
+    wired = true;
+    for (auto& m : p_->maps) if (mlock(m.first, m.second) != 0) { perror("experts: mlock failed (continuing unwired)"); wired = false; break; }
+  }
+  if (o_.prefault && !o_.dry_io && !wired) {   // parallel first touch of every page
     std::vector<std::pair<char*, size_t>> parts;
     for (auto& m : p_->maps) for (size_t off = 0; off < m.second; off += 256ull << 20) parts.push_back({m.first + off, std::min<size_t>(256ull << 20, m.second - off)});
     std::atomic<size_t> next{0};

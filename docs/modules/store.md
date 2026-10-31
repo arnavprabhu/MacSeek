@@ -40,9 +40,10 @@ ms::TokenEmbd te(g, &w); te.fetch(tokens, n, dst); // n x 4200 B Q6_K rows
   (~0.1 ms, cached fd: hot tokens stay in the *reclaimable* OS page cache); prefill batches rows in parallel. Making
   it resident would pin 518 MiB, i.e. ~70 expert slots (~1.3% of the arena), for a lookup that touches 0.0008% of it.
   `MACSEEK_EMBD_RESIDENT=1` switches it to resident (memcpy rows).
-- `mlock` is optional (`MACSEEK_WEIGHTS_MLOCK=1`, RLIMIT_MEMLOCK is unlimited here). Note from the bench: under memory
-  pressure macOS compressed ~4.8 GB of freshly loaded weights within a second (`rss 1.39 GiB`, `footprint 6.18 GiB`).
-  Pages the GPU reads every token stay hot in practice, but if decode shows compressor activity, turn mlock on.
+- **The arena is wired (`mlock`) before the reads by default** (`MACSEEK_WEIGHTS_MLOCK=0` to disable; RLIMIT_MEMLOCK is
+  unlimited here). Measured: without it, macOS compressed ~4.8 GB of the freshly DMA-filled weights within a second
+  (rss 1.39 GiB vs footprint 6.18 GiB). That's a silent decompression tax on the first GPU passes, and it comes back
+  under pressure.
 
 ## 3. Expert cache (`ms::ExpertCache`)
 
@@ -80,7 +81,9 @@ stats the arena is split as equal slots per layer. With a routing-statistics fil
 count/byte over all (layer, expert), with a floor of 16 slots per layer. Pools are split into MTLBuffers of
 <= min(maxBufferLength, 8 GiB) whole slots (`cache.buffers()` gives them for a residency set). With
 `prefault` (default on), every arena page is touched at startup by 8 threads, which keeps zero-fill page faults
-(~2 µs per 16 KiB page, ~1 ms per expert) off the miss path.
+(~2 µs per 16 KiB page, ~1 ms per expert) off the miss path. `wire` (`MACSEEK_ARENA_MLOCK=1`) mlocks the arena
+instead, so it is never compressed or paged out. Recommended in production once the arena is sized with memguard
+(not default, because wiring ~40 GB fails loudly if memory is short).
 
 **Safety (never evict what the GPU uses).** A slot can be evicted only if it is Ready, has refcount 0 and is not
 pinned. `ensure()` takes a ref per returned view; refs are dropped by `release()` / the lease destructor /
@@ -88,7 +91,7 @@ pinned. `ensure()` takes a ref per returned view; refs are dropped by `release()
 after 30 s with a message). Tested with a command buffer held open on an event: 80 churning misses never evict its slots,
 and they become evictable after completion.
 
-**I/O.** `IoPool`: N workers (default 12) each issue one blocking pread (queue depth = N). Two priority queues (demand,
+**I/O.** `IoPool`: N workers (default 8) each issue one blocking pread (queue depth = N). Two priority queues (demand,
 prefetch), FIFO across requests, so the oldest demand request finishes first. A request = the 3 matrix ranges split
 into `read_chunk` pieces (default 1 MiB). All requests built under the cache mutex are submitted after it is released,
 with one wake-up (batched submit). Options: `align` (16384 default; 1 = exact ranges), `read_chunk` (0 = one pread per
@@ -160,7 +163,83 @@ after a run.
 
 ## 7. Benchmarks (real SSD; page-cache hygiene: experts/rows resident in the page cache (mincore) are avoided and nothing is read twice)
 
-BENCH_RESULTS
+All runs held the model lock (exclusive SSD) unless noted. Raw logs: `logs/bench_*.txt` in the worktree (not committed).
+
+**Resident weights (`bench_weights_load`, 921 tensors, 6.154 GiB, 6.609 GB read incl. 16 KiB rounding):**
+
+| config | load | GB/s | after load |
+|---|---|---|---|
+| 8 thr x 8 MiB, no mlock | 986 ms | 6.70 | rss 1.39 GiB / footprint 6.18: **~4.8 GB compressed by macOS within 1 s** |
+| 16 thr x 16 MiB, mlock after read | 1201 ms + 1179 ms mlock | 5.50 | rss 6.16 = footprint 6.18 (wired) |
+| 8 thr x 8 MiB, prefault (touch) first | 2383 ms | 2.77 | rss 0.63: idle zero pages compressed, then refaulted |
+| 8 thr x 8 MiB, mlock BEFORE read (new default) | WEIGHTS_MLOCK_FIRST |
+
+Hence `mlock` (wire before reading) is the default (`MACSEEK_WEIGHTS_MLOCK=0` to disable). Prefault without wiring
+is off.
+
+**Expert misses (`bench_experts_io lat`): 6 cold misses in one random layer, ensure() -> lease.wait() (12-20 iters per
+config, 41-55 MB per call):**
+
+| threads | chunk | align | p50 ms | p90 ms | eff GB/s | ensure() call | CPU / miss |
+|---|---|---|---|---|---|---|---|
+| 8 | 1 MiB | 16K | 3.65 | 3.82 | 12.3 | 4.4 µs | **339 µs** |
+| 16 | 1 MiB | 16K | 3.75 | 4.07 | 11.6 | 3.6 µs | 766 µs |
+| 16 | whole matrix | 16K | 4.00 | 4.56 | 11.6 | 3.5 µs | 1293 µs |
+| 16 | 256 KiB | 16K | 3.67 | 4.33 | 12.6 | 4.3 µs | 630 µs |
+| 16 | 1 MiB | exact (1) | 3.58 | 3.92 | 12.1 | 6.2 µs | 1084 µs |
+| 16 | whole matrix | exact (1) | 3.88 | 4.85 | 11.0 | 5.1 µs | 2167 µs |
+| 12 | 512 KiB | 16K | 4.29 | 6.00 | 10.2 | 3.8 µs | 682 µs |
+
+- Latency is flat at ~3.6-3.8 ms for 6 misses (~12 GB/s; the SSD ceiling for this size is ~14-15 GB/s). Threads,
+  chunk size and alignment don't change latency within noise. They do change **CPU**: 16 KiB-aligned 1 MiB chunks
+  on 8 threads cost 339 µs per 7 MB miss, the same as a bare pread (~46 µs/MB, separate probe). Exact
+  (unaligned) ranges cost 1.4-1.7x more CPU, and whole-matrix preads more again. Defaults: **8 threads, 1 MiB chunks,
+  16 KiB alignment**.
+- ensure() call time (lock + policy + request build + submit) went from 35-86 µs to 3.5-6 µs once the submit woke
+  one worker instead of all 16 (chain wake-up: each woken worker wakes the next while work remains).
+- 16 concurrent clients, 1 miss each (16 pool threads): 160 experts, 1.21 GB in 86.6 ms = **13.9 GB/s**; per-ensure
+  p50 8.6 ms, p99 9.3 ms (queueing behind the 15 other clients).
+- Bulk stream, 48 cold experts of one layer through the ring, CPU consumer: ring 8: **13.05 GB/s**; ring 16:
+  12.2 GB/s (0.33 GB in 26-27 ms). One full layer (384 experts, 2.65-3.5 GB) would take ~0.2-0.27 s, i.e. ~9 s per
+  prefill-chunk pass over all 40 layers when nothing is cached.
+- Decode cost model: a token with m expert misses waits ~ m x 7.3 MB / 12 GB/s ≈ 0.6 ms per miss (when issued
+  together per layer).
+
+**Policy simulation (`bench_experts_io sim`, dry_io, real geometry, 40 GiB arena = 5640 slots, synthetic Zipf routing,
+second half of a 4000-token trace measured after warming on the first half; static stats = first half):**
+
+| routing | LRU | LFU exact | LFU sampled 64 | Static (85% pinned) |
+|---|---|---|---|---|
+| Zipf s=0.6 hit / miss GB per token | 52.7% / 0.852 | 58.2% / 0.752 | 58.2% / 0.753 | **62.3% / 0.686** |
+| Zipf s=1.0 hit / miss GB per token | 75.8% / 0.436 | 79.0% / 0.377 | 79.0% / 0.378 | **81.9% / 0.329** |
+| ensure(6) bookkeeping | 0.3-0.5 µs | 3.9-7.6 µs | 0.5-0.9 µs | 0.24-0.42 µs |
+
+Synthetic routing, so only the ranking is meaningful. Frequency beats recency, and sampled LFU loses nothing
+against exact LFU. Real routing statistics from the model decide the final policy.
+
+**Engram rows (`bench_engram_io`, uniformly random cold rows, row cache off):**
+
+Decode, 48 rows per token (100 tokens per config):
+
+| mode | QD 8 p50 / p99 | QD 16 p50 / p99 | QD 32 p50 / p99 |
+|---|---|---|---|
+| exact 144 B | 0.531 / 0.590 ms | 0.371 / 0.422 | **0.322 / 0.409** |
+| 4 KiB block | 0.472 / 0.532 | 0.343 / 0.418 | 0.316 / 0.432 |
+| 16 KiB page | 0.591 / 2.945 | 0.376 / 4.496 | 0.329 / 0.391 |
+
+Prompt batch, 256 tokens = 12288 rows in one async request:
+
+| mode | QD 16 | QD 32 | QD 64 | bytes read |
+|---|---|---|---|---|
+| exact | 69.5 ms (177K rows/s) | 57.9 ms (212K) | **51.8 ms (237K rows/s)** | 1.8 MB |
+| 4 KiB | 63.5 ms (194K) | 56.9 ms (216K) | 52.1 ms (236K) | 51.9 MB |
+| 16 KiB | 69.8 ms (176K) | 58.4 ms (210K) | 52.9 ms (232K) | 202.7 MB |
+
+- Decode target (< 1 ms) met with margin: **0.32 ms p50 / 0.41 ms p99 at QD 32**. Default: exact mode, 32
+  threads. Small reads are IOPS-bound (~237K IOPS at QD 64, well above the ~95K of 16 KiB reads). Exact 144 B reads
+  cost nothing extra in latency and move 100x fewer bytes than 16 KiB pages.
+- Long prompts: 48 rows/token at ~237K rows/s ≈ **0.2 ms/token, about 40 s for a 200K-token prompt** before dedupe.
+  This has to overlap with prefill compute: issue chunk k+1's rows while chunk k runs. Try QD 128 next.
 
 ## 8. Limits / caveats
 
@@ -187,5 +266,6 @@ BENCH_RESULTS
 5. Expert-major file layout (a one-time rewrite of the 107 GiB of experts so each slot is one contiguous read)
    would turn 3 reads/miss into 1 and allow > 1 MiB sequential runs. Measure first: the chunked reads already reach
    12 GB/s.
-6. Engram: map the 48 rows of the next token speculatively (all n-gram suffixes are known once the token is sampled)
-   and issue them before the token's layer 0, which hides the ~0.3 ms decode fetch completely.
+6. Engram decode: issue the 48 rows right after sampling (the hashes need only token ids), overlapped with
+   token_embd + layer 0; layer 1 waits on the ticket. That hides the ~0.3 ms fetch. Prefill: fetch chunk k+1's rows
+   during chunk k, and try QD 64-128.

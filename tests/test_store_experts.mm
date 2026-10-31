@@ -222,6 +222,14 @@ int main() {
     CHECK(ok, "align %u chunk %zu", align, chunk);
   }
 
+  {   // wired arena (mlock) variant
+    auto o = small_opts(plb, 14); o.wire = true;
+    ms::ExpertCache c(S.L, o);
+    int ids[2] = {4, 17};
+    auto l = c.ensure(0, ids, 2); l.wait();
+    CHECK(check_view(S.L, 0, 4, l.views[0]) && check_view(S.L, 0, 17, l.views[1]), "wired arena data");
+  }
+
   printf("-- T8\n");
   // ---- T8: bulk stream, CPU consumer ----
   {

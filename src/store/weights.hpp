@@ -31,8 +31,11 @@ struct WeightsOptions {
   bool token_embd_resident = false;   // env MACSEEK_EMBD_RESIDENT=1
   int threads = 8;                    // pread threads (env MACSEEK_WEIGHTS_THREADS)
   size_t read_chunk = 8 << 20;        // bytes per pread
-  bool mlock = false;                 // env MACSEEK_WEIGHTS_MLOCK=1: mlock the arena (wired; never paged/compressed)
+  bool mlock = true;                  // env MACSEEK_WEIGHTS_MLOCK (default 1): wire the arena before reading. Measured:
+                                      // without it macOS compressed ~5 of 6.2 GB of fresh weights within a second
   bool nocache = true;                // use the F_NOCACHE fds (no page-cache double copy)
+  bool prefault = false;              // env MACSEEK_WEIGHTS_PREFAULT=1: touch the arena before reading (if !mlock).
+                                      // Measured worse (2.8 vs 6.7 GB/s): idle zero pages get compressed, then refaulted
   size_t max_buffer_bytes = 0;        // 0 = min(device maxBufferLength, 16 GiB)
   std::function<bool(const TensorInfo&)> filter;   // optional extra filter (tests load a subset)
   static WeightsOptions from_env();
@@ -61,7 +64,7 @@ class Weights {
   uint64_t bytes() const { return bytes_; }              // tensor bytes loaded
   uint64_t bytes_read() const { return bytes_read_; }    // bytes actually read (incl. 16K rounding)
   uint64_t arena_bytes() const { return arena_size_; }
-  double load_ms() const { return load_ms_; }            // read + wrap (excludes mlock)
+  double load_ms() const { return load_ms_; }            // total: mlock (if on) + read + wrap
   double lock_ms() const { return lock_ms_; }
   double gbps() const { return load_ms_ > 0 ? bytes_read_ / (load_ms_ * 1e6) : 0; }
   bool locked() const { return locked_; }

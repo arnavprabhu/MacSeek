@@ -90,6 +90,11 @@ int main(int argc, char** argv) {
   printf("mem before: %s\n", m0.str().c_str());
   uint64_t total_read = 0;
 
+  if (on("pick")) {   // cost of the page-cache-residency picker itself (no reads)
+    double c0 = cpu_s(); Timer t;
+    for (int i = 0; i < 20; i++) { int l = P.layer(); P.pick(l, 6); }
+    printf("picker: %.1f us CPU per expert picked (%.1f ms wall for 120)\n", (cpu_s() - c0) * 1e6 / 120, t.ms());
+  }
   if (on("lat")) {
     printf("\n== ensure() latency, 6 cold misses in one layer (%d iters per config) ==\n", iters);
     printf("threads chunkKB align |  p50_ms  p90_ms  max_ms  mean_ms | eff_GB/s | ensure_us  cpu_us/miss\n");
@@ -103,10 +108,12 @@ int main(int argc, char** argv) {
       // warm-up (thread start, page faults on first slot touches)
       { int l = P.layer(); auto ids = P.pick(l, 6); auto x = cache.ensure(l, ids); x.wait(); }
       cache.reset_stats();
+      std::vector<std::pair<int, std::vector<int>>> work;
+      for (int it = 0; it < iters; it++) { int l = P.layer(); work.push_back({l, P.pick(l, 6)}); }
       double c0 = cpu_s();
       for (int it = 0; it < iters; it++) {
-        int l = P.layer();
-        auto ids = P.pick(l, 6);
+        int l = work[it].first;
+        const auto& ids = work[it].second;
         Timer t;
         auto lease = cache.ensure(l, ids);
         double tc = t.ms();

@@ -22,7 +22,7 @@ enum class EngramReadMode { Exact = 0, Page4K = 1, Page16K = 2 };
 const char* engram_mode_name(EngramReadMode m);
 
 struct EngramOptions {
-  int threads = 16;                     // queue depth
+  int threads = 32;                     // queue depth (decode 48 rows: p50 0.32 ms @32 vs 0.37 @16)
   EngramReadMode mode = EngramReadMode::Exact;
   size_t cache_bytes = 512ull << 20;    // row cache (0 = off); SPEC: <= 1 GiB
   bool nocache = true;                  // F_NOCACHE fd (do not let 103 GiB of random pages churn the page cache)

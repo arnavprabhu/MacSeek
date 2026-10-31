@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <thread>
 
 namespace ms {
 
@@ -23,7 +24,8 @@ WeightsOptions WeightsOptions::from_env() {
   WeightsOptions o;
   o.token_embd_resident = env_int("MACSEEK_EMBD_RESIDENT", 0) != 0;
   o.threads = (int)env_int("MACSEEK_WEIGHTS_THREADS", o.threads);
-  o.mlock = env_int("MACSEEK_WEIGHTS_MLOCK", 0) != 0;
+  o.mlock = env_int("MACSEEK_WEIGHTS_MLOCK", 1) != 0;
+  o.prefault = env_int("MACSEEK_WEIGHTS_PREFAULT", 0) != 0;
   return o;
 }
 
@@ -78,6 +80,19 @@ Weights::Weights(const Gguf& g, const WeightsOptions& o) {
   arena_ = (char*)mmap(nullptr, arena_size_, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
   if (arena_ == MAP_FAILED) { perror("weights mmap"); abort(); }
 
+  if (o.mlock) {   // wire BEFORE reading: pages can never be compressed/paged, DMA lands in already-wired pages
+    Timer tl;
+    locked_ = mlock(arena_, arena_size_) == 0;
+    if (!locked_) perror("weights: mlock failed (continuing unwired)");
+    lock_ms_ = tl.ms();
+  } else if (o.prefault) {
+    std::vector<std::thread> th;
+    for (int t = 0; t < 8; t++) th.emplace_back([&, t] {
+      uint64_t per = rup(arena_size_ / 8 + 1, kPage);
+      for (uint64_t off = t * per; off < std::min(arena_size_, (t + 1) * per); off += kPage) arena_[off] = 0;
+    });
+    for (auto& x : th) x.join();
+  }
   // 4. parallel reads
   auto req = std::make_shared<IoRequest>();
   for (auto& r : runs) {
@@ -119,7 +134,6 @@ Weights::Weights(const Gguf& g, const WeightsOptions& o) {
     }
   }
   load_ms_ = timer.ms();
-  if (o.mlock) { Timer tl; locked_ = mlock(arena_, arena_size_) == 0; lock_ms_ = tl.ms(); }
 }
 
 Weights::~Weights() {
