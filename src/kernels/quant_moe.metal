@@ -158,7 +158,8 @@ kernel void q_moe_down(device const float* h [[buffer(0)]], device float* y [[bu
       device const uchar*, device const uchar*, device const uchar*, device const uchar*, device const uchar*,    \
       threadgroup float*, uint, ushort, ushort, ushort);
 #define Q_MOE_INST(QR, QS, name) \
-  Q_MOE_GU_INST(QR, QS, name, 1) Q_MOE_GU_INST(QR, QS, name, 2) Q_MOE_DOWN_INST(QR, QS, name, 1) Q_MOE_DOWN_INST(QR, QS, name, 2)
+  Q_MOE_GU_INST(QR, QS, name, 1) Q_MOE_GU_INST(QR, QS, name, 2) Q_MOE_GU_INST(QR, QS, name, 4) \
+  Q_MOE_DOWN_INST(QR, QS, name, 1) Q_MOE_DOWN_INST(QR, QS, name, 2) Q_MOE_DOWN_INST(QR, QS, name, 4)
 
 Q_MOE_INST(QB_IQ1S, QB_Q6K, "iq1_s_q6_k")
 Q_MOE_INST(QB_IQ1S, QB_Q8_0, "iq1_s_q8_0")

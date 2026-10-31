@@ -135,9 +135,9 @@ void encode_moe_decode(Enc& e, const MoeDecodeArgs& a) {
   const char* p_d = moe_pair(a.t_down, a.t_shared);
   if (!p_gu || !p_d) die("moe_decode type combo", a.t_gate_up, 0, 0);
   if (a.scratch.size < moe_decode_scratch_bytes()) die("moe_decode scratch too small", a.t_gate_up, 0, 0);
-  static const long env_gu_nr = env_int("MACSEEK_MOE_GU_NR", 2), env_gu_ks = env_int("MACSEEK_MOE_GU_KS", 2),
-                    env_gu_rsg = env_int("MACSEEK_MOE_GU_RSG", 2), env_d_nr = env_int("MACSEEK_MOE_D_NR", 2),
-                    env_d_ks = env_int("MACSEEK_MOE_D_KS", 2), env_d_rsg = env_int("MACSEEK_MOE_D_RSG", 2);
+  static const long env_gu_nr = env_int("MACSEEK_MOE_GU_NR", 2), env_gu_ks = env_int("MACSEEK_MOE_GU_KS", 1),
+                    env_gu_rsg = env_int("MACSEEK_MOE_GU_RSG", 4), env_d_nr = env_int("MACSEEK_MOE_D_NR", 4),
+                    env_d_ks = env_int("MACSEEK_MOE_D_KS", 1), env_d_rsg = env_int("MACSEEK_MOE_D_RSG", 2);
   QMoeArgs args{(uint32_t)a.n_routed, a.has_shared ? 1u : 0u, (uint32_t)kExpertDim, (uint32_t)kExpertInter,
                 (uint32_t)row_bytes(a.t_gate_up, kExpertDim), (uint32_t)row_bytes(a.t_down, kExpertInter),
                 (uint32_t)row_bytes(a.t_shared, kExpertDim), (uint32_t)row_bytes(a.t_shared, kExpertInter), 1, 0};

@@ -30,10 +30,61 @@ static double measure_bw() {
   return bytes / t[0] / 1e6;
 }
 
+// MoE decode: 6 routed experts + shared, all type combos; arenas rotated over >= 512 MiB.
+static int bench_moe(double bw, int reps) {
+  auto& d = Device::get();
+  struct Combo { QType gu, dn, sh; };
+  const Combo combos[] = {{QType::IQ1_S, QType::IQ1_S, QType::Q6_K}, {QType::IQ1_S, QType::IQ2_XXS, QType::Q8_0},
+                          {QType::IQ1_S, QType::IQ2_XXS, QType::Q6_K}, {QType::IQ2_XXS, QType::IQ2_XXS, QType::Q6_K}};
+  const int D = q::kExpertDim, I = q::kExpertInter;
+  printf("MoE decode (6 routed + shared, 2 dispatches + barrier)\n");
+  printf("%-8s %-8s %-6s %9s %8s %7s  %s\n", "gate/up", "down", "shared", "MB", "us", "GB/s", "%BW");
+  for (const Combo& c : combos) {
+    const size_t gu = q::row_bytes(c.gu, D) * I, dn = q::row_bytes(c.dn, I) * D;
+    const size_t sgu = q::row_bytes(c.sh, D) * I, sdn = q::row_bytes(c.sh, I) * D;
+    const size_t per = 6 * (2 * gu + dn) + 2 * sgu + sdn;
+    const int copies = (int)std::max<size_t>(2, (512ull << 20) / per);
+    std::vector<Buffer> arenas(copies);
+    std::vector<q::MoeDecodeArgs> args(copies);
+    Buffer x = d.alloc(D * 4), y = d.alloc(D * 4), w = d.alloc(64), scratch = d.alloc(q::moe_decode_scratch_bytes());
+    for (int k = 0; k < copies; k++) {
+      arenas[k] = d.alloc(per);
+      uint32_t* p = (uint32_t*)arenas[k].cpu(); uint32_t st = 777 + k;
+      for (size_t i = 0; i < per / 4; i++) { st = st * 1664525u + 1013904223u; p[i] = st & 0x3bff3bffu; }
+      q::MoeDecodeArgs& a = args[k];
+      a.t_gate_up = c.gu; a.t_down = c.dn; a.t_shared = c.sh; a.n_routed = 6; a.has_shared = true;
+      size_t off = 0;
+      for (int e = 0; e < 6; e++) {
+        a.slot[e].gate = arenas[k].sub(off, gu); off += gu;
+        a.slot[e].up = arenas[k].sub(off, gu); off += gu;
+        a.slot[e].down = arenas[k].sub(off, dn); off += dn;
+      }
+      a.shared.gate = arenas[k].sub(off, sgu); off += sgu;
+      a.shared.up = arenas[k].sub(off, sgu); off += sgu;
+      a.shared.down = arenas[k].sub(off, sdn);
+      a.weights = w; a.x = x; a.y = y; a.scratch = scratch;
+    }
+    std::vector<double> t;
+    for (int rep = 0; rep < reps; rep++) {
+      Enc e;
+      for (int k = 0; k < copies; k++) { q::encode_moe_decode(e, args[k]); e.barrier(); }
+      e.wait();
+      if (rep) t.push_back(e.gpu_ms() * 1e3 / copies);
+    }
+    std::sort(t.begin(), t.end());
+    printf("%-8s %-8s %-6s %9.2f %8.1f %7.1f  %5.1f%%\n", q::type_name(c.gu), q::type_name(c.dn), q::type_name(c.sh),
+           per / 1e6, t[0], per / t[0] / 1e3, 100.0 * per / t[0] / 1e3 / bw);
+    for (auto& b : arenas) d.release(b);
+    d.release(x); d.release(y); d.release(w); d.release(scratch);
+  }
+  return 0;
+}
+
 int main(int argc, char** argv) {
-  bool sweep = false; int n = 1; int reps = 7; const char* filt = nullptr;
+  bool sweep = false, moe = false; int n = 1; int reps = 7; const char* filt = nullptr;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--sweep")) sweep = true;
+    else if (!strcmp(argv[i], "--moe")) moe = true;
     else if (!strcmp(argv[i], "--n") && i + 1 < argc) n = atoi(argv[++i]);
     else filt = argv[i];
   }
@@ -55,6 +106,7 @@ int main(int argc, char** argv) {
       {QType::F16, 5120, 5120, 1, "f16 synthetic"},
       {QType::IQ1_S, 32768, 5120, 1, "big synthetic"}, {QType::IQ2_XXS, 32768, 5120, 1, "big synthetic"},
   };
+  if (moe) return bench_moe(bw, reps);
   printf("%-8s %-15s %-16s %9s %8s %7s  %s\n", "type", "tensor", "shape", "MB", "us", "GB/s", "%BW");
   for (const Shape& s : shapes) {
     std::string lab = std::string(q::type_name(s.t)) + " " + s.what;
