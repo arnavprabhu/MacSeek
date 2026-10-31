@@ -164,6 +164,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   if (o.verbose) {
     fprintf(stderr, "macseek: %s\n", ms0.str().c_str());
     fprintf(stderr, "macseek: %s\n", cache_->describe().c_str());
+    fprintf(stderr, "macseek: arena %.1f GiB; after alloc: %s\n", arena / 1073741824.0, mem_status().str().c_str());
     fprintf(stderr, "macseek: model ready in %.1f s\n", t.ms() / 1000);
   }
 }
@@ -212,7 +213,9 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
 
   const bool dec = n == 1;
   Buffer h = P.h.sub(0, (size_t)n * 20480 * 4);
-  double wait_ms = 0, exp_ms = 0;
+  double wait_ms = 0, exp_ms = 0, gpu_ms = 0, moe_gpu_ms = 0, route_ms = 0;
+  long experts_used = 0, groups_run = 0;
+  const LayerStats st0 = cache_->total_stats();
 
   auto e = std::make_unique<Enc>();
   arch::encode_embed_q6k(*e, P.embrows, 4200, h, n, 4);
@@ -304,6 +307,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     Timer tw;
     e->wait();
     wait_ms += tw.ms();
+    gpu_ms += e->gpu_ms();
 
     // ---- MoE ----
     Timer tx;
@@ -324,6 +328,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       lease.release_after(e->cmdbuf());
     } else {
       // CPU routing tables, experts processed in groups that fit the cache
+      Timer troute;
       const float* rw = (const float*)P.rw.cpu();
       std::vector<std::vector<int>> toks_of(384);
       for (int t = 0; t < n; t++) for (int k = 0; k < 6; k++) toks_of[ids[t * 6 + k]].push_back(t * 6 + k);
@@ -333,13 +338,15 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
       const int G = std::max(1, o_.moe_group);
       const int ngroups = ((int)used.size() + G - 1) / G;
+      route_ms += troute.ms();
+      experts_used += (long)used.size(); groups_run += ngroups;
       std::vector<ExpertLease> leases(ngroups);
       std::vector<std::unique_ptr<Enc>> encs(ngroups);
       auto group_ids = [&](int gi) { return std::vector<int>(used.begin() + gi * G, used.begin() + std::min((int)used.size(), (gi + 1) * G)); };
       if (ngroups > 0) leases[0] = cache_->ensure(l, group_ids(0));
       for (int gi = 0; gi < ngroups; gi++) {
         if (gi + 1 < ngroups) leases[gi + 1] = cache_->ensure(l, group_ids(gi + 1));  // overlap I/O with this group
-        if (gi >= 2) { encs[gi - 2]->wait(); encs[gi - 2].reset(); }                   // scratch reuse (double buffer)
+        if (gi >= 2) { encs[gi - 2]->wait(); moe_gpu_ms += encs[gi - 2]->gpu_ms(); encs[gi - 2].reset(); }  // scratch reuse
         std::vector<int> gids = group_ids(gi);
         const int sb = gi & 1;
         // routing arrays for this group in route_dev[sb]: tok[total], wt[total], slot_of[n*6]
@@ -374,7 +381,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         eg.commit();
         (void)total;
       }
-      for (auto& x : encs) if (x) x->wait();
+      for (auto& x : encs) if (x) { x->wait(); moe_gpu_ms += x->gpu_ms(); }
       if (ngroups == 0) { /* impossible: every token routes to 6 experts */ }
       e = std::make_unique<Enc>();
     }
@@ -398,12 +405,24 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   Timer tw;
   e->wait();
   wait_ms += tw.ms();
+  gpu_ms += e->gpu_ms();
   next = *(const int32_t*)P.amax_i.cpu();
   if (logits_all) memcpy(logits_all, P.logits.cpu(), (size_t)n * V * 4);
   if (logits_last) memcpy(logits_last, (const float*)P.logits.cpu() + (logits_all ? (size_t)(n - 1) * V : 0), (size_t)V * 4);
   pos_ += n;
+  const LayerStats st1 = cache_->total_stats();
   if (dec) {
     prof_.tokens++; prof_.total_ms += tt.ms(); prof_.gpu_wait_ms += wait_ms; prof_.expert_ms += exp_ms; prof_.engram_ms += engram_ms;
+    prof_.gpu_ms += gpu_ms; prof_.io_stall_ms += st1.stall_ms - st0.stall_ms; prof_.io_bytes += st1.bytes_read - st0.bytes_read;
+  } else {
+    pprof_.chunks++; pprof_.tokens += n; pprof_.total_ms += tt.ms(); pprof_.engram_ms += engram_ms;
+    pprof_.main_gpu_ms += gpu_ms; pprof_.main_wait_ms += wait_ms; pprof_.moe_ms += exp_ms; pprof_.moe_gpu_ms += moe_gpu_ms;
+    pprof_.route_ms += route_ms; pprof_.io_bytes += st1.bytes_read - st0.bytes_read;
+    pprof_.experts_used += experts_used; pprof_.groups += groups_run;
+    if (env_int("MACSEEK_PROF", 0))
+      fprintf(stderr, "prefill-prof: pos %d n %d total %.0f ms | engram %.0f | main gpu %.0f wait %.0f | moe %.0f (gpu %.0f) route %.1f | "
+              "io %.2f GB | experts %ld groups %ld\n", start, n, tt.ms(), engram_ms, gpu_ms, wait_ms, exp_ms, moe_gpu_ms, route_ms,
+              (st1.bytes_read - st0.bytes_read) / 1e9, experts_used, groups_run);
   }
   return next;
 }
@@ -445,5 +464,15 @@ bool Model::load_state(const std::string& path) {
 }
 
 std::string Model::stats_report() const { return cache_->stats_report(); }
+
+std::string PrefillProfile::str() const {
+  char b[512];
+  snprintf(b, sizeof b, "prefill: %ld tok in %d chunks, %.1f tok/s | per chunk ms: total %.0f engram %.0f main_gpu %.0f main_wait %.0f "
+           "moe %.0f moe_gpu %.0f route %.1f | io %.2f GB/chunk | experts/chunk %.0f groups/chunk %.1f",
+           tokens, chunks, tokens / (total_ms / 1e3), total_ms / chunks, engram_ms / chunks, main_gpu_ms / chunks,
+           main_wait_ms / chunks, moe_ms / chunks, moe_gpu_ms / chunks, route_ms / chunks, io_bytes / 1e9 / chunks,
+           (double)experts_used / chunks, (double)groups / chunks);
+  return b;
+}
 
 }  // namespace ms::ds41

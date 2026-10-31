@@ -1,0 +1,65 @@
+<｜begin▁of▁sentence｜>{
+ "id": "evt_01HZX9Q7M4K2",
+ "type": "order.completed",
+ "created": "2026-10-30T18:42:07Z",
+ "livemode": false,
+ "data": {
+  "order": {
+   "number": 48213,
+   "currency": "EUR",
+   "customer": {
+    "name": "Ingrid Solberg",
+    "email": "ingrid.solberg@example.no",
+    "tier": "gold",
+    "address": {
+     "line1": "Storgata 14",
+     "city": "Tromsø",
+     "postal_code": "9008",
+     "country": "NO"
+    }
+   },
+   "items": [
+    {
+     "sku": "CAM-X100-BLK",
+     "title": "Mirrorless camera body",
+     "qty": 1,
+     "unit_price": 1299.0,
+     "tax_rate": 0.25
+    },
+    {
+     "sku": "LNS-35F18",
+     "title": "35mm f/1.8 lens",
+     "qty": 1,
+     "unit_price": 449.5,
+     "tax_rate": 0.25
+    },
+    {
+     "sku": "SD-128-V60",
+     "title": "128 GB SD card (V60)",
+     "qty": 2,
+     "unit_price": 39.9,
+     "tax_rate": 0.25
+    }
+   ],
+   "shipping": {
+    "method": "express",
+    "carrier": "Bring",
+    "cost": 14.0,
+    "eta_days": 2
+   },
+   "totals": {
+    "subtotal": 1828.3,
+    "discount": 129.9,
+    "shipping": 14.0,
+    "tax": 428.1,
+    "grand_total": 2140.5
+   },
+   "payment": {
+    "method": "card",
+    "brand": "visa",
+    "last4": "4242",
+    "captured": true
+   }
+  }
+ }
+}

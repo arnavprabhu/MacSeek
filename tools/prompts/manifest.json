@@ -1,0 +1,133 @@
+{
+ "tokenizer": "llama.cpp 0.8.0 b11960 (vocab of the UD-IQ1_S GGUF), add_special=false, parse_special=true",
+ "prompts": [
+  {
+   "name": "en_prose",
+   "n_tokens": 308,
+   "txt": "en_prose.txt",
+   "ids": "en_prose.ids",
+   "first_ids": [
+    0,
+    671,
+    115921,
+    80893,
+    936,
+    9026,
+    260,
+    2912
+   ]
+  },
+  {
+   "name": "code_python",
+   "n_tokens": 414,
+   "txt": "code_python.txt",
+   "ids": "code_python.ids",
+   "first_ids": [
+    0,
+    3465,
+    468,
+    1827,
+    3090,
+    10,
+    45653,
+    14
+   ]
+  },
+  {
+   "name": "code_cpp",
+   "n_tokens": 449,
+   "txt": "code_cpp.txt",
+   "ids": "code_cpp.ids",
+   "first_ids": [
+    0,
+    835,
+    21746,
+    9305,
+    54532,
+    15912,
+    11592,
+    17437
+   ]
+  },
+  {
+   "name": "math",
+   "n_tokens": 462,
+   "txt": "math.txt",
+   "ids": "math.ids",
+   "first_ids": [
+    0,
+    34723,
+    16,
+    4480,
+    957,
+    67,
+    65,
+    19
+   ]
+  },
+  {
+   "name": "chat",
+   "n_tokens": 144,
+   "txt": "chat.txt",
+   "ids": "chat.ids",
+   "first_ids": [
+    0,
+    128799,
+    3476,
+    477,
+    260,
+    47468,
+    14,
+    16372
+   ]
+  },
+  {
+   "name": "chat_think",
+   "n_tokens": 173,
+   "txt": "chat_think.txt",
+   "ids": "chat_think.ids",
+   "first_ids": [
+    0,
+    128799,
+    77666,
+    288,
+    9504,
+    482,
+    28,
+    223
+   ]
+  },
+  {
+   "name": "cjk",
+   "n_tokens": 277,
+   "txt": "cjk.txt",
+   "ids": "cjk.ids",
+   "first_ids": [
+    0,
+    33574,
+    8515,
+    38468,
+    11925,
+    20146,
+    19661,
+    320
+   ]
+  },
+  {
+   "name": "json",
+   "n_tokens": 480,
+   "txt": "json.txt",
+   "ids": "json.ids",
+   "first_ids": [
+    0,
+    2054,
+    582,
+    329,
+    3362,
+    582,
+    6384,
+    86
+   ]
+  }
+ ]
+}

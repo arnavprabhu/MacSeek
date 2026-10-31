@@ -65,7 +65,8 @@ int cmd_snapshot(int argc, char** argv) {
   }
   std::string path = arg(argc, argv, "--save");
   if (!m.save_state(path)) { fprintf(stderr, "save failed\n"); return 1; }
-  fprintf(stderr, "snapshot: saved %s at pos %d (%.1f s)\n%s\n", path.c_str(), m.pos(), t.ms() / 1e3, m.stats_report().c_str());
+  fprintf(stderr, "snapshot: saved %s at pos %d (%.1f s)\n%s\n%s\n", path.c_str(), m.pos(), t.ms() / 1e3,
+          m.prefill_profile().str().c_str(), m.stats_report().c_str());
   return 0;
 }
 
@@ -106,10 +107,11 @@ int cmd_bench(int argc, char** argv) {
   }
   ms::MemStatus m1 = ms::mem_status();
   printf("{\"depth\": %d, \"decode_tokens\": %d, \"decode_tok_s\": %.3f, \"ms_per_token\": %.2f, \"gpu_wait_ms\": %.2f, "
-         "\"expert_ms\": %.2f, \"engram_ms\": %.3f, \"encode_ms\": %.3f, \"expert_hit_rate\": %.4f, \"miss_GB_per_token\": %.4f, "
+         "\"expert_ms\": %.2f, \"engram_ms\": %.3f, \"encode_ms\": %.3f, \"gpu_ms\": %.2f, \"io_stall_ms\": %.2f, \"expert_hit_rate\": %.4f, \"miss_GB_per_token\": %.4f, "
          "\"prefill_tokens\": %d, \"prefill_tok_s\": %.2f, \"load_s\": %.2f, \"swap_grew\": %s}\n",
          depth, nd, nd / dec_s, 1e3 * dec_s / nd, p.gpu_wait_ms / std::max(1, p.tokens), p.expert_ms / std::max(1, p.tokens),
-         p.engram_ms / std::max(1, p.tokens), p.encode_ms / std::max(1, p.tokens), es.hit_rate(),
+         p.engram_ms / std::max(1, p.tokens), p.encode_ms / std::max(1, p.tokens), p.gpu_ms / std::max(1, p.tokens),
+         p.io_stall_ms / std::max(1, p.tokens), es.hit_rate(),
          es.bytes_read / 1e9 / std::max(1, nd), np, np > 0 ? np / pf_s : 0.0, load_s, ms::swap_grew(m0, m1) ? "true" : "false");
   if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
   return 0;
@@ -147,6 +149,36 @@ int cmd_gen(int argc, char** argv) {
   std::string s = dec.flush(); fwrite(s.data(), 1, s.size(), stdout);
   printf("\n");
   fprintf(stderr, "decode: %d tokens, %.2f tok/s\n", i, i / (td.ms() / 1e3));
+  if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
+  return 0;
+}
+
+// macseek profile --ids corpus.ids [--n 8192] [--decode 64]: prefill n corpus tokens (MACSEEK_CHUNK sized chunks), then
+// decode; prints the prefill and decode time split (where does the time go).
+int cmd_profile(int argc, char** argv) {
+  auto toks = read_ids(arg(argc, argv, "--ids"));
+  int n = std::stoi(arg(argc, argv, "--n", "8192"));
+  int nd = std::stoi(arg(argc, argv, "--decode", "64"));
+  if (n > (int)toks.size()) n = (int)toks.size();
+  ms::MemStatus m0 = ms::mem_status();
+  ms::ds41::Model m;
+  ms::Timer t;
+  int32_t tok = m.prefill(toks.data(), n);
+  fprintf(stderr, "%s\n", m.prefill_profile().str().c_str());
+  m.experts().reset_stats();
+  for (int i = 0; i < 4; i++) tok = m.decode(tok);
+  m.profile().reset(); m.experts().reset_stats();
+  ms::Timer td;
+  for (int i = 0; i < nd; i++) tok = m.decode(tok);
+  double s = td.ms() / 1e3;
+  auto& p = m.profile();
+  ms::LayerStats es = m.experts().total_stats();
+  int k = std::max(1, p.tokens);
+  fprintf(stderr, "decode @%d: %.2f tok/s | per token ms: total %.1f gpu %.1f gpu_wait %.1f expert(cpu path) %.1f io_stall %.1f "
+          "encode %.2f engram %.2f | hit %.3f miss %.3f GB/token\n", m.pos(), nd / s, p.total_ms / k, p.gpu_ms / k,
+          p.gpu_wait_ms / k, p.expert_ms / k, p.io_stall_ms / k, p.encode_ms / k, p.engram_ms / k, es.hit_rate(), p.io_bytes / 1e9 / k);
+  ms::MemStatus m1 = ms::mem_status();
+  fprintf(stderr, "mem: %s | swap grew: %s\n", m1.str().c_str(), ms::swap_grew(m0, m1) ? "YES" : "no");
   if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
   return 0;
 }

@@ -313,6 +313,7 @@ int cmd_gen(int argc, char** argv);
 int cmd_bench(int argc, char** argv);
 int cmd_logits(int argc, char** argv);
 int cmd_snapshot(int argc, char** argv);
+int cmd_profile(int argc, char** argv);
 
 int main(int argc, char** argv) {
   if (argc < 2) { usage(); return 2; }
@@ -331,6 +332,7 @@ int main(int argc, char** argv) {
   if (cmd == "logits") return cmd_logits(argc, argv);
   // ===== INTEGRATION HOOK (snapshot): save/load model state snapshots (SPEC §4.3).
   if (cmd == "snapshot") return cmd_snapshot(argc, argv);
+  if (cmd == "profile") return cmd_profile(argc, argv);
   if (cmd == "-h" || cmd == "--help" || cmd == "help") { usage(); return 0; }
   fprintf(stderr, "unknown command '%s'\n", cmd.c_str());
   usage();

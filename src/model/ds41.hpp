@@ -26,10 +26,18 @@ struct ModelOptions {
   static ModelOptions from_env();
 };
 
-struct DecodeProfile {         // accumulated over decode steps (CPU wall times, ms)
+struct DecodeProfile {         // accumulated over decode steps (CPU wall times, ms; gpu_ms = sum of command-buffer GPU time)
   int tokens = 0;
-  double total_ms = 0, gpu_wait_ms = 0, expert_ms = 0, encode_ms = 0, engram_ms = 0;
+  double total_ms = 0, gpu_wait_ms = 0, expert_ms = 0, encode_ms = 0, engram_ms = 0, gpu_ms = 0, io_stall_ms = 0;
+  uint64_t io_bytes = 0;
   void reset() { *this = DecodeProfile{}; }
+};
+struct PrefillProfile {        // accumulated over prefill chunks
+  int chunks = 0; long tokens = 0;
+  double total_ms = 0, engram_ms = 0, main_gpu_ms = 0, main_wait_ms = 0, moe_ms = 0, moe_gpu_ms = 0, route_ms = 0;
+  uint64_t io_bytes = 0; long experts_used = 0, groups = 0;
+  void reset() { *this = PrefillProfile{}; }
+  std::string str() const;
 };
 
 class Model {
@@ -50,6 +58,7 @@ class Model {
   bool load_state(const std::string& path);
 
   DecodeProfile& profile() { return prof_; }
+  PrefillProfile& prefill_profile() { return pprof_; }
   std::string stats_report() const;
   ExpertCache& experts() { return *cache_; }
 
@@ -60,6 +69,7 @@ class Model {
   ModelOptions o_;
   int pos_ = 0;
   DecodeProfile prof_;
+  PrefillProfile pprof_;
   int32_t forward(const int32_t* toks, int n, float* logits_all, float* logits_last, float temperature, uint64_t seed);
   std::unique_ptr<Gguf> g_;
   std::unique_ptr<Weights> w_;
