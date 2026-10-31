@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <string>
 #include <vector>
 #include "core/metal.hpp"
@@ -108,16 +109,121 @@ static void bench_moe(double peak) {
   }
 }
 
+
+// Realistic MoE prefill (what ds41.mm runs per layer): n tokens, top-6 of 384 experts drawn without replacement from a
+// Zipf(s) popularity (random expert permutation), experts in id order processed in groups of `group` experts per
+// command buffer (encode_moe_prefill call), shared expert (all n tokens) in the first group. Reports the sum of the
+// groups' GPU times, best of `reps` passes. Expert weights alias over `uniq` distinct matrices (>= 512 MiB streamed).
+static void bench_moe_real(double peak, int n, int group, double zs, QType tgu, QType tdn, QType tsh, int reps) {
+  auto& d = Device::get();
+  const int D = q::kExpertDim, I = q::kExpertInter, K = 6, NE = 384;
+  const size_t gu = q::row_bytes(tgu, D) * I, dn = q::row_bytes(tdn, I) * D;
+  const size_t sgu = q::row_bytes(tsh, D) * I, sdn = q::row_bytes(tsh, I) * D;
+  int uniq = (int)std::min<size_t>(NE, ((size_t)600 << 20) / (2 * gu + dn) + 1);
+  Buffer arena = d.alloc((size_t)uniq * (2 * gu + dn) + 2 * sgu + sdn + 64, "arena");
+  fill_rand(arena, 9);
+  std::vector<q::ExpertSlot> slots(NE);
+  size_t off = 2;  // GGUF expert offsets are only 2/4-byte aligned in the arena
+  std::vector<q::ExpertSlot> base(uniq);
+  for (int j = 0; j < uniq; j++) {
+    base[j].gate = arena.sub(off, gu); off += gu; base[j].up = arena.sub(off, gu); off += gu;
+    base[j].down = arena.sub(off, dn); off += dn;
+  }
+  for (int j = 0; j < NE; j++) slots[j] = base[j % uniq];
+  q::ExpertSlot sh{arena.sub(off, sgu), arena.sub(off + sgu, sgu), arena.sub(off + 2 * sgu, sdn)};
+  // routing
+  std::mt19937 rng(1234);
+  std::vector<int> perm(NE);
+  for (int j = 0; j < NE; j++) perm[j] = j;
+  std::shuffle(perm.begin(), perm.end(), rng);
+  std::vector<double> pw(NE);
+  for (int r = 0; r < NE; r++) pw[perm[r]] = 1.0 / std::pow(r + 1.0, zs);
+  std::vector<std::vector<int>> toks_of(NE);  // entries t*K + k
+  std::uniform_real_distribution<double> ud(0, 1);
+  for (int t = 0; t < n; t++) {
+    std::vector<double> w = pw;
+    double sum = 0; for (double v : w) sum += v;
+    for (int k = 0; k < K; k++) {
+      double u = ud(rng) * sum; int j = 0;
+      for (; j < NE - 1; j++) { if (u < w[j]) break; u -= w[j]; }
+      if (w[j] == 0) { j = 0; while (w[j] == 0) j++; }
+      toks_of[j].push_back(t * K + k); sum -= w[j]; w[j] = 0;
+    }
+  }
+  std::vector<int> used, cnt;
+  for (int j = 0; j < NE; j++) if (!toks_of[j].empty()) { used.push_back(j); cnt.push_back((int)toks_of[j].size()); }
+  std::vector<int> sc = cnt; std::sort(sc.begin(), sc.end());
+  int lt16 = 0, gt256 = 0; for (int c : sc) { lt16 += c < 16; gt256 += c > 256; }
+  const int ngroups = ((int)used.size() + group - 1) / group;
+  printf("MoE prefill realistic: n=%d top-%d of %d, Zipf s=%.2f, %s/%s + shared %s, %d experts used (tokens/expert min %d "
+         "median %d max %d, <16: %d, >256: %d), %d groups of %d\n", n, K, NE, zs, q::type_name(tgu), q::type_name(tdn),
+         q::type_name(tsh), (int)used.size(), sc.front(), sc[sc.size() / 2], sc.back(), lt16, gt256, ngroups, group);
+  // per-group routing buffers + one scratch per group (no reuse hazards)
+  struct Grp { std::vector<int> offs; std::vector<q::ExpertSlot> sl; Buffer tok, wt, slot_of, scratch; int total; };
+  std::vector<Grp> gs(ngroups);
+  Buffer X = d.alloc((size_t)n * D * 4, "X"), Y = d.alloc((size_t)n * D * 4, "Y");
+  { std::normal_distribution<float> nd(0.f, 1.f); float* x = (float*)X.cpu(); for (size_t i = 0; i < (size_t)n * D; i++) x[i] = nd(rng); }
+  size_t max_scr = 0;
+  for (int gi = 0; gi < ngroups; gi++) {
+    Grp& g = gs[gi];
+    std::vector<int> tok, slot_of(n * K, -1); std::vector<float> wt;
+    for (int jj = gi * group; jj < std::min((int)used.size(), (gi + 1) * group); jj++) {
+      g.offs.push_back((int)tok.size()); g.sl.push_back(slots[used[jj]]);
+      for (int ent : toks_of[used[jj]]) { slot_of[ent] = (int)tok.size(); tok.push_back(ent / K); wt.push_back(0.1f + 0.05f * (ent % K)); }
+    }
+    g.offs.push_back((int)tok.size());
+    g.total = (int)tok.size();
+    g.tok = d.alloc(g.total * 4 + 16); g.wt = d.alloc(g.total * 4 + 16); g.slot_of = d.alloc(n * K * 4);
+    memcpy(g.tok.cpu(), tok.data(), g.total * 4); memcpy(g.wt.cpu(), wt.data(), g.total * 4);
+    memcpy(g.slot_of.cpu(), slot_of.data(), n * K * 4);
+    max_scr = std::max(max_scr, q::moe_prefill_scratch_bytes(g.total, n, (int)g.sl.size()));
+  }
+  Buffer scratch = d.alloc(max_scr, "scratch");
+  double best = 1e30, flops = 0;
+  for (auto& g : gs) flops += 2.0 * 3 * D * I * g.total;
+  flops += 2.0 * 3 * D * I * n;
+  for (int r = 0; r < reps; r++) {
+    double tot = 0;
+    for (int gi = 0; gi < ngroups; gi++) {
+      Grp& g = gs[gi];
+      q::MoePrefillArgs a;
+      a.t_gate_up = tgu; a.t_down = tdn; a.t_shared = tsh;
+      a.n_tokens = n; a.n_exp = (int)g.sl.size(); a.slots = g.sl.data(); a.offs = g.offs.data(); a.tok = g.tok;
+      a.wt = g.wt; a.slot_of = g.slot_of; a.k_per_token = K; a.has_shared = gi == 0; a.shared = sh; a.X = X; a.Y = Y;
+      a.scratch = scratch;
+      Enc e; q::encode_moe_prefill(e, a); e.wait();
+      tot += e.gpu_ms();
+    }
+    best = std::min(best, tot);
+  }
+  printf("  total %.2f ms  %.2f TFLOPS effective  (%.0f%% of F16 peak %.1f)   x40 layers = %.2f s per %d-token chunk\n", best,
+         flops / best / 1e9, 100 * flops / best / 1e9 / peak, peak, best * 40 / 1e3, n);
+  for (auto& g : gs) { d.release(g.tok); d.release(g.wt); d.release(g.slot_of); }
+  for (Buffer* b : {&arena, &X, &Y, &scratch}) d.release(*b);
+}
+
 int main(int argc, char** argv) {
-  bool only_peak = false, moe = false; const char* filt = nullptr;
+  bool only_peak = false, moe = false, real = false; const char* filt = nullptr;
+  int rn = 4096, rgroup = 64, reps = 3; double zs = 0.8; std::string rtypes = "all";
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--peak")) only_peak = true;
     else if (!strcmp(argv[i], "--moe")) moe = true;
+    else if (!strcmp(argv[i], "--real")) { moe = true; real = true; }
+    else if (!strcmp(argv[i], "--n") && i + 1 < argc) rn = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--group") && i + 1 < argc) rgroup = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--zipf") && i + 1 < argc) zs = atof(argv[++i]);
+    else if (!strcmp(argv[i], "--reps") && i + 1 < argc) reps = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--types") && i + 1 < argc) rtypes = argv[++i];  // all | iq1 | iq2
     else filt = argv[i];
   }
-  double peak = peak_f16(true);
+  double peak = (real && getenv("BENCH_PEAK")) ? atof(getenv("BENCH_PEAK")) : peak_f16(true);
   printf("F16 GEMM peak: %.2f TFLOPS\n", peak);
   if (only_peak) return 0;
+  if (real) {  // bench_qmatmul --moe --real [--n 4096] [--group 64] [--zipf 0.8] [--types all|iq1|iq2] [--reps 3]
+    if (rtypes == "all" || rtypes == "iq1") bench_moe_real(peak, rn, rgroup, zs, QType::IQ1_S, QType::IQ1_S, QType::Q6_K, reps);
+    if (rtypes == "all" || rtypes == "iq2") bench_moe_real(peak, rn, rgroup, zs, QType::IQ2_XXS, QType::IQ2_XXS, QType::Q8_0, reps);
+    return 0;
+  }
   if (moe) { bench_moe(peak); return 0; }
   struct Shape { QType t; int rows, cols; const char* what; };
   const Shape shapes[] = {

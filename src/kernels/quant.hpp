@@ -68,7 +68,8 @@ void encode_moe_decode_table(Enc& e, const MoeDecodeArgs& a, const Buffer& table
 // final reduction sums Y[t] += shared(t) + sum_k Z[slot_of[t][k]] in that fixed order (deterministic).
 // Scratch layout (caller-owned, shared storage; must not be in use by an in-flight command buffer because the host
 // writes the expert pointer / tile tables into its header at encode time):
-//   header | Xg half[(total+n) x 5120] | H half[(total+n) x 2304] | Z f32[(total+n) x 5120]
+//   header | Xg half[(total+n) x 5120] | H half[(total+n) x 2304] | Z f32[(total+n) x 5120] | W16 half[2 x 2304 x 5120]
+// (W16: the shared expert's gate|up, later down, dequantized to half for the dense GEMMs)
 struct MoePrefillArgs {
   QType t_gate_up = QType::IQ1_S, t_down = QType::IQ1_S;
   int n_tokens = 0;                   // rows of X / Y
@@ -85,6 +86,11 @@ struct MoePrefillArgs {
   Buffer X;                           // F32[n_tokens x 5120]
   Buffer Y;                           // F32[n_tokens x 5120], ACCUMULATED
   Buffer scratch;                     // >= moe_prefill_scratch_bytes(total, n_tokens, n_exp)
+  // kernel selection (-1 = env / default): path 1 = per-simdgroup register-dequant kernels (MACSEEK_MOEP_PATH, default),
+  // 0 = threadgroup dequant-tile kernels (previous implementation); shared_dense 1 = shared expert through half
+  // pre-dequantization + dense GEMMs (MACSEEK_MOEP_SHDENSE, default), 0 = through the grouped kernels
+  int path = -1;
+  int shared_dense = -1;
 };
 size_t moe_prefill_scratch_bytes(int total_entries, int n_tokens, int n_exp = 384);
 void encode_moe_prefill(Enc& e, const MoePrefillArgs& a);
