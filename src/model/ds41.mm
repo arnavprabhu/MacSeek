@@ -61,7 +61,8 @@ struct Model::Impl {
   Buffer h, x, sub, mixA, mixF, qa, qrn, q, kv, ckv, cgate, iq, iw, aout, aout16, otmp, oa, rlog, rids, rw;
   Buffer embrows, erow, edeq, ekv, logits, amax_i, amax_v, moe_dec_scratch;
   Buffer moe_scr[2], route_dev[2];
-  Buffer pids, pw;                   // decode: predicted next-layer expert ids (router of l+1 on layer l's FFN input)
+  Buffer pids, pw;                   // (unused)
+  Buffer plog;                       // decode: router logits of layers l+1..l+D applied to layer l's FFN input
   arch::Scratch asc2;                // second scratch for the predictor router (same kernel family)   // prefill MoE scratch + routing tables (double-buffered)
 };
 
@@ -149,7 +150,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(2 * n * 25600 * 4, "ekv");
   P.logits = A((size_t)std::max(o.max_logits_rows, 1) * cfg_.vocab * 4, "logits");
   P.amax_i = A(64, "amax_i"); P.amax_v = A(64, "amax_v");
-  P.pids = A(64, "pids"); P.pw = A(64, "pw");
+  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog");
   P.asc2 = arch::Scratch::create(64, 1);
   P.moe_dec_scratch = A(q::moe_decode_scratch_bytes(), "moe_dec");
   const int total = (int)n * 6;
@@ -254,7 +255,26 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   // decode wait on the CPU (profiling: GPU times are only valid for command buffers without event waits).
   static const bool cpu_wait_io = env_int("MACSEEK_PF_GPU_WAIT", 0) == 0;
   static const bool dec_cpu_wait = env_int("MACSEEK_CPU_WAIT_IO", 0) != 0;
-  static const bool pred_on = env_int("MACSEEK_PRED", 0) != 0;   // decode next-layer expert prefetch
+  static const bool pred_on = env_int("MACSEEK_PRED", 1) != 0;   // decode next-layer expert prefetch (win: +9%)
+  static const int pred_k = (int)env_int("MACSEEK_PRED_K", 6);      // experts prefetched per predicted layer
+  static const int pred_depth = std::min(4, (int)env_int("MACSEEK_PRED_DEPTH", 1));
+  auto prefetch_predicted = [&](int l) {
+    for (int d = 1; d <= pred_depth && l + d < cfg_.n_layers; d++) {
+      const float* lg = (const float*)P.plog.cpu() + (d - 1) * 384;
+      const float* bias = (const float*)P.L[l + d].bias.b.cpu();
+      std::pair<float, int> sc[384];
+      for (int x = 0; x < 384; x++) {
+        float v = lg[x];
+        float sp = v > 20.f ? v : std::log1p(std::exp(v));
+        sc[x] = {std::sqrt(sp) + bias[x], x};
+      }
+      const int k = std::min(pred_k, 384);
+      std::partial_sort(sc, sc + k, sc + 384, [](auto& a, auto& b) { return a.first > b.first; });
+      int ids[384];
+      for (int i = 0; i < k; i++) ids[i] = sc[i].second;
+      cache_->prefetch(l + d, ids, k);
+    }
+  };
   static std::vector<int> all_ids = [] { std::vector<int> v(384); for (int i = 0; i < 384; i++) v[i] = i; return v; }();
   // Attention side of layer l for this call: hc boundary (+engram), attention, hc boundary into the FFN, router,
   // and zeroing of `sub` (the MoE accumulates into it). Encodes into E; no commit.
@@ -321,10 +341,12 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     if (dec) {
       arch::encode_router_fused(E, P.x, L.gate_inp.b, L.bias.b, P.rids, P.rw, P.asc);
       // next-layer expert prediction: layer l+1's router applied to this layer's (normed) FFN input
-      if (pred_on && l + 1 < cfg_.n_layers) {
-        E.barrier();
-        arch::encode_router_fused(E, P.x, P.L[l + 1].gate_inp.b, P.L[l + 1].bias.b, P.pids, P.pw, P.asc2);
-      }
+      // (logits only; the CPU picks the top pred_k by score+bias after the router handoff)
+      if (pred_on)
+        for (int d = 1; d <= pred_depth && l + d < cfg_.n_layers; d++) {
+          const W& g = P.L[l + d].gate_inp;
+          q::encode_matvec(E, g.t, g.b, g.rows, g.cols, P.x, P.plog.sub((size_t)(d - 1) * 384 * 4, 384 * 4));
+        }
     }
     else {
       linear(E, L.gate_inp, P.x, P.rlog, n); E.barrier();
@@ -378,7 +400,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       Timer tx;
       const int* ids = (const int*)P.rids.cpu();
       ExpertLease lease = cache_->ensure(l, ids, 6);
-      if (pred_on && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, (const int*)P.pids.cpu(), 6);
+      if (pred_on) prefetch_predicted(l);
       const uint64_t wv = c0 + 2 + 2 * (uint64_t)l, sv = wv + 1;
       moe->between([&](void* cb) {
         [(__bridge id<MTLCommandBuffer>)cb encodeWaitForEvent:chain value:wv];
@@ -427,7 +449,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     const int* ids = (const int*)P.rids.cpu();
     if (dec) {
       ExpertLease lease = cache_->ensure(l, ids, 6);
-      if (pred_on && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, (const int*)P.pids.cpu(), 6);
+      if (pred_on) prefetch_predicted(l);
       e = std::make_unique<Enc>();
       if (dec_cpu_wait) lease.wait();
       else e->between([&](void* cb) { lease.encode_wait(cb); });

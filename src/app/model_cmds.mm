@@ -124,11 +124,12 @@ int cmd_bench(int argc, char** argv) {
   ms::MemStatus m1 = ms::mem_status();
   printf("{\"depth\": %d, \"decode_tokens\": %d, \"decode_tok_s\": %.3f, \"ms_per_token\": %.2f, \"gpu_wait_ms\": %.2f, "
          "\"expert_ms\": %.2f, \"engram_ms\": %.3f, \"encode_ms\": %.3f, \"gpu_ms\": %.2f, \"io_stall_ms\": %.2f, \"expert_hit_rate\": %.4f, \"miss_GB_per_token\": %.4f, "
-         "\"prefill_tokens\": %d, \"prefill_tok_s\": %.2f, \"load_s\": %.2f, \"swap_grew\": %s, \"tok_hash\": \"%016llx\", \"first\": \"%s\"}\n",
+         "\"prefill_tokens\": %d, \"prefill_tok_s\": %.2f, \"load_s\": %.2f, \"swap_grew\": %s, \"tok_hash\": \"%016llx\", \"first\": \"%s\", \"pf_issued\": %llu, \"pf_used\": %llu, \"pf_wasted\": %llu}\n",
          depth, nd, nd / dec_s, 1e3 * dec_s / nd, p.gpu_wait_ms / std::max(1, p.tokens), p.expert_ms / std::max(1, p.tokens),
          p.engram_ms / std::max(1, p.tokens), p.encode_ms / std::max(1, p.tokens), p.gpu_ms / std::max(1, p.tokens),
          p.io_stall_ms / std::max(1, p.tokens), es.hit_rate(),
-         es.bytes_read / 1e9 / std::max(1, nd), np, np > 0 ? np / pf_s : 0.0, load_s, ms::swap_grew(m0, m1) ? "true" : "false", (unsigned long long)th, first.c_str());
+         es.bytes_read / 1e9 / std::max(1, nd), np, np > 0 ? np / pf_s : 0.0, load_s, ms::swap_grew(m0, m1) ? "true" : "false", (unsigned long long)th, first.c_str(),
+         (unsigned long long)es.prefetch_issued, (unsigned long long)es.prefetch_used, (unsigned long long)es.prefetch_wasted);
   if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
   return 0;
 }
