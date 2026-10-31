@@ -1,0 +1,78 @@
+blk.0.ffn_gate_exps.weight	MXFP4	[5120, 2304, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	5265728
+blk.0.ffn_down_exps.weight	MXFP4	[2304, 5120, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	807426368
+blk.0.ffn_up_exps.weight	MXFP4	[5120, 2304, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	1609587008
+blk.1.ffn_gate_exps.weight	MXFP4	[5120, 2304, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	2411747648
+blk.1.ffn_down_exps.weight	MXFP4	[2304, 5120, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	3213908288
+blk.1.ffn_up_exps.weight	MXFP4	[5120, 2304, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	4016068928
+blk.2.ffn_gate_exps.weight	MXFP4	[5120, 2304, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	4818229568
+blk.2.ffn_down_exps.weight	MXFP4	[2304, 5120, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	5620390208
+blk.2.ffn_up_exps.weight	MXFP4	[5120, 2304, 128]	802160640	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	6422550848
+blk.0.attn_sinks.weight	F32	[64]	256	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7224711488
+blk.0.attn_kv_a_norm.weight	F32	[512]	2048	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7224711744
+blk.0.attn_q_a_norm.weight	F32	[1280]	5120	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7224713792
+blk.0.attn_kv.weight	Q8_0	[5120, 512]	2785280	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7224718912
+blk.0.attn_output_a.weight	Q8_0	[4096, 8192]	35651584	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7227504192
+blk.0.attn_output_b.weight	Q8_0	[8192, 5120]	44564480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7263155776
+blk.0.attn_q_a.weight	Q8_0	[5120, 1280]	6963200	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7307720256
+blk.0.attn_q_b.weight	Q8_0	[1280, 32768]	44564480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7314683456
+blk.0.attn_norm.weight	F32	[5120]	20480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7359247936
+blk.0.exp_probs_b.bias	F32	[128]	512	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7359268416
+blk.0.ffn_gate_inp.weight	F32	[5120, 128]	2621440	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7359268928
+blk.0.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7361890368
+blk.0.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7374424128
+blk.0.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7386957888
+blk.0.ffn_norm.weight	F32	[5120]	20480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7399491648
+blk.0.hc_attn_base.weight	F32	[24]	96	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7399512128
+blk.0.hc_attn_fn.weight	F32	[20480, 24]	1966080	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7399512224
+blk.0.hc_attn_scale.weight	F32	[3]	12	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7401478304
+blk.0.hc_ffn_base.weight	F32	[24]	96	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7401478336
+blk.0.hc_ffn_fn.weight	F32	[20480, 24]	1966080	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7401478432
+blk.0.hc_ffn_scale.weight	F32	[3]	12	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7403444512
+enc.output_norm.weight	F32	[5120]	20480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7403444544
+fc.weight	Q8_0	[15360, 5120]	83558400	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7403465024
+blk.1.attn_sinks.weight	F32	[64]	256	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7487023424
+blk.1.attn_kv_a_norm.weight	F32	[512]	2048	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7487023680
+blk.1.attn_q_a_norm.weight	F32	[1280]	5120	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7487025728
+blk.1.attn_kv.weight	Q8_0	[5120, 512]	2785280	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7487030848
+blk.1.attn_output_a.weight	Q8_0	[4096, 8192]	35651584	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7489816128
+blk.1.attn_output_b.weight	Q8_0	[8192, 5120]	44564480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7525467712
+blk.1.attn_q_a.weight	Q8_0	[5120, 1280]	6963200	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7570032192
+blk.1.attn_q_b.weight	Q8_0	[1280, 32768]	44564480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7576995392
+blk.1.attn_norm.weight	F32	[5120]	20480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7621559872
+blk.1.exp_probs_b.bias	F32	[128]	512	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7621580352
+blk.1.ffn_gate_inp.weight	F32	[5120, 128]	2621440	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7621580864
+blk.1.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7624202304
+blk.1.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7636736064
+blk.1.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7649269824
+blk.1.ffn_norm.weight	F32	[5120]	20480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7661803584
+blk.1.hc_attn_base.weight	F32	[24]	96	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7661824064
+blk.1.hc_attn_fn.weight	F32	[20480, 24]	1966080	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7661824160
+blk.1.hc_attn_scale.weight	F32	[3]	12	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7663790240
+blk.1.hc_ffn_base.weight	F32	[24]	96	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7663790272
+blk.1.hc_ffn_fn.weight	F32	[20480, 24]	1966080	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7663790368
+blk.1.hc_ffn_scale.weight	F32	[3]	12	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7665756448
+blk.2.attn_sinks.weight	F32	[64]	256	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7665756480
+blk.2.attn_kv_a_norm.weight	F32	[512]	2048	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7665756736
+blk.2.attn_q_a_norm.weight	F32	[1280]	5120	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7665758784
+blk.2.attn_kv.weight	Q8_0	[5120, 512]	2785280	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7665763904
+blk.2.attn_output_a.weight	Q8_0	[4096, 8192]	35651584	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7668549184
+blk.2.attn_output_b.weight	Q8_0	[8192, 5120]	44564480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7704200768
+blk.2.attn_q_a.weight	Q8_0	[5120, 1280]	6963200	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7748765248
+blk.2.attn_q_b.weight	Q8_0	[1280, 32768]	44564480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7755728448
+blk.2.attn_norm.weight	F32	[5120]	20480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7800292928
+conf_proj.weight	F32	[5376, 1]	21504	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7800313408
+blk.2.exp_probs_b.bias	F32	[128]	512	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7800334912
+blk.2.ffn_gate_inp.weight	F32	[5120, 128]	2621440	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7800335424
+blk.2.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7802956864
+blk.2.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7815490624
+blk.2.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7828024384
+blk.2.ffn_norm.weight	F32	[5120]	20480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7840558144
+blk.2.hc_attn_base.weight	F32	[24]	96	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7840578624
+blk.2.hc_attn_fn.weight	F32	[20480, 24]	1966080	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7840578720
+blk.2.hc_attn_scale.weight	F32	[3]	12	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7842544800
+blk.2.hc_ffn_base.weight	F32	[24]	96	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7842544832
+blk.2.hc_ffn_fn.weight	F32	[20480, 24]	1966080	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7842544928
+blk.2.hc_ffn_scale.weight	F32	[3]	12	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7844511008
+markov_w1.weight	BF16	[256, 129280]	66191360	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7844511040
+markov_w2.weight	BF16	[256, 129280]	66191360	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7910702400
+output_norm.weight	F32	[5120]	20480	dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf	7976893760
