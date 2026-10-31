@@ -48,6 +48,11 @@ class Enc {
   void dispatch_groups(uint32_t gx, uint32_t gy, uint32_t gz, uint32_t tx, uint32_t ty = 1, uint32_t tz = 1);
   void dispatch_threads(uint32_t nx, uint32_t ny, uint32_t nz, uint32_t tx, uint32_t ty = 1, uint32_t tz = 1);
   void barrier();         // memory barrier on buffers between dependent dispatches (concurrent encoder)
+  // End the current compute encoder, run f(cmdbuf) (e.g. encodeWaitForEvent / encodeSignalEvent, which need no
+  // open encoder), then open a new compute encoder in the same command buffer. Pipelines/bindings must be re-set.
+  template <class F> void between(F&& f) { end_encoder(); f(cmdbuf()); begin_encoder(); }
+  void end_encoder();
+  void begin_encoder();
   void commit();          // end encoding + commit (async)
   void wait();            // commit if needed + waitUntilCompleted; aborts on GPU error
   double gpu_ms() const;  // GPUEndTime - GPUStartTime after wait()

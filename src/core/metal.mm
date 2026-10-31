@@ -126,7 +126,9 @@ void Enc::dispatch_threads(uint32_t nx, uint32_t ny, uint32_t nz, uint32_t tx, u
   [p->ce dispatchThreads:MTLSizeMake(nx, ny, nz) threadsPerThreadgroup:MTLSizeMake(tx, ty, tz)];
 }
 void Enc::barrier() { [p->ce memoryBarrierWithScope:MTLBarrierScopeBuffers]; }
-void Enc::commit() { if (!p->committed) { [p->ce endEncoding]; [p->cb commit]; p->committed = true; } }
+void Enc::end_encoder() { if (p->ce) { [p->ce endEncoding]; p->ce = nil; } }
+void Enc::begin_encoder() { if (!p->ce) p->ce = [p->cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent]; }
+void Enc::commit() { if (!p->committed) { end_encoder(); [p->cb commit]; p->committed = true; } }
 void Enc::wait() {
   commit();
   if (!p->waited) {

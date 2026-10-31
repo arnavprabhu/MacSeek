@@ -309,6 +309,11 @@ void usage() {
 
 }  // namespace
 
+int cmd_gen(int argc, char** argv);
+int cmd_bench(int argc, char** argv);
+int cmd_logits(int argc, char** argv);
+int cmd_snapshot(int argc, char** argv);
+
 int main(int argc, char** argv) {
   if (argc < 2) { usage(); return 2; }
   std::string cmd = argv[1];
@@ -319,13 +324,13 @@ int main(int argc, char** argv) {
   if (cmd == "serve") return cmd_serve(a);
   // ===== INTEGRATION HOOK (gen): load model, format/tokenize prompt (chat::format_request + Tokenizer::encode),
   //       prefill + decode, stream with tok::StreamDecoder.
-  if (cmd == "gen") return not_integrated("gen");
+  if (cmd == "gen") return cmd_gen(argc, argv);
   // ===== INTEGRATION HOOK (bench): prefill/decode speed loop (SPEC §7).
-  if (cmd == "bench") return not_integrated("bench");
+  if (cmd == "bench") return cmd_bench(argc, argv);
   // ===== INTEGRATION HOOK (logits): dump full logits per position for tools/quality.py (SPEC §6 gate C).
-  if (cmd == "logits") return not_integrated("logits");
+  if (cmd == "logits") return cmd_logits(argc, argv);
   // ===== INTEGRATION HOOK (snapshot): save/load model state snapshots (SPEC §4.3).
-  if (cmd == "snapshot") return not_integrated("snapshot");
+  if (cmd == "snapshot") return cmd_snapshot(argc, argv);
   if (cmd == "-h" || cmd == "--help" || cmd == "help") { usage(); return 0; }
   fprintf(stderr, "unknown command '%s'\n", cmd.c_str());
   usage();
