@@ -20,7 +20,8 @@ This file is the contract between modules. If you change an interface, update th
   `MetalPerformancePrimitives` matmul2d) available, bf16 available. recommendedMaxWorkingSetSize = 56.6 GB.
 - SSD (F_NOCACHE pread): sequential 16 MB blocks 11.5 GB/s; random 2.3 MB reads 6.9 GB/s @1 thread, 14.1 @4,
   14.7 @8, 15.1 @16; random 16 KB: 15K IOPS @1 thread, ~95K IOPS @8-32 threads.
-- RAM bandwidth (GPU): TO MEASURE (kernels agent, `bench/membw`).
+- RAM bandwidth (GPU): TO MEASURE (kernels agent, `bench/membw`). attn module probe (`bench_attn200k`, float4 streaming
+  read of 1 GiB): 281-289 GB/s (measured while another GPU process was running).
 
 ## 2. Model facts (from the GGUF; full tables in docs/tensors.txt and docs/metadata.txt)
 
@@ -165,9 +166,10 @@ IQ1_S/IQ2_XXS need the iq1s_grid / iq2xxs_grid / ksigns tables: generate them fr
 `llama-quantize`-free path: `tools/oracle/dequant_check` (links libggml from Homebrew, test-only).
 
 ### 4.3 Model state at 200K (all GPU-resident, small)
-window KV: 40 x 128 x 512 F32 (or F16); compressed KV: layers 2,8,14 -> 100K x 512; layer 20 -> 200K x 512 (F16 = 200 MB;
-fp8/fp4 sim keeps F16 storage of the dequantized values); index keys: 128-dim per compressed position for the 4 sources;
-compressor partial-group state; engram token history. `save_state(path)` / `load_state(path)` must round-trip
+window KV: 40 x 128 x 512 F16; compressed KV: layers 2,8,14 -> 100K x 512; layer 20 -> 200K x 512 (F16; fp8/fp4 sim
+values are exact in F16); index keys: F16 128-dim per compressed position for the 4 sources; compressor partial-group
+state (f32); engram token history. Exact attention layouts, API and switches: docs/modules/attn.md (`ms::attn::State`,
+`encode_layer`, `persistent_state()` lists the buffers/bytes to snapshot). `save_state(path)` / `load_state(path)` must round-trip
 bit-exactly (enables the 1-minute loop: load 200K snapshot, decode 128, time a 2K prefill chunk).
 
 ## 5. Memory plan (64 GB)
