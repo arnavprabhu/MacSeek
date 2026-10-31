@@ -13,7 +13,7 @@ Branch `mod/quant`. Files:
 | `src/kernels/quant_mv.metal` | `q_mv_*` decode matvec, `q_mvn_*` small-n matvec |
 | `src/kernels/quant_moe.metal` | `q_moe_gu_*`, `q_moe_down_*` fused MoE decode |
 | `src/kernels/quant_mm.metal` | `q_mm_*` prefill matmul (fused dequant tiles), `q_mm_{f16,bf16,f32}_64x128` dense, `q_deq_f16_*`, `q_f32_to_f16`, `q_gemm_f16_*` peak probe |
-| `src/kernels/quant_moe_prefill.metal` | `q_moe_gather`, `q_moe_mm_gu_*`, `q_moe_mm_down_*`, `q_moe_reduce` |
+| `src/kernels/quant_moe_prefill.metal` | `q_moe_gather`, `q_moe_rgu_*` / `q_moe_rdown_*` (register-dequant grouped GEMM, default), `q_moe_dgu` (dense shared expert), `q_moe_mm_gu_*` / `q_moe_mm_down_*` (previous threadgroup-tile path), `q_moe_reduce` |
 | `src/kernels/quant_bench.metal` | `q_bw_*` bandwidth probes |
 | `tests/ref/dequant.{hpp,cpp}` | CPU reference dequant for F32 F16 BF16 Q8_0 Q5_K Q6_K IQ1_S IQ2_XXS IQ4_NL MXFP4, `matvec_ref`, `random_blocks` |
 | `tests/test_quant_{ref,matvec,matvec_n,matmul,moe,moe_prefill}.mm`, `tests/quant_test_util.hpp` | ctests |
@@ -42,7 +42,9 @@ void encode_matmul_h(Enc&, QType, W, rows, cols, X16, Y, int n, bool accumulate=
 //   has_shared, t_shared, shared{gate,up,down}, x, y (accumulated), scratch >= moe_decode_scratch_bytes()}
 void encode_moe_decode(Enc&, const MoeDecodeArgs&);
 // MoE prefill: MoePrefillArgs{types, n_tokens, n_exp, slots[n_exp] (host), offs[n_exp+1] (host), tok/wt (device,
-//   expert-sorted), slot_of[n*k] (device), shared, X, Y (accumulated), scratch >= moe_prefill_scratch_bytes(total,n,n_exp)}
+//   expert-sorted), slot_of[n*k] (device), shared, X, Y (accumulated), scratch >= moe_prefill_scratch_bytes(total,n,n_exp),
+//   path = -1 (env; 1 register kernels, 0 previous tile kernels), shared_dense = -1 (env; 1 dense shared expert)}
+// scratch = header | Xg | H | Z | W16 (47 MB: the shared expert's weights as half for the dense GEMMs)
 void encode_moe_prefill(Enc&, const MoePrefillArgs&);
 ```
 
@@ -57,7 +59,13 @@ scratch). Callers must still `e.barrier()` between dependent ops of their own (e
 Env overrides (all optional, for tuning; defaults = measured best):
 `MACSEEK_MV_NR/RSG/KS` (matvec launch), `MACSEEK_MVN_NR/SG`, `MACSEEK_MVN_MM_MIN` (n at which matvec_n uses tiles,
 default 8, 0 = never), `MACSEEK_MM_TILE` (e.g. `128x64_b2`), `MACSEEK_MM_PREDEQ_N` (default 512, 0 = never),
-`MACSEEK_MOE_{GU,D}_{NR,KS,RSG}`, `MACSEEK_MOEP_TM` (64|128).
+`MACSEEK_MOE_{GU,D}_{NR,KS,RSG}`.
+MoE prefill: `MACSEEK_MOEP_PATH` (1 = register-dequant kernels, default; 0 = previous threadgroup-tile kernels, with
+`MACSEEK_MOEP_TM` 64|128), `MACSEEK_MOEP_SHDENSE` (1 = shared expert via half pre-dequant + dense GEMMs, default; 0 =
+grouped kernels), launch shapes per token-tile class `MACSEEK_MOEP_RGU64/_RGU48/_RGU/_RGU16` (gate/up) and
+`MACSEEK_MOEP_RD64/_RD48/_RD/_RD16` (down), format `TMxTNkTKsNSG` (instantiated set in quant_moe_prefill.metal; "0"
+turns a class off, except the 32-token one), `MACSEEK_MOEP_SKIP` (PROFILING ONLY, wrong output: bit mask 1 gather,
+2 routed gate/up, 4 shared gate/up, 8 routed down, 16 shared down, 32 reduce, 64 << c routed tile class c).
 
 ## Kernel design / layouts
 
@@ -105,12 +113,29 @@ half (float left operands run at ~8 TFLOPS vs ~31). n >= 512: the whole weight i
 bandwidth-bound) and the dense `q_mm_f16_64x128` GEMM runs at 92-98% of peak. Edge tiles rely on the tensor API's
 bounds checking (any n, any rows).
 
-MoE prefill: gather (expert-sorted token rows -> half Xg, shared expert rows appended) -> `q_moe_mm_gu` (two dequant
-tiles + two accumulators per TG, fused clamp/SwiGLU/routing weight in the epilogue via
-`cooperative_tensor::get_multidimensional_index`, H stored as half) -> `q_moe_mm_down` (Z f32 per entry) ->
-`q_moe_reduce` (Y[t] += Z[shared t] + sum_k Z[slot_of[t][k]] in fixed order: deterministic, no atomics). Expert
-weights are reached through a device pointer table (gpuAddress + offset) written into the scratch header, with
+MoE prefill: gather (expert-sorted token rows -> half Xg, shared expert rows appended) -> gate/up (fused
+clamp/SwiGLU/routing weight epilogue, H stored as half) -> down (Z f32 per entry) -> `q_moe_reduce` (Y[t] += Z[shared t]
++ sum_k Z[slot_of[t][k]] in fixed order: deterministic, no atomics; tokens without an entry in this call are skipped).
+Expert weights are reached through a device pointer table (gpuAddress + offset) written into the scratch header, with
 `useResource` for residency, so any number of experts in any buffers works.
+
+Routed experts (default path, `q_moe_rgu` / `q_moe_rdown`): every simdgroup works alone (`execution_simdgroup`
+matmul2d) on TM tokens x TN weight rows and dequantizes its weights for each K step (32 or 64) straight into the
+matmul's **right-input cooperative tensor** (registers): no threadgroup tiles, no barriers, so the ALU dequant of some
+simdgroups overlaps the tensor-unit work of others (probe: MMA alone 28 TF on the padded work, dequant adds ~20%).
+Cooperative layout (dumped on M5, guarded by the tests): lane L holds K quad q = (L&1) | ((L>>3)&1)<<1 and row rr =
+((L>>1)&3) | ((L>>4)&1)<<2; element 4*(RB*g + rb) + c is k = 16g + 4q + c, row rr + 8rb. So each lane decodes runs of 4
+consecutive weights of a row (`QDeqq`: IQ1_S / IQ2_XXS share d/qh/qs per 32-weight sub-block; IQ2_XXS signs by ALU
+(7 bits + parity), its 4 KB grid copied to threadgroup memory; generic `Q::deq4` for Q6_K / Q8_0). gate/up keeps two
+accumulators (gate, up) per simdgroup; the destination layout gives 4 consecutive rows of one token per 4 elements ->
+one 8-byte H store. Token tiles: an expert with m tokens gets ceil(m/64) tiles (one weight dequantization per tile):
+full 64-token tiles + the smallest of 64/48/32/16 that holds the remainder (padding 1.12x on the real distribution vs
+1.52x for fixed 64). Launch shapes (TMxTN, K step): gate/up 64x16, 48x16, 32x32, 16x32 (K 64 for IQ1_S, 32 for IQ2_XXS:
+registers); down 64x32, 48x32, 32x64, 16x64 (K 32); 4 simdgroups per threadgroup. The config space is flat (+-1%).
+
+Shared expert (all n tokens, default): gate and up are dequantized to half into W16 (concurrently with the gather),
+then `q_moe_dgu` (dense 64x64 x2 tiles from device memory + SwiGLU epilogue), then down is dequantized into W16 and
+`q_mm_f16_64x128` writes its Z rows (26-28 TF incl. the dequant).
 
 ## Tests (ctest, all pass)
 
@@ -121,7 +146,7 @@ weights are reached through a device pointer table (gpuAddress + offset) written
 | `test_quant_matvec_n` | n = 2..16, all types, block-diag, accumulate | vs half-x ref <= 3e-8 (n<8); vs F32 <= 6e-5 |
 | `test_quant_matmul` | tensor-API matmul, 11 cases (all types, odd n, accumulate) | vs half-rounded ref <= 3e-7; vs F32 ref <= 7e-5 |
 | `test_quant_moe` | MoE decode, all 4 type combos, 0/3/6 routed, with/without shared, clamp-heavy case, 4-byte-aligned slot offsets in one arena | h err <= 5e-9, y err <= 1.4e-7 |
-| `test_quant_moe_prefill` | grouped GEMM: multi-tile expert, 3 type combos, with/without shared | vs half-emulating ref <= 1.4e-5; vs F32 ref <= 1.9e-4 |
+| `test_quant_moe_prefill` | grouped GEMM, 8 cases: multi-tile expert; explicit expert sizes 1, 2, 15-17, 31-33, 47-49, 63-65, 100..300 and one with 600 (> 512) tokens; Zipf(0.8) top-6 of 64; 4 type combos, with/without shared, both kernel paths and both shared paths; every case run twice -> bit-identical | vs half-emulating ref <= 1.4e-5; vs F32 ref <= 1.9e-4 |
 
 Errors are normalized: |gpu - ref| / sum_c |w_c x_c| (per output). The half staging of the tensor-API paths
 (activations, weights, MoE H) costs ~3e-5..2e-4 of that scale vs the F32 path; the decode paths (n=1, MoE decode) are
@@ -191,14 +216,35 @@ Prefill matmul (`bench_qmatmul`, TFLOPS; F16 GEMM peak measured with the same te
 n >= 512 uses pre-dequant + dense GEMM; the fused dequant-tile path alone reaches 18-22 TFLOPS (60-70%) at large n.
 Plain-GEMM probe variants: 64x128 tiles K-step 128 = 31.3 TF; 128x128 = 27; 64x64 = 22; float left operand = 7.9.
 
-MoE prefill (`bench_qmatmul --moe`, IQ1_S routed + Q6_K shared, top-6 random routing):
+MoE prefill, realistic (`bench_qmatmul --moe --real [--n 4096] [--group 64] [--zipf 0.8] [--types iq1|iq2]`): what
+ds41.mm runs per layer: n = 4096 tokens, top-6 of 384 experts drawn from a Zipf(0.8) popularity (tokens/expert 11..1716,
+median 33), 6 calls of 64 experts (one command buffer each), shared expert in the first; sum of GPU times, best of 5,
+idle machine. Effective TFLOPS = 2 * 3 * 5120 * 2304 * (entries + n) / time. "before" = commit a0c9124.
 
-| n | experts | tokens/expert | ms | TFLOPS | % peak |
+| routed gate/up, down + shared | before ms | before TF | after ms | after TF | speedup |
 |---|---|---|---|---|---|
-| 512 | 96 | 32 | 31.6 | 8.0 | 26 |
-| 2048 | 96 | 128 | 83.6 | 12.1 | 40 |
-| 2048 | 32 | 384 | 73.5 | 13.8 | 45 |
-| 4096 | 64 | 384 | 147.5 | 13.8 | 45 |
+| IQ1_S, IQ1_S + Q6_K | 194.6 | 10.4 | 97.0 | 20.9 | 2.01x |
+| IQ2_XXS, IQ2_XXS + Q8_0 | 195.6 | 10.4 | 101.8 | 19.9 | 1.92x |
+| IQ1_S + Q6_K, n = 2048 | 141.1 | 7.2 | 55.1 | 18.4 | 2.56x |
+
+Per-phase (IQ1_S, after, `MACSEEK_MOEP_SKIP`): gather 2.5 ms, routed gate/up 55.7, shared gate/up 7.4, routed down
+24.0, shared down 3.8, reduce 4.9 (6 calls). Routed gate/up runs at ~21 TF useful (25 TF on the padded tiles), down at
+~24 TF; the 64-token tiles reach 23/26 TF, 16-token remainder tiles ~9.5 TF (dequant-bound: a full weight pass for <= 16
+tokens).
+
+MoE prefill (`bench_qmatmul --moe`, IQ1_S routed + Q6_K shared, top-6 uniform random routing):
+
+| n | experts | tokens/expert | before ms | before TF | after ms | after TF | % peak |
+|---|---|---|---|---|---|---|---|
+| 512 | 96 | 32 | 31.1 | 8.2 | 13.2 | 19.2 | 61 |
+| 2048 | 96 | 128 | 80.5 | 12.6 | 44.8 | 22.6 | 72 |
+| 2048 | 32 | 384 | 71.9 | 14.1 | 42.5 | 23.9 | 76 |
+| 4096 | 64 | 384 | 143.6 | 14.1 | 84.5 | 24.0 | 76 |
+
+What did not help (measured, reverted): software-pipelined dequant (two register sets: spills, 1.5-2x slower); gate|up
+in one 32x64 matmul (slower than two 32x32); half-precision dequant arithmetic (no gain, IQ2_XXS error 6e-6 -> 1.8e-4);
+IQ1_S grid as 2-bit codes + ALU expansion, or a device-memory instead of constant table (no change); TM 96/128 tiles
+(register spills / TN=8 layout differs); NSG 2 / 8 (+-1%).
 
 matvec_n (verify blocks): measured only while a llama-bench model run was saturating the GPU, so absolute numbers are
 unreliable; relative to n=1 in the same conditions: n=2..4 costs 1.3-1.6x the n=1 time on K-quants (one weight read),
@@ -211,8 +257,11 @@ n>=8 goes to the tile path (~2.5x n=1 for 34 MB matrices at n=8..32). Re-measure
 - Small matrices (attn_kv 2 MB, hc_fn 2 MB, compressor 5 MB) lose 25-40% to launch/ramp; fuse them with neighbours.
 - matvec_n with n >= 5 is FP32-ALU-bound; the tile path for n >= 8 still dequantizes per call (no weight reuse across
   calls) and its 32-token tile wastes MMA at n = 8..16.
-- MoE prefill reaches only 26-45% of the tensor peak: each TG re-dequantizes its 64 weight rows for every 64-token tile
-  and `q_moe_mm_gu` holds two 16 KB tiles (one TG per core); experts with ~32 tokens fill half a 64-token tile.
+- MoE prefill (realistic distribution) reaches ~65% of the tensor peak: every token tile re-dequantizes the expert's
+  weights (one pass per <= 64 tokens), which is not fully hidden behind the tensor work (gate/up ~20% over its MMA
+  time), remainder tiles pad to 16 rows, and each of the 6 per-layer calls pays a gather + Y read/modify/write (~7 ms
+  of 97). The register path relies on the cooperative-tensor layouts dumped on M5 / macOS 27 (tests catch a change).
+- MoE prefill scratch includes 47 MB for the shared expert's half weights (moe_prefill_scratch_bytes).
 - `encode_matmul` / pre-dequant paths use module-owned scratch buffers guarded by barriers: correct within one command
   buffer, but two command buffers encoded concurrently from different threads must not use them simultaneously.
 - MoE prefill scratch header is host-written at encode time: the scratch must not be in use by an in-flight command
@@ -225,9 +274,10 @@ n>=8 goes to the tile path (~2.5x n=1 for 34 MB matrices at n=8..32). Re-measure
 
 ## Next optimization ideas
 
-1. MoE prefill: per-expert pre-dequant (to half) when an expert has >= ~256 tokens, then dense GEMM; 128-token tiles for
-   big experts; route the shared expert through `encode_matmul_h` (pre-dequant path); single-tile gate/up interleaving
-   to free threadgroup memory for 2 TGs/core.
+1. MoE prefill: (done: register-dequant kernels, 64/48/32/16 tile classes, dense shared expert.) Next: reduce + gather
+   once per layer instead of per 64-expert call (needs a ds41.mm change: keep Z across calls; ~5 ms of 97); pre-dequant
+   + dense GEMM only for experts with >= ~1000 tokens (estimated +1-2 ms); cheaper remainder tiles (two experts' <= 16
+   token remainders cannot share a tile: different weights).
 2. IQ1_S decode: process 4 grid groups per lane with 8-lane blocks only in the fused MoE kernel (more x reuse), or
    int8-quantized x with integer dot products; try `relaxed` half math for the grid dot (measured +3% only for
    half-x, with 4e-5 error: not adopted).
@@ -235,6 +285,6 @@ n>=8 goes to the tile path (~2.5x n=1 for 34 MB matrices at n=8..32). Re-measure
    types; fuse rmsnorm into matvec x loads.
 4. matvec_n: a 16-token MMA tile (`matmul2d_descriptor(16, ...)`) with occupancy-friendly single-buffered 8 KB tiles,
    or half FMA (`half4` dots) for n = 5..8.
-5. Prefill: overlap tile dequant with MMA via warp specialization (producer simdgroups dequantize, consumers multiply)
+5. Prefill matmul (`q_mm`, n < 512): use the MoE register-dequant scheme (right-input cooperative tensors, no barriers)
    instead of the uniform dequant -> barrier -> MMA loop.
 6. Persist pipelines in an MTLBinaryArchive (startup currently compiles the whole bundle; ~170 kernel variants).

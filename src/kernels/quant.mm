@@ -496,6 +496,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
     e.set_buffer(4, b_ptrs); e.set_buffer(5, b_offs); e.set_buffer(6, tl);
     if (path == 1) {
       e.set_buffer(7, moe_tables());
+      e.set_threadgroup_memory(0, t == QType::IQ2_XXS ? 4096 : 16);  // IQ2_XXS grid copy
       e.set_pipeline(rname("q_moe_rgu_", kn, k).c_str());
       const int per_tg = k.tn * k.nsg;
       e.dispatch_groups((kExpertInter + per_tg - 1) / per_tg, nt, 1, 32 * k.nsg);
@@ -525,6 +526,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
     e.set_buffer(4, b_ptrs); e.set_buffer(5, b_offs); e.set_buffer(6, tl);
     if (path == 1) {
       e.set_buffer(7, moe_tables());
+      e.set_threadgroup_memory(0, t == QType::IQ2_XXS ? 4096 : 16);
       e.set_pipeline(rname("q_moe_rdown_", kn, k).c_str());
       const int per_tg = k.tn * k.nsg;
       e.dispatch_groups((kExpertDim + per_tg - 1) / per_tg, nt, 1, 32 * k.nsg);

@@ -7,7 +7,6 @@
 // Expert weights are reached through a device pointer table (gpuAddress + offset, written by the host into the
 // scratch header); tiles map to experts through a host-written tile table.
 #include "quant_tile.h"
-#define Q_IQ2_ALU_SIGNS 1
 
 struct QExpPtr { device const uchar* g; device const uchar* u; device const uchar* d; };
 
@@ -115,7 +114,17 @@ kernel void q_moe_mm_down(device const half* H [[buffer(0)]], device float* Z [[
 // q_deqq<Q, NG>: the NG quads k = k0 + 16g + 4q (g < NG) of one weight row as half4.
 // grid tables used by the cooperative dequant (device copies of the constant tables: divergent per-lane lookups are
 // much cheaper through the regular load path than through constant memory)
-struct QMoeTbl { device const uint2* g1; device const uint2* g2; device const uint2* s2; };
+struct QMoeTbl { device const uint2* g1; threadgroup const uint2* g2; };
+// tables: tbl = device copy (IQ1_S half grid 4096 uint2 | IQ2_XXS half grid 512 uint2 | IQ2 sign masks); IQ2_XXS
+// kernels copy their 4 KB grid into threadgroup memory first (lower-latency divergent lookups: -8% MoE time).
+template <typename Q, int NSG>
+static inline QMoeTbl q_moe_tbl(device const uint2* tbl, threadgroup uint2* tgt, ushort sg, ushort lane) {
+  if (is_same<Q, QB_IQ2XXS>::value) {
+    for (uint i = sg * 32 + lane; i < 512; i += 32 * NSG) tgt[i] = tbl[4096 + i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  return QMoeTbl{tbl, tgt};
+}
 template <typename Q, int NG> struct QDeqq {
   static inline void run(device const uchar* row, uint k0, uint q, thread half4* out, thread const QMoeTbl& tb) {
     for (int g = 0; g < NG; g++) {
@@ -150,14 +159,11 @@ template <int NG> struct QDeqq<QB_IQ2XXS, NG> {
       const float db = q_ldh(b) * (0.5f + float(a1 >> 28)) * 0.25f;
       for (int h = 0; h < 2 && g2 + h < NG; h++) {
         const uint gq = 2 * h + (q >> 1);
-#if Q_IQ2_ALU_SIGNS  // 7 sign bits + parity -> half sign-bit masks with ALU instead of a second table lookup
+        // 7 sign bits + parity -> half sign-bit masks (ALU beats a second table lookup)
         const uint s7 = (a1 >> (7 * gq)) & 127;
         const uint b = ((s7 | ((popcount(s7) & 1) << 7)) >> (4 * (q & 1))) & 15;
         const uint2 sm = uint2(((b & 1) << 15) | ((b & 2) << 30), ((b & 4) << 13) | ((b & 8) << 28));
-        const uint2 e = tb.g2[2 * ((idx >> (8 * gq)) & 0xFF) + (q & 1)] ^ sm;
-#else
-        const uint2 e = tb.g2[2 * ((idx >> (8 * gq)) & 0xFF) + (q & 1)] ^ tb.s2[2 * ((a1 >> (7 * gq)) & 127) + (q & 1)];
-#endif
+        const uint2 e = tb.g2[2 * ((idx >> (8 * gq)) & 0xFF) + (q & 1)] ^ sm;  // threadgroup copy of the grid
         out[g2 + h] = half4(db * float4(as_type<half4>(e)));
       }
     }
@@ -186,9 +192,9 @@ kernel void q_moe_rgu(device const half* Xg [[buffer(0)]], device half* H [[buff
                       constant QMoePArgs& a [[buffer(2)]], device const float* wt [[buffer(3)]],
                       device const QExpPtr* ptrs [[buffer(4)]], device const uint* offs [[buffer(5)]],
                       device const uint2* tiles [[buffer(6)]], device const uint2* tbl [[buffer(7)]],
-                      uint2 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                      ushort lane [[thread_index_in_simdgroup]]) {
-  const QMoeTbl tb{tbl, tbl + 4096, tbl + 4096 + 512};
+                      threadgroup uint2* tgt [[threadgroup(0)]], uint2 tg [[threadgroup_position_in_grid]],
+                      ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+  const QMoeTbl tb = q_moe_tbl<Q, NSG>(tbl, tgt, sg, lane);
   const uint2 te = tiles[tg.y];
   const uint e = te.x, base = offs[e] + te.y, m = min(offs[e + 1] - base, (uint)TM);
   const uint r0 = (tg.x * NSG + sg) * TN;
@@ -270,9 +276,10 @@ template <typename Q, int TM, int TN, int TK, int NSG>
 kernel void q_moe_rdown(device const half* H [[buffer(0)]], device float* Z [[buffer(1)]],
                         constant QMoePArgs& a [[buffer(2)]], device const QExpPtr* ptrs [[buffer(4)]],
                         device const uint* offs [[buffer(5)]], device const uint2* tiles [[buffer(6)]],
-                        device const uint2* tbl [[buffer(7)]], uint2 tg [[threadgroup_position_in_grid]],
-                        ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
-  const QMoeTbl tb{tbl, tbl + 4096, tbl + 4096 + 512};
+                        device const uint2* tbl [[buffer(7)]], threadgroup uint2* tgt [[threadgroup(0)]],
+                        uint2 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
+                        ushort lane [[thread_index_in_simdgroup]]) {
+  const QMoeTbl tb = q_moe_tbl<Q, NSG>(tbl, tgt, sg, lane);
   const uint2 te = tiles[tg.y];
   const uint e = te.x, base = offs[e] + te.y, m = min(offs[e + 1] - base, (uint)TM);
   const uint r0 = (tg.x * NSG + sg) * TN;
@@ -299,11 +306,12 @@ kernel void q_moe_rdown(device const half* H [[buffer(0)]], device float* Z [[bu
   template [[host_name("q_moe_rgu_" name "_" #TM "x" #TN "k" #TK "s" #NSG PS)]] kernel void                         \
   q_moe_rgu<Q, TM, TN, TK, NSG>(device const half*, device half*, constant QMoePArgs&, device const float*,      \
                                    device const QExpPtr*, device const uint*, device const uint2*, device const uint2*, \
-                                   uint2, ushort, ushort);
+                                   threadgroup uint2*, uint2, ushort, ushort);
 #define Q_MOER_DN1(Q, name, TM, TN, TK, NSG, PS)                                                                \
   template [[host_name("q_moe_rdown_" name "_" #TM "x" #TN "k" #TK "s" #NSG PS)]] kernel void                       \
   q_moe_rdown<Q, TM, TN, TK, NSG>(device const half*, device float*, constant QMoePArgs&, device const QExpPtr*, \
-                                     device const uint*, device const uint2*, device const uint2*, uint2, ushort, ushort);
+                                     device const uint*, device const uint2*, device const uint2*, threadgroup uint2*,   \
+                                     uint2, ushort, ushort);
 #define Q_MOER_GU(Q, name, TM, TN, TK, NSG) Q_MOER_GU1(Q, name, TM, TN, TK, NSG, "")
 #define Q_MOER_DN(Q, name, TM, TN, TK, NSG) Q_MOER_DN1(Q, name, TM, TN, TK, NSG, "")
 #define Q_MOER_ALL(Q, name)                                                                                         \
