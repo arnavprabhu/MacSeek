@@ -34,17 +34,27 @@ void write_logits(const std::string& path, const std::vector<int32_t>& toks, con
 }
 }  // namespace
 
-// macseek logits --ids in.ids --out out.logits     (full logits at every position; n <= 1024)
+// macseek logits --ids a.ids[,b.ids...] --out a.logits[,b.logits...]   (full logits at every position; n <= 1024 each)
+static std::vector<std::string> split_csv(const std::string& s) {
+  std::vector<std::string> v; size_t a = 0;
+  while (a <= s.size()) { size_t b = s.find(',', a); if (b == std::string::npos) b = s.size(); if (b > a) v.push_back(s.substr(a, b - a)); a = b + 1; }
+  return v;
+}
 int cmd_logits(int argc, char** argv) {
-  auto toks = read_ids(arg(argc, argv, "--ids"));
-  std::string out = arg(argc, argv, "--out");
+  auto ins = split_csv(arg(argc, argv, "--ids")), outs = split_csv(arg(argc, argv, "--out"));
+  if (ins.empty() || ins.size() != outs.size()) { fprintf(stderr, "logits: --ids and --out lists must match\n"); return 2; }
   ms::ds41::Model m;
-  const int V = m.config().vocab, n = (int)toks.size();
-  std::vector<float> lg((size_t)n * V);
-  ms::Timer t;
-  m.prefill(toks.data(), n, lg.data());
-  fprintf(stderr, "logits: %d tokens in %.2f s (%.1f tok/s)\n", n, t.ms() / 1e3, n / (t.ms() / 1e3));
-  write_logits(out, toks, lg.data(), n, V, 0);
+  const int V = m.config().vocab;
+  for (size_t i = 0; i < ins.size(); i++) {
+    auto toks = read_ids(ins[i]);
+    const int n = (int)toks.size();
+    std::vector<float> lg((size_t)n * V);
+    m.reset();
+    ms::Timer t;
+    m.prefill(toks.data(), n, lg.data());
+    fprintf(stderr, "logits: %s %d tokens in %.2f s (%.1f tok/s)\n", ins[i].c_str(), n, t.ms() / 1e3, n / (t.ms() / 1e3));
+    write_logits(outs[i], toks, lg.data(), n, V, 0);
+  }
   if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
   return 0;
 }
