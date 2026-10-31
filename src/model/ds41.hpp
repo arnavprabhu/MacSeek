@@ -3,6 +3,7 @@
 // Decode: one command buffer per layer boundary (router -> CPU -> expert cache -> MoE), see docs/integration.md.
 // Prefill: chunks of <= max_chunk tokens; MoE experts processed in groups that fit the expert cache.
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -40,6 +41,15 @@ struct PrefillProfile {        // accumulated over prefill chunks
   std::string str() const;
 };
 
+// In-memory copy of the sequence state (attention caches, compressor state, engram hasher, position): a server
+// keeps one per conversation prefix to skip re-prefilling it.
+struct MemState {
+  int pos = 0;
+  std::vector<char> hasher;
+  std::vector<std::vector<char>> spans;
+  size_t bytes() const { size_t b = hasher.size(); for (auto& s : spans) b += s.size(); return b; }
+};
+
 class Model {
  public:
   explicit Model(const ModelOptions& o = ModelOptions::from_env());
@@ -56,6 +66,11 @@ class Model {
 
   bool save_state(const std::string& path) const;
   bool load_state(const std::string& path);
+  std::shared_ptr<MemState> snapshot() const;
+  bool restore(const MemState& s);
+  int max_pos() const;
+  // called after each prefill chunk with (tokens done, tokens total) of the current prefill() call
+  void set_progress(std::function<void(int, int)> f) { progress_ = std::move(f); }
 
   DecodeProfile& profile() { return prof_; }
   PrefillProfile& prefill_profile() { return pprof_; }
@@ -72,7 +87,8 @@ class Model {
   PrefillProfile pprof_;
   const int32_t* next_toks_ = nullptr;   // prefill: the next chunk (engram row prefetch)
   int next_n_ = 0;
-  long pinned_ = 0;   // experts pinned by a multi-chunk prefill (released at the next decode)
+  long pinned_ = 0;
+  std::function<void(int, int)> progress_;   // experts pinned by a multi-chunk prefill (released at the next decode)
   int32_t forward(const int32_t* toks, int n, float* logits_all, float* logits_last, float temperature, uint64_t seed);
   std::unique_ptr<Gguf> g_;
   std::unique_ptr<Weights> w_;

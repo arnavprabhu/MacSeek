@@ -30,7 +30,24 @@ struct GenParams {
   double temperature = 1.0;
   double top_p = 1.0;
   int top_k = 0;
+  double min_p = 0.0;
+  double presence_penalty = 0.0;    // OpenAI: logit -= presence * (count > 0), over generated tokens
+  double frequency_penalty = 0.0;   // OpenAI: logit -= frequency * count, over generated tokens
+  double repetition_penalty = 1.0;  // llama.cpp style over the last repeat_last_n tokens (prompt + generated)
+  int repeat_last_n = 64;
+  bool has_seed = false;
   uint64_t seed = 0;
+  bool ignore_eos = false;
+  std::vector<std::pair<int32_t, float>> logit_bias;
+};
+
+// Timings of the last generate() call (llama.cpp-style "timings" object in responses).
+struct GenStats {
+  int prompt_n = 0;      // prompt tokens
+  int cached_n = 0;      // prompt tokens reused from the cached sequence state (not recomputed)
+  double prompt_ms = 0;  // prefill wall time of the remaining prompt tokens
+  int predicted_n = 0;
+  double predicted_ms = 0;
 };
 
 enum class Finish { Stop, Length, Cancelled, Error };
@@ -45,6 +62,10 @@ class Backend {
   // an EOG token, Length when p.max_tokens tokens were produced.
   virtual Finish generate(const std::vector<int32_t>& prompt, const GenParams& p,
                           const std::function<bool(int32_t)>& emit) = 0;
+  virtual GenStats last_stats() const { return {}; }
+  // live engine state for GET /v1/stats (JSON object text); "{}" if none
+  virtual std::string status_json() const { return "{}"; }
+  virtual int max_context() const { return 0; }
 };
 
 // Dummy backend: replies with the text of the last user turn (the tokens between the last <｜User｜> and the next
@@ -76,6 +97,7 @@ struct ServerConfig {
   int port = 8080;  // 0 = ephemeral (see Server::port())
   std::string model_name;  // default: backend.model_id()
   int default_max_tokens = 1024;
+  std::string ui_path;     // GET / serves this HTML file (read per request); "" = no UI
   size_t max_body_bytes = 64u << 20;
 };
 

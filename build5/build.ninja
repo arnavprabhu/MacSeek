@@ -330,6 +330,17 @@ build CMakeFiles/macseek.dir/src/app/main.cpp.o: CXX_COMPILER__macseek_unscanned
   OBJECT_FILE_DIR = CMakeFiles/macseek.dir/src/app
   TARGET_SUPPORT_DIR = CMakeFiles/macseek.dir
 
+build CMakeFiles/macseek.dir/src/app/model_backend.mm.o: OBJCXX_COMPILER__macseek_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/app/model_backend.mm || cmake_object_order_depends_target_macseek
+  CONFIG = Release
+  DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
+  DEP_FILE = CMakeFiles/macseek.dir/src/app/model_backend.mm.o.d
+  FLAGS = -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64
+  INCLUDES = -I/Users/arnav/Desktop/Projects/MacSeek/src
+  LAUNCHER = /opt/homebrew/bin/ccache 
+  OBJECT_DIR = CMakeFiles/macseek.dir
+  OBJECT_FILE_DIR = CMakeFiles/macseek.dir/src/app
+  TARGET_SUPPORT_DIR = CMakeFiles/macseek.dir
+
 build CMakeFiles/macseek.dir/src/app/model_cmds.mm.o: OBJCXX_COMPILER__macseek_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/app/model_cmds.mm || cmake_object_order_depends_target_macseek
   CONFIG = Release
   DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
@@ -349,7 +360,7 @@ build CMakeFiles/macseek.dir/src/app/model_cmds.mm.o: OBJCXX_COMPILER__macseek_u
 #############################################
 # Link the executable macseek
 
-build macseek: CXX_EXECUTABLE_LINKER__macseek_Release CMakeFiles/macseek.dir/src/app/main.cpp.o CMakeFiles/macseek.dir/src/app/model_cmds.mm.o | libmacseek_lib.a || libmacseek_lib.a
+build macseek: CXX_EXECUTABLE_LINKER__macseek_Release CMakeFiles/macseek.dir/src/app/main.cpp.o CMakeFiles/macseek.dir/src/app/model_backend.mm.o CMakeFiles/macseek.dir/src/app/model_cmds.mm.o | libmacseek_lib.a || libmacseek_lib.a
   CONFIG = Release
   FLAGS = -O3 -mcpu=native -DNDEBUG -arch arm64
   LINK_FLAGS = -Wl,-search_paths_first -Wl,-headerpad_max_install_names

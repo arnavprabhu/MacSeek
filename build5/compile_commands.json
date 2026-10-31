@@ -121,6 +121,12 @@
 },
 {
   "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
+  "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/macseek.dir/src/app/model_backend.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/src/app/model_backend.mm",
+  "file": "/Users/arnav/Desktop/Projects/MacSeek/src/app/model_backend.mm",
+  "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/macseek.dir/src/app/model_backend.mm.o"
+},
+{
+  "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
   "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/macseek.dir/src/app/model_cmds.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/src/app/model_cmds.mm",
   "file": "/Users/arnav/Desktop/Projects/MacSeek/src/app/model_cmds.mm",
   "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/macseek.dir/src/app/model_cmds.mm.o"

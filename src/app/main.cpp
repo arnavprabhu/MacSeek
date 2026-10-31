@@ -29,6 +29,8 @@
 
 using namespace ms;
 
+namespace ms { std::unique_ptr<server::Backend> make_model_backend(const tok::Tokenizer& t, const std::string& id); }
+
 namespace {
 
 struct Args {
@@ -270,15 +272,17 @@ int cmd_serve(const Args& a) {
   if (a.flag("--echo")) {
     backend = std::make_unique<server::EchoBackend>(*tk);
   } else {
-    // ===== INTEGRATION HOOK (serve): construct the model-backed ms::server::Backend here, e.g.
-    //   backend = std::make_unique<ModelBackend>(model, sampler);
-    fprintf(stderr, "serve: model backend not integrated yet; use --echo for the dummy echo backend\n");
-    return 3;
+    backend = ms::make_model_backend(*tk, a.get("--model-id", "deepseek-v4.1-flash"));
   }
   server::ServerConfig cfg;
   cfg.host = a.get("--host", "127.0.0.1");
   cfg.port = atoi(a.get("--port", "8080").c_str());
   if (a.has("--max-tokens")) cfg.default_max_tokens = atoi(a.get("--max-tokens").c_str());
+  {
+    std::string src = __FILE__;   // <repo>/src/app/main.cpp -> <repo>/web/index.html
+    std::string root = src.substr(0, src.rfind("/src/app/"));
+    cfg.ui_path = a.get("--ui", root + "/web/index.html");
+  }
   server::Server srv(*tk, *backend, cfg);
   std::string err;
   if (!srv.start(&err)) { fprintf(stderr, "error: %s\n", err.c_str()); return 1; }
@@ -303,7 +307,7 @@ void usage() {
           "  tokenize     text -> token ids (llama-tokenize compatible output)\n"
           "  detok        token ids -> text\n"
           "  chat-format  render a chat request with the DeepSeek V4.1 template\n"
-          "  serve        OpenAI-compatible HTTP server (--echo: dummy backend)\n"
+          "  serve        OpenAI-compatible HTTP server + web chat UI (--host, --port 8080, --max-tokens, --ui, --echo)\n"
           "  gen | bench | logits | snapshot   (integration hooks)\n");
 }
 

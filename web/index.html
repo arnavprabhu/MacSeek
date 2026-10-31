@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MACSEEK</title>
+<style>
+:root {
+  --ink: #000;
+  --paper: #fff;
+  --mute: #6b6b6b;
+  --rule: 2px solid var(--ink);
+  --hair: 1px solid var(--ink);
+  --mono: "Berkeley Mono", "JetBrains Mono", "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; border-radius: 0 !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--paper); color: var(--ink); font: 14px/1.55 var(--mono);
+  display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+::selection { background: var(--ink); color: var(--paper); }
+
+/* ---------- top bar ---------- */
+header {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: stretch; border-bottom: var(--rule);
+  text-transform: uppercase; letter-spacing: .08em; font-size: 12px;
+}
+header .brand { background: var(--ink); color: var(--paper); padding: 10px 16px; font-weight: 700; letter-spacing: .2em; }
+header .status { display: flex; gap: 0; align-items: stretch; overflow: hidden; }
+header .status > span { padding: 10px 14px; border-right: var(--hair); white-space: nowrap; }
+header .status > span:first-child { border-left: none; }
+header .status b { font-weight: 700; }
+header .acts { display: flex; }
+header .acts button { border: none; border-left: var(--rule); background: var(--paper); padding: 0 16px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
+header .acts button:hover, header .acts button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.dot { display: inline-block; width: 8px; height: 8px; background: var(--ink); margin-right: 8px; vertical-align: 1px; }
+.dot.off { background: transparent; outline: var(--hair); }
+.dot.busy { animation: blink 0.8s steps(2, jump-none) infinite; }
+@keyframes blink { 50% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .dot.busy { animation: none; } }
+
+/* ---------- layout ---------- */
+main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+main.nosettings { grid-template-columns: 1fr 0; }
+main.nosettings aside { display: none; }
+.chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; border-right: var(--rule); }
+main.nosettings .chat { border-right: none; }
+
+/* ---------- transcript ---------- */
+#log { overflow-y: auto; min-height: 0; }
+.empty { padding: 48px 32px; color: var(--mute); text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
+.empty h1 { font-size: 56px; line-height: 1; letter-spacing: -.02em; margin: 0 0 16px; color: var(--ink); text-transform: none; }
+.msg { display: grid; grid-template-columns: 112px 1fr; border-bottom: var(--hair); }
+.msg .who { padding: 14px 12px; border-right: var(--hair); text-transform: uppercase; letter-spacing: .1em; font-size: 11px;
+  display: flex; flex-direction: column; gap: 8px; }
+.msg .who .n { font-size: 22px; font-weight: 700; letter-spacing: 0; line-height: 1; }
+.msg.user .who { background: var(--ink); color: var(--paper); }
+.msg .body { padding: 14px 20px; min-width: 0; overflow-wrap: anywhere; }
+.msg .tools { display: flex; gap: 0; margin-top: 12px; }
+.msg .tools button { border: var(--hair); background: var(--paper); padding: 2px 8px; font-size: 11px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .08em; margin-right: -1px; }
+.msg .tools button:hover { background: var(--ink); color: var(--paper); }
+.meta { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--ink); font-size: 11px; color: var(--mute);
+  text-transform: uppercase; letter-spacing: .06em; display: flex; flex-wrap: wrap; gap: 18px; font-variant-numeric: tabular-nums; }
+.meta b { color: var(--ink); font-weight: 700; }
+details.think { border: var(--hair); margin: 0 0 12px; }
+details.think summary { cursor: pointer; padding: 4px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+  list-style: none; display: flex; justify-content: space-between; }
+details.think summary::-webkit-details-marker { display: none; }
+details.think summary::after { content: "+"; font-weight: 700; }
+details.think[open] summary::after { content: "−"; }
+details.think[open] summary { border-bottom: var(--hair); background: var(--ink); color: var(--paper); }
+details.think .tbody { padding: 10px 12px; color: var(--mute); white-space: pre-wrap; font-size: 13px; max-height: 360px; overflow-y: auto; }
+.progress { height: 6px; border: var(--hair); margin: 8px 0; position: relative; }
+.progress i { position: absolute; inset: 0 auto 0 0; background: var(--ink); }
+.cursor::after { content: "█"; animation: blink 0.8s steps(2, jump-none) infinite; margin-left: 1px; }
+.err { border: var(--rule); padding: 8px 12px; text-transform: uppercase; font-size: 12px; letter-spacing: .06em; }
+
+/* markdown */
+.body p { margin: 0 0 .8em; } .body p:last-child { margin-bottom: 0; }
+.body h1, .body h2, .body h3, .body h4 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; margin: 1.2em 0 .5em;
+  border-bottom: var(--hair); padding-bottom: 2px; }
+.body ul, .body ol { margin: 0 0 .8em; padding-left: 1.6em; }
+.body code { background: #ececec; padding: 0 3px; font-size: 13px; }
+.body pre { border: var(--hair); margin: 0 0 .8em; position: relative; }
+.body pre .lang { position: absolute; top: 0; right: 0; background: var(--ink); color: var(--paper); font-size: 10px;
+  padding: 1px 6px; text-transform: uppercase; letter-spacing: .1em; }
+.body pre code { display: block; background: none; padding: 10px 12px; overflow-x: auto; white-space: pre; }
+.body blockquote { margin: 0 0 .8em; padding-left: 12px; border-left: 4px solid var(--ink); }
+.body table { border-collapse: collapse; margin: 0 0 .8em; }
+.body th, .body td { border: var(--hair); padding: 3px 8px; text-align: left; }
+.body hr { border: none; border-top: var(--rule); }
+.body a { color: var(--ink); }
+
+/* ---------- composer ---------- */
+form#composer { display: grid; grid-template-columns: 1fr auto; border-top: var(--rule); }
+#input { border: none; resize: none; padding: 14px 18px; min-height: 64px; max-height: 40vh; outline: none; background: var(--paper); }
+#input::placeholder { color: var(--mute); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+#send { border: none; border-left: var(--rule); background: var(--ink); color: var(--paper); padding: 0 28px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .16em; font-weight: 700; min-width: 120px; }
+#send:hover { background: var(--paper); color: var(--ink); }
+#send.stop { background: var(--paper); color: var(--ink); }
+#send.stop:hover { background: var(--ink); color: var(--paper); }
+.hint { grid-column: 1 / -1; border-top: var(--hair); font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--mute); padding: 4px 18px; display: flex; justify-content: space-between; }
+
+/* ---------- settings ---------- */
+aside { overflow-y: auto; min-height: 0; }
+aside section { border-bottom: var(--rule); }
+aside h2 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; display: flex; }
+aside h2 span { background: var(--ink); color: var(--paper); padding: 4px 10px; }
+aside h2 em { font-style: normal; padding: 4px 10px; color: var(--mute); }
+.field { display: grid; grid-template-columns: 1fr 88px; border-top: var(--hair); align-items: stretch; }
+.field label { padding: 6px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; border-right: var(--hair);
+  display: flex; flex-direction: column; justify-content: center; }
+.field label small { text-transform: none; letter-spacing: 0; color: var(--mute); font-size: 10px; }
+.field input { border: none; padding: 6px 10px; width: 100%; text-align: right; outline: none; font-variant-numeric: tabular-nums; background: var(--paper); }
+.field input:focus, textarea.box:focus { background: var(--ink); color: var(--paper); }
+textarea.box { display: block; width: 100%; border: none; border-top: var(--hair); padding: 8px 10px; resize: vertical; min-height: 84px; outline: none; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border-top: var(--hair); }
+.seg button { border: none; border-right: var(--hair); background: var(--paper); padding: 7px 0; cursor: pointer; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .1em; }
+.seg button:last-child { border-right: none; }
+.seg button:hover { outline: 2px solid var(--ink); outline-offset: -4px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.row-btns { display: grid; grid-template-columns: 1fr 1fr; border-top: var(--hair); }
+.row-btns button { border: none; background: var(--paper); padding: 8px; cursor: pointer; text-transform: uppercase; letter-spacing: .1em; font-size: 11px; }
+.row-btns button + button { border-left: var(--hair); }
+.row-btns button:hover { background: var(--ink); color: var(--paper); }
+.kv { display: grid; grid-template-columns: 1fr auto; border-top: var(--hair); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.kv span { padding: 5px 10px; } .kv span + span { font-variant-numeric: tabular-nums; font-weight: 700; }
+code.api { display: block; border-top: var(--hair); padding: 8px 10px; font-size: 11px; word-break: break-all; cursor: copy; }
+code.api:hover { background: var(--ink); color: var(--paper); }
+
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; }
+  main aside { display: none; }
+  main.showsettings-mobile .chat { display: none; }
+  main.showsettings-mobile aside { display: block; }
+  .msg { grid-template-columns: 1fr; }
+  .msg .who { flex-direction: row; align-items: baseline; border-right: none; border-bottom: var(--hair); padding: 6px 12px; }
+  header .status > span:nth-child(n+3) { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">MACSEEK</div>
+  <div class="status" id="status">
+    <span><i class="dot off" id="dot"></i><b id="phase">CONNECTING</b></span>
+    <span id="model">—</span>
+    <span>CTX <b id="ctx">0</b> / <span id="ctxmax">—</span></span>
+    <span>LAST <b id="lastspeed">—</b></span>
+  </div>
+  <div class="acts">
+    <button id="newchat" title="New chat (Ctrl+K)">NEW</button>
+    <button id="togglesettings" aria-pressed="true">SETTINGS</button>
+  </div>
+</header>
+<main id="main">
+  <div class="chat">
+    <div id="log"></div>
+    <form id="composer" autocomplete="off">
+      <textarea id="input" rows="2" placeholder="Message — Enter to send, Shift+Enter for newline"></textarea>
+      <button id="send" type="submit">SEND</button>
+      <div class="hint"><span id="hint-left">READY</span><span>ENTER SEND · SHIFT+ENTER NEWLINE · ESC STOP</span></div>
+    </form>
+  </div>
+  <aside id="settings">
+    <section>
+      <h2><span>01</span><em>MODE</em></h2>
+      <div class="seg" id="seg-mode">
+        <button data-v="thinking">THINK</button><button data-v="chat">CHAT</button>
+      </div>
+      <div class="seg" id="seg-effort">
+        <button data-v="low">LOW</button><button data-v="high">HIGH</button><button data-v="max">MAX</button>
+      </div>
+    </section>
+    <section>
+      <h2><span>02</span><em>SYSTEM PROMPT</em></h2>
+      <textarea class="box" id="system" placeholder="Optional system prompt"></textarea>
+    </section>
+    <section>
+      <h2><span>03</span><em>SAMPLING</em></h2>
+      <div id="fields"></div>
+      <div class="field"><label>STOP<small>comma separated</small></label><input id="f-stop" type="text" placeholder="—" style="text-align:left"></div>
+      <div class="row-btns"><button id="resetdefaults">RESET DEFAULTS</button><button id="greedy">GREEDY</button></div>
+    </section>
+    <section>
+      <h2><span>04</span><em>ENGINE</em></h2>
+      <div class="kv"><span>Phase</span><span id="e-phase">—</span></div>
+      <div class="kv"><span>Prefill</span><span id="e-prefill">—</span></div>
+      <div class="kv"><span>Decode</span><span id="e-decode">—</span></div>
+      <div class="kv"><span>Context</span><span id="e-ctx">—</span></div>
+      <div class="kv"><span>Requests</span><span id="e-req">—</span></div>
+    </section>
+    <section>
+      <h2><span>05</span><em>API · CLICK TO COPY</em></h2>
+      <code class="api" id="api-base"></code>
+      <code class="api" id="api-curl"></code>
+    </section>
+  </aside>
+</main>
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const BASE = location.origin;
+
+// ---------- settings ----------
+const FIELDS = [
+  ["temperature", "Temperature", "0 = greedy", 0.6, 0.05],
+  ["top_p", "Top P", "nucleus", 0.95, 0.01],
+  ["top_k", "Top K", "0 = off", 0, 1],
+  ["min_p", "Min P", "0 = off", 0, 0.01],
+  ["presence_penalty", "Presence pen.", "OpenAI", 0, 0.1],
+  ["frequency_penalty", "Frequency pen.", "OpenAI", 0, 0.1],
+  ["repetition_penalty", "Repetition pen.", "1 = off", 1, 0.01],
+  ["repeat_last_n", "Repeat last N", "tokens", 64, 1],
+  ["max_tokens", "Max tokens", "per reply", 4096, 1],
+  ["seed", "Seed", "blank = random", "", 1],
+];
+const DEFAULTS = Object.fromEntries(FIELDS.map((f) => [f[0], f[3]]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("macseek." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { localStorage.setItem("macseek." + k, JSON.stringify(v)); },
+};
+let prefs = Object.assign({ mode: "thinking", effort: "high", system: "", stop: "" }, DEFAULTS, store.get("prefs", {}));
+let msgs = store.get("chat", []);   // {role, content, reasoning?, meta?}
+
+function renderFields() {
+  $("#fields").innerHTML = FIELDS.map(([k, label, sub, , step]) =>
+    `<div class="field"><label for="f-${k}">${label}<small>${sub}</small></label>` +
+    `<input id="f-${k}" type="number" step="${step}" value="${prefs[k]}"></div>`).join("");
+  for (const [k] of FIELDS) $("#f-" + k).addEventListener("input", (e) => { prefs[k] = e.target.value === "" ? "" : Number(e.target.value); savePrefs(); });
+  $("#f-stop").value = prefs.stop;
+  $("#system").value = prefs.system;
+  for (const seg of ["mode", "effort"])
+    document.querySelectorAll(`#seg-${seg} button`).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === prefs[seg])));
+}
+function savePrefs() { store.set("prefs", prefs); }
+for (const seg of ["mode", "effort"])
+  document.querySelectorAll(`#seg-${seg} button`).forEach((b) => b.addEventListener("click", () => { prefs[seg] = b.dataset.v; savePrefs(); renderFields(); }));
+$("#f-stop").addEventListener("input", (e) => { prefs.stop = e.target.value; savePrefs(); });
+$("#system").addEventListener("input", (e) => { prefs.system = e.target.value; savePrefs(); });
+$("#resetdefaults").addEventListener("click", () => { Object.assign(prefs, DEFAULTS); savePrefs(); renderFields(); });
+$("#greedy").addEventListener("click", () => { prefs.temperature = 0; savePrefs(); renderFields(); });
+$("#togglesettings").addEventListener("click", (e) => {
+  const m = $("#main");
+  if (matchMedia("(max-width: 860px)").matches) m.classList.toggle("showsettings-mobile");
+  else m.classList.toggle("nosettings");
+  e.currentTarget.setAttribute("aria-pressed", String(!m.classList.contains("nosettings")));
+});
+
+// ---------- markdown (escape first, then a small safe subset) ----------
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function inline(s) {
+  return s.replace(/`([^`\n]+)`/g, (_, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function md(src) {
+  const out = []; const lines = src.split("\n"); let i = 0;
+  while (i < lines.length) {
+    let l = lines[i];
+    const fence = l.match(/^```\s*([\w+-]*)/);
+    if (fence) {
+      const buf = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++;
+      out.push(`<pre>${fence[1] ? `<span class="lang">${esc(fence[1])}</span>` : ""}<code>${esc(buf.join("\n"))}</code></pre>`);
+      continue;
+    }
+    if (/^\s*$/.test(l)) { i++; continue; }
+    const h = l.match(/^(#{1,4})\s+(.*)/);
+    if (h) { out.push(`<h${h[1].length}>${inline(esc(h[2]))}</h${h[1].length}>`); i++; continue; }
+    if (/^(-{3,}|\*{3,})\s*$/.test(l)) { out.push("<hr>"); i++; continue; }
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
+      const ordered = /^\s*\d/.test(l); const items = [];
+      while (i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*+]|\d+[.)])\s+/, ""));
+      out.push(`<${ordered ? "ol" : "ul"}>${items.map((t) => `<li>${inline(esc(t))}</li>`).join("")}</${ordered ? "ol" : "ul"}>`);
+      continue;
+    }
+    if (/^>\s?/.test(l)) {
+      const buf = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ""));
+      out.push(`<blockquote>${inline(esc(buf.join(" ")))}</blockquote>`); continue;
+    }
+    if (/^\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const row = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => inline(esc(c.trim())));
+      const head = row(l); i += 2; const body = [];
+      while (i < lines.length && /^\|.*\|\s*$/.test(lines[i])) body.push(row(lines[i++]));
+      out.push(`<table><tr>${head.map((c) => `<th>${c}</th>`).join("")}</tr>${body.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`);
+      continue;
+    }
+    const buf = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^```|^#{1,4}\s|^\s*([-*+]|\d+[.)])\s+|^>/.test(lines[i])) buf.push(lines[i++]);
+    out.push(`<p>${inline(esc(buf.join("\n"))).replace(/\n/g, "<br>")}</p>`);
+  }
+  return out.join("");
+}
+
+// ---------- transcript ----------
+const pad = (n) => String(n).padStart(2, "0");
+function metaHtml(m) {
+  if (!m) return "";
+  const parts = [];
+  if (m.ttft != null) parts.push(`TTFT <b>${(m.ttft / 1000).toFixed(2)}S</b>`);
+  if (m.t) {
+    const t = m.t;
+    parts.push(`PROMPT <b>${t.prompt_n}</b>${t.cache_n ? ` (${t.cache_n} CACHED)` : ""}`);
+    if (t.prompt_per_second) parts.push(`PREFILL <b>${t.prompt_per_second.toFixed(1)}</b> TOK/S`);
+    parts.push(`OUT <b>${t.predicted_n}</b>`);
+    if (t.predicted_per_second) parts.push(`DECODE <b>${t.predicted_per_second.toFixed(2)}</b> TOK/S`);
+  }
+  if (m.finish && m.finish !== "stop") parts.push(`FINISH <b>${m.finish.toUpperCase()}</b>`);
+  return parts.length ? `<div class="meta">${parts.map((p) => `<span>${p}</span>`).join("")}</div>` : "";
+}
+function msgHtml(m, idx, live) {
+  const who = m.role === "user" ? "USER" : "MODEL";
+  let body = "";
+  if (m.role === "assistant") {
+    if (m.reasoning) body += `<details class="think"${live && !m.content ? " open" : ""}><summary><span>THINKING · ${m.reasoning.length} CH</span></summary><div class="tbody">${esc(m.reasoning)}</div></details>`;
+    if (m.progress != null) body += `<div class="meta"><span>PREFILL <b>${m.progress}</b></span></div><div class="progress"><i style="width:${m.progressPct || 0}%"></i></div>`;
+    body += m.content ? md(m.content) : "";
+    if (m.error) body += `<div class="err">ERROR · ${esc(m.error)}</div>`;
+    if (live) body += `<span class="cursor"></span>`;
+    else body += metaHtml(m.meta);
+  } else {
+    body = `<p>${esc(m.content).replace(/\n/g, "<br>")}</p>`;
+  }
+  const tools = live ? "" : `<div class="tools">` +
+    (m.role === "assistant" ? `<button data-act="copy" data-i="${idx}">COPY</button><button data-act="regen" data-i="${idx}">REGEN</button>` : `<button data-act="edit" data-i="${idx}">EDIT</button>`) +
+    `<button data-act="del" data-i="${idx}">DELETE</button></div>`;
+  return `<div class="msg ${m.role}" data-i="${idx}"><div class="who"><span class="n">${pad(idx + 1)}</span><span>${who}</span></div><div class="body">${body}${tools}</div></div>`;
+}
+function render() {
+  const log = $("#log");
+  if (!msgs.length) {
+    log.innerHTML = `<div class="empty"><h1>MacSeek</h1>DeepSeek V4.1 Flash · local Metal engine<br>Type below to start.</div>`;
+    return;
+  }
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  log.innerHTML = msgs.map((m, i) => msgHtml(m, i, busy && i === msgs.length - 1 && m.role === "assistant")).join("");
+  if (atBottom || busy) log.scrollTop = log.scrollHeight;
+}
+let renderQueued = false;
+function renderSoon() { if (!renderQueued) { renderQueued = true; requestAnimationFrame(() => { renderQueued = false; render(); }); } }
+function save() { store.set("chat", msgs.map(({ progress, progressPct, ...m }) => m)); }
+
+$("#log").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-act]"); if (!b || busy) return;
+  const i = Number(b.dataset.i), act = b.dataset.act;
+  if (act === "copy") { await navigator.clipboard.writeText(msgs[i].content || ""); b.textContent = "COPIED"; setTimeout(() => (b.textContent = "COPY"), 900); return; }
+  if (act === "del") { msgs.splice(i, 1); save(); render(); return; }
+  if (act === "edit") { $("#input").value = msgs[i].content; msgs.splice(i); save(); render(); $("#input").focus(); return; }
+  if (act === "regen") { msgs.splice(i); save(); render(); generate(); }
+});
+
+// ---------- generation ----------
+let busy = false, ctrl = null, poll = null;
+function setBusy(b) {
+  busy = b;
+  const s = $("#send"); s.textContent = b ? "STOP" : "SEND"; s.classList.toggle("stop", b);
+  $("#hint-left").textContent = b ? "GENERATING" : "READY";
+}
+function buildBody() {
+  const out = [];
+  if (prefs.system.trim()) out.push({ role: "system", content: prefs.system });
+  for (const m of msgs) if (m.content || m.role === "user") out.push({ role: m.role, content: m.content });
+  const body = {
+    model: "macseek", messages: out, stream: true, stream_options: { include_usage: true },
+    chat_template_kwargs: { thinking_mode: prefs.mode }, reasoning_effort: prefs.effort,
+  };
+  for (const [k] of FIELDS) if (prefs[k] !== "" && prefs[k] != null && !Number.isNaN(prefs[k])) body[k] = prefs[k];
+  const stop = prefs.stop.split(",").map((s) => s.trim()).filter(Boolean);
+  if (stop.length) body.stop = stop;
+  return body;
+}
+async function generate() {
+  const a = { role: "assistant", content: "", reasoning: "" };
+  msgs.push(a); setBusy(true); render();
+  ctrl = new AbortController();
+  const t0 = performance.now(); let first = null;
+  poll = setInterval(async () => {
+    try {
+      const s = await (await fetch(BASE + "/v1/stats")).json();
+      if (s.phase === "prefill" && s.prefill_total > 0 && first == null) {
+        a.progress = `${s.prefill_done.toLocaleString()} / ${s.prefill_total.toLocaleString()}`;
+        a.progressPct = (100 * s.prefill_done) / s.prefill_total; renderSoon();
+      }
+    } catch {}
+  }, 700);
+  try {
+    const r = await fetch(BASE + "/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildBody()), signal: ctrl.signal });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 300));
+    const rd = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await rd.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let k;
+      while ((k = buf.indexOf("\n\n")) >= 0) {
+        const ev = buf.slice(0, k); buf = buf.slice(k + 2);
+        for (const line of ev.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const d = line.slice(5).trim(); if (d === "[DONE]") continue;
+          let j; try { j = JSON.parse(d); } catch { continue; }
+          const ch = j.choices && j.choices[0];
+          if (ch && ch.delta) {
+            if (ch.delta.reasoning_content || ch.delta.content) { if (first == null) first = performance.now() - t0; delete a.progress; }
+            if (ch.delta.reasoning_content) a.reasoning += ch.delta.reasoning_content;
+            if (ch.delta.content) a.content += ch.delta.content;
+            if (ch.delta.tool_calls) a.content += "\n```json\n" + JSON.stringify(ch.delta.tool_calls, null, 2) + "\n```";
+          }
+          if (ch && ch.finish_reason) a.meta = Object.assign(a.meta || {}, { finish: ch.finish_reason });
+          if (j.timings) a.meta = Object.assign(a.meta || {}, { t: j.timings });
+          renderSoon();
+        }
+      }
+    }
+  } catch (e) {
+    if (e.name !== "AbortError") a.error = String(e.message || e);
+    else a.meta = Object.assign(a.meta || {}, { finish: "stopped" });
+  } finally {
+    clearInterval(poll); delete a.progress; delete a.progressPct;
+    a.meta = Object.assign(a.meta || {}, { ttft: first });
+    if (!a.reasoning) delete a.reasoning;
+    setBusy(false); ctrl = null; save(); render(); refreshStats();
+  }
+}
+$("#composer").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (busy) { ctrl && ctrl.abort(); return; }
+  const text = $("#input").value; if (!text.trim()) return;
+  msgs.push({ role: "user", content: text }); $("#input").value = ""; autosize(); save(); generate();
+});
+const input = $("#input");
+function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, innerHeight * 0.4) + "px"; }
+input.addEventListener("input", autosize);
+input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && busy) ctrl && ctrl.abort();
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("#newchat").click(); }
+});
+$("#newchat").addEventListener("click", () => { if (busy) return; msgs = []; save(); render(); input.focus(); });
+
+// ---------- engine status ----------
+async function refreshStats() {
+  try {
+    const s = await (await fetch(BASE + "/v1/stats")).json();
+    $("#dot").className = "dot" + (s.phase === "idle" ? "" : " busy");
+    $("#phase").textContent = s.phase === "prefill" && s.prefill_total ? `PREFILL ${Math.round((100 * s.prefill_done) / s.prefill_total)}%` :
+      s.phase === "decode" ? `DECODE ${s.decode_tok_s.toFixed(1)} TOK/S` : "IDLE";
+    $("#model").textContent = s.model;
+    $("#ctx").textContent = s.context_used.toLocaleString(); $("#ctxmax").textContent = s.context_max.toLocaleString();
+    const l = s.last || {};
+    $("#lastspeed").textContent = l.predicted_ms > 0 ? `${(l.predicted_n / (l.predicted_ms / 1000)).toFixed(1)} TOK/S` : "—";
+    $("#e-phase").textContent = s.phase.toUpperCase();
+    $("#e-prefill").textContent = l.prompt_ms > 0 ? `${l.prompt_n - l.cache_n} TOK · ${((l.prompt_n - l.cache_n) / (l.prompt_ms / 1000)).toFixed(1)}/S` : "—";
+    $("#e-decode").textContent = l.predicted_ms > 0 ? `${l.predicted_n} TOK · ${(l.predicted_n / (l.predicted_ms / 1000)).toFixed(2)}/S` : "—";
+    $("#e-ctx").textContent = `${s.context_used.toLocaleString()} / ${s.context_max.toLocaleString()}`;
+    $("#e-req").textContent = s.requests;
+  } catch {
+    $("#dot").className = "dot off"; $("#phase").textContent = "OFFLINE";
+  }
+}
+setInterval(refreshStats, 1500);
+
+// ---------- API box ----------
+$("#api-base").textContent = BASE + "/v1";
+$("#api-curl").textContent = `curl ${BASE}/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"macseek","messages":[{"role":"user","content":"hi"}]}'`;
+document.querySelectorAll("code.api").forEach((c) => c.addEventListener("click", () => navigator.clipboard.writeText(c.textContent)));
+
+renderFields(); render(); refreshStats(); autosize(); input.focus();
+</script>
+</body>
+</html>

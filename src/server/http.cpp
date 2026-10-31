@@ -280,6 +280,32 @@ bool Server::handle(int fd, const HttpRequest& rq, bool keep_alive) {
     return send_str(fd, h);
   }
   if (rq.path == "/health" || rq.path == "/v1/health") return send_response(fd, 200, "{\"status\": \"ok\"}", keep_alive);
+  if (rq.method == "GET" && (rq.path == "/" || rq.path == "/index.html")) {
+    std::string html;
+    if (!cfg_.ui_path.empty()) {
+      FILE* f = fopen(cfg_.ui_path.c_str(), "rb");
+      if (f) { char b[65536]; size_t k; while ((k = fread(b, 1, sizeof b, f)) > 0) html.append(b, k); fclose(f); }
+    }
+    if (html.empty()) return send_response(fd, 404, error_json("no UI file (serve --ui PATH)"), keep_alive);
+    std::string h = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: " +
+                    std::to_string(html.size()) + (keep_alive ? "\r\nConnection: keep-alive" : "\r\nConnection: close") + "\r\n\r\n";
+    return send_str(fd, h) && send_str(fd, html);
+  }
+  if (rq.path == "/v1/stats" || rq.path == "/stats") return send_response(fd, 200, be_.status_json(), keep_alive);
+  if (rq.path == "/props" || rq.path == "/v1/props") {
+    Value r = Value::object();
+    r.set("model", Value(cfg_.model_name));
+    r.set("n_ctx", Value((long long)be_.max_context()));
+    r.set("default_max_tokens", Value((long long)cfg_.default_max_tokens));
+    Value sp = Value::array();
+    for (const char* k : {"temperature", "top_p", "top_k", "min_p", "presence_penalty", "frequency_penalty", "repetition_penalty",
+                          "repeat_last_n", "seed", "max_tokens", "max_completion_tokens", "stop", "logit_bias", "ignore_eos",
+                          "stream", "stream_options.include_usage", "reasoning_effort", "thinking", "chat_template_kwargs",
+                          "tools", "tool_choice", "response_format"})
+      sp.push_back(Value(k));
+    r.set("supported_params", std::move(sp));
+    return send_response(fd, 200, r.dump(), keep_alive);
+  }
   if (rq.path == "/v1/models" || rq.path == "/models") {
     if (rq.method != "GET") return send_response(fd, 405, error_json("use GET"), keep_alive);
     Value m = Value::object();
@@ -316,7 +342,19 @@ GenParams parse_params(const Value& body, int default_max) {
   if (body["temperature"].is_number()) p.temperature = body["temperature"].as_double();
   if (body["top_p"].is_number()) p.top_p = body["top_p"].as_double();
   if (body["top_k"].is_number()) p.top_k = (int)body["top_k"].as_int();
-  if (body["seed"].is_number()) p.seed = (uint64_t)body["seed"].as_int();
+  if (body["min_p"].is_number()) p.min_p = body["min_p"].as_double();
+  if (body["presence_penalty"].is_number()) p.presence_penalty = body["presence_penalty"].as_double();
+  if (body["frequency_penalty"].is_number()) p.frequency_penalty = body["frequency_penalty"].as_double();
+  const Value* rp = body.find("repetition_penalty");
+  if (!rp || !rp->is_number()) rp = body.find("repeat_penalty");
+  if (rp && rp->is_number()) p.repetition_penalty = rp->as_double();
+  if (body["repeat_last_n"].is_number()) p.repeat_last_n = (int)body["repeat_last_n"].as_int();
+  if (body["seed"].is_number()) { p.seed = (uint64_t)body["seed"].as_int(); p.has_seed = true; }
+  p.ignore_eos = body["ignore_eos"].as_bool(false);
+  const Value& lb = body["logit_bias"];
+  if (lb.is_object())
+    for (const auto& kv : lb.obj())
+      if (kv.second.is_number()) p.logit_bias.push_back({(int32_t)atoi(kv.first.c_str()), (float)kv.second.as_double()});
   return p;
 }
 
@@ -328,6 +366,19 @@ std::vector<std::string> parse_stop(const Value& body) {
     for (const Value& v : s.arr())
       if (v.is_string() && !v.str().empty()) stop.push_back(v.str());
   return stop;
+}
+
+Value timings_json(const GenStats& g) {
+  Value t = Value::object();
+  t.set("prompt_n", Value((long long)g.prompt_n));
+  t.set("cache_n", Value((long long)g.cached_n));
+  t.set("prompt_ms", Value(g.prompt_ms));
+  const int pn = g.prompt_n - g.cached_n;
+  t.set("prompt_per_second", Value(g.prompt_ms > 0 ? pn / (g.prompt_ms / 1e3) : 0.0));
+  t.set("predicted_n", Value((long long)g.predicted_n));
+  t.set("predicted_ms", Value(g.predicted_ms));
+  t.set("predicted_per_second", Value(g.predicted_ms > 0 ? g.predicted_n / (g.predicted_ms / 1e3) : 0.0));
+  return t;
 }
 
 const char* finish_str(Finish f, bool tool_calls) {
@@ -526,7 +577,22 @@ bool Server::handle_chat(int fd, const HttpRequest& rq, bool keep_alive) {
         send_delta("content", ts.text.substr(ts.emitted));  // malformed DSML: plain content
       }
     }
-    sse.event(chunk_json(Value::object(), Value(finish_str(fin, has_tc))));
+    {
+      Value ch = Value::object();
+      ch.set("id", Value(id));
+      ch.set("object", Value("chat.completion.chunk"));
+      ch.set("created", Value(created));
+      ch.set("model", Value(cfg_.model_name));
+      Value choice = Value::object();
+      choice.set("index", Value(0));
+      choice.set("delta", Value::object());
+      choice.set("finish_reason", Value(finish_str(fin, has_tc)));
+      Value choices = Value::array();
+      choices.push_back(std::move(choice));
+      ch.set("choices", std::move(choices));
+      ch.set("timings", timings_json(be_.last_stats()));
+      sse.event(ch.dump());
+    }
     if (include_usage) {
       Value u = Value::object();
       u.set("prompt_tokens", Value((long long)ids.size()));
@@ -577,6 +643,7 @@ bool Server::handle_chat(int fd, const HttpRequest& rq, bool keep_alive) {
   r.set("model", Value(cfg_.model_name));
   r.set("choices", std::move(choices));
   r.set("usage", std::move(u));
+  r.set("timings", timings_json(be_.last_stats()));
   return send_response(fd, 200, r.dump(), keep_alive);
 }
 
@@ -654,6 +721,7 @@ bool Server::handle_completion(int fd, const HttpRequest& rq, bool keep_alive) {
   u.set("completion_tokens", Value(n_gen));
   u.set("total_tokens", Value((long long)ids.size() + n_gen));
   r.set("usage", std::move(u));
+  r.set("timings", timings_json(be_.last_stats()));
   return send_response(fd, 200, r.dump(), keep_alive);
 }
 

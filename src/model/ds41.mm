@@ -226,6 +226,7 @@ int32_t Model::prefill(const int32_t* toks, int n, float* logits_all, float* log
     static const bool pf_pin = env_int("MACSEEK_PF_PIN", 1) != 0;
     static const int pf_pin_free = (int)env_int("MACSEEK_PF_PIN_FREE", 1200);
     if (pf_pin && m >= 1024) pinned_ += cache_->pin_resident(pf_pin_free);
+    if (progress_) progress_(i + m, n);
   }
   next_toks_ = nullptr; next_n_ = 0;
   return next;
@@ -928,6 +929,30 @@ bool Model::load_state(const std::string& path) {
   pos_ = (int)hdr[1];
   return (bool)f;
 }
+
+std::shared_ptr<MemState> Model::snapshot() const {
+  auto st = std::make_shared<MemState>();
+  st->pos = pos_;
+  EngramHasher::State hs = hasher_->state();
+  st->hasher.assign((const char*)&hs, (const char*)&hs + sizeof hs);
+  for (auto& sp : attn::persistent_state(p_->ast, pos_)) st->spans.emplace_back((const char*)sp.buf.cpu(), (const char*)sp.buf.cpu() + sp.bytes);
+  return st;
+}
+
+bool Model::restore(const MemState& st) {
+  auto spans = attn::persistent_state(p_->ast, st.pos);
+  if (spans.size() != st.spans.size() || st.hasher.size() != sizeof(EngramHasher::State)) return false;
+  for (size_t i = 0; i < spans.size(); i++) if (spans[i].bytes != st.spans[i].size()) return false;
+  attn::reset(p_->ast);
+  for (size_t i = 0; i < spans.size(); i++) memcpy(spans[i].buf.cpu(), st.spans[i].data(), spans[i].bytes);
+  EngramHasher::State hs;
+  memcpy(&hs, st.hasher.data(), sizeof hs);
+  hasher_->set_state(hs);
+  pos_ = st.pos;
+  return true;
+}
+
+int Model::max_pos() const { return p_->ast.opt.max_pos; }
 
 std::string Model::stats_report() const { return cache_->stats_report(); }
 

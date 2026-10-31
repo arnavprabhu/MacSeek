@@ -98,6 +98,7 @@ endif()
 # APP_SRCS at CMakeLists.txt:47 (file)
 file(GLOB NEW_GLOB LIST_DIRECTORIES true "/Users/arnav/Desktop/Projects/MacSeek/src/app/*.mm")
 set(OLD_GLOB
+  "/Users/arnav/Desktop/Projects/MacSeek/src/app/model_backend.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/src/app/model_cmds.mm"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
