@@ -48,7 +48,7 @@ class LruPolicy : public EvictionPolicy {
 
 class LfuPolicy : public EvictionPolicy {
  public:
-  LfuPolicy(double decay, uint64_t period) : decay_(decay), period_(period ? period : 1) {}
+  LfuPolicy(double decay, uint64_t period, int sample) : decay_(decay), period_(period ? period : 1), sample_(sample) {}
   void init(const std::vector<int>& cls, int n_classes, int n_keys) override {
     count_.assign(n_keys, 0.0); slot_key_.assign(cls.size(), ~0u); last_.assign(cls.size(), 0);
     members_.assign(n_classes, {});
@@ -62,16 +62,28 @@ class LfuPolicy : public EvictionPolicy {
   }
   void on_evict(int s, uint32_t) override { slot_key_[s] = ~0u; }
   int victim(int c, bool (*ok)(const void*, int), const void* ctx) override {
+    const auto& mem = members_[c];
     int best = -1; double bc = 0; uint64_t bl = 0;
-    for (int s : members_[c]) {
-      if (slot_key_[s] == ~0u || !ok(ctx, s)) continue;
+    auto consider = [&](int s) {
+      if (slot_key_[s] == ~0u || !ok(ctx, s)) return false;
       double v = count_[slot_key_[s]];
       if (best < 0 || v < bc || (v == bc && last_[s] < bl)) { best = s; bc = v; bl = last_[s]; }
+      return true;
+    };
+    if (sample_ > 0 && (int)mem.size() > 2 * sample_) {
+      // sampled LFU (Redis-style): least frequent of `sample_` random evictable candidates; O(sample) per miss
+      int found = 0;
+      for (int probe = 0; probe < 8 * sample_ && found < sample_; probe++) {
+        rng_ ^= rng_ << 13; rng_ ^= rng_ >> 7; rng_ ^= rng_ << 17;
+        found += consider(mem[rng_ % mem.size()]);
+      }
+      if (best >= 0) return best;
     }
+    for (int s : mem) consider(s);
     return best;
   }
  private:
-  double decay_; uint64_t period_, accesses_ = 0, tick_ = 0;
+  double decay_; uint64_t period_, accesses_ = 0, tick_ = 0, rng_ = 0x9E3779B97F4A7C15ULL; int sample_;
   std::vector<double> count_;
   std::vector<uint32_t> slot_key_;
   std::vector<uint64_t> last_;
@@ -80,8 +92,8 @@ class LfuPolicy : public EvictionPolicy {
 
 }  // namespace
 
-std::unique_ptr<EvictionPolicy> make_policy(PolicyKind k, double decay, uint64_t period) {
-  if (k == PolicyKind::LFU) return std::make_unique<LfuPolicy>(decay, period);
+std::unique_ptr<EvictionPolicy> make_policy(PolicyKind k, double decay, uint64_t period, int sample) {
+  if (k == PolicyKind::LFU) return std::make_unique<LfuPolicy>(decay, period, sample);
   return std::make_unique<LruPolicy>();
 }
 

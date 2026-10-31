@@ -56,7 +56,7 @@ class EvictionPolicy {
   // pick a victim of class cls with evictable(slot) == true; -1 if none
   virtual int victim(int cls, bool (*evictable)(const void* ctx, int slot), const void* ctx) = 0;
 };
-std::unique_ptr<EvictionPolicy> make_policy(PolicyKind k, double lfu_decay, uint64_t lfu_period);
+std::unique_ptr<EvictionPolicy> make_policy(PolicyKind k, double lfu_decay, uint64_t lfu_period, int lfu_sample = 64);
 
 struct ExpertCacheOptions {
   size_t arena_bytes = 4ull << 30;  // production ~38-42 GiB (see recommend_arena_bytes); tests keep it small
@@ -69,6 +69,7 @@ struct ExpertCacheOptions {
   bool preload_pinned = true;       // Static: read the pinned set at construction
   double lfu_decay = 0.5;           // LFU: multiply all counts by this every lfu_period demand accesses (aging)
   uint64_t lfu_period = 1 << 14;
+  int lfu_sample = 64;              // LFU: victim = least frequent of N random candidates (0 = exact full scan)
   int ring_slots = 0;               // bulk-stream staging slots (0 = stream() unavailable); 12-24 recommended
   size_t max_buffer_bytes = 0;      // 0 = min(device maxBufferLength, 8 GiB)
   bool dry_io = false;              // policy simulation: no reads, slots become ready immediately

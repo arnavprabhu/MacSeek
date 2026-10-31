@@ -161,12 +161,15 @@ ExpertCache::ExpertCache(const ExpertLayout& layout, const ExpertCacheOptions& o
     for (int s0 = 0; s0 < ci.n_slots; s0 += (int)per_buf) {
       int ns = (int)std::min<uint64_t>(per_buf, ci.n_slots - s0);
       size_t bytes = (size_t)ns * ci.slot_bytes;
-      char* mem = (char*)mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
-      if (mem == MAP_FAILED) { perror("experts mmap"); abort(); }
-      p_->maps.push_back({mem, bytes});
-      Buffer b = dev.wrap(mem, bytes, "expert_slots");
-      p_->bufs.push_back(b);
-      uint64_t gbase = [(__bridge id<MTLBuffer>)b.buf gpuAddress];
+      char* mem = nullptr; Buffer b; uint64_t gbase = 0;
+      if (!o_.dry_io) {   // dry_io (policy simulation): no memory at all
+        mem = (char*)mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+        if (mem == MAP_FAILED) { perror("experts mmap"); abort(); }
+        p_->maps.push_back({mem, bytes});
+        b = dev.wrap(mem, bytes, "expert_slots");
+        p_->bufs.push_back(b);
+        gbase = [(__bridge id<MTLBuffer>)b.buf gpuAddress];
+      }
       for (int i = 0; i < ns; i++) {
         Slot s; s.cls = c; s.host = mem + (size_t)i * ci.slot_bytes;
         s.buf = b.sub((size_t)i * ci.slot_bytes, ci.slot_bytes); s.gpu = gbase + (uint64_t)i * ci.slot_bytes;
@@ -185,14 +188,14 @@ ExpertCache::ExpertCache(const ExpertLayout& layout, const ExpertCacheOptions& o
   p_->io_ev.signaledValue = 0;
   // ---- policy ----
   if (o_.custom_policy) p_->policy = o_.custom_policy;
-  else p_->policy = std::shared_ptr<EvictionPolicy>(make_policy(o_.policy, o_.lfu_decay, o_.lfu_period).release());
+  else p_->policy = std::shared_ptr<EvictionPolicy>(make_policy(o_.policy, o_.lfu_decay, o_.lfu_period, o_.lfu_sample).release());
   std::vector<int> sc(slots_.size());
   for (size_t s = 0; s < slots_.size(); s++) sc[s] = slots_[s].cls;
   p_->policy->init(sc, C, NL * NE);
   // ---- I/O ----
   pool_ = std::make_unique<IoPool>(o_.io_threads, kPage);
   // ---- ring ----
-  if (o_.ring_slots > 0) {
+  if (o_.ring_slots > 0 && !o_.dry_io) {
     p_->K = o_.ring_slots;
     for (auto& c : classes_) p_->ring_slot_bytes = std::max(p_->ring_slot_bytes, c.slot_bytes);
     size_t bytes = (size_t)p_->K * p_->ring_slot_bytes;
@@ -284,7 +287,7 @@ void ExpertCache::load_locked(int s, uint32_t k, int prio) {
   const ClassInfo& ci = classes_[x.cls];
   x.key = k; x.state = Loading; map_[k] = s;
   if (!p_->pinset.empty() && p_->pinset[k] && p_->pin_count[x.cls] < p_->pin_quota[x.cls]) { x.pinned = true; p_->pin_count[x.cls]++; }
-  p_->policy->on_insert(s, k);
+  if (!x.pinned) p_->policy->on_insert(s, k);   // pinned slots are not eviction candidates: keep them out of the policy
   inflight_++;
   auto req = std::make_shared<IoRequest>();
   uint64_t region = 0;
@@ -369,7 +372,7 @@ ExpertLease ExpertCache::ensure(int layer, const int* ids, int n) {
     Slot& x = slots_[s];
     x.used = true;
     x.ref++;
-    p_->policy->on_access(s, k);
+    if (!x.pinned) p_->policy->on_access(s, k);
     if (x.state != Ready && std::find(waiting.begin(), waiting.end(), s) == waiting.end()) waiting.push_back(s);
     lease.slots_.push_back(s);
     lease.views.push_back(view_locked(s));
@@ -411,7 +414,11 @@ int ExpertCache::pin(int layer, const int* ids, int n) {
       if (s < 0) break;
       load_locked(s, k, 1);
     }
-    if (!slots_[s].pinned) { slots_[s].pinned = true; if (!p_->pin_count.empty()) p_->pin_count[cls]++; }
+    if (!slots_[s].pinned) {
+      slots_[s].pinned = true;
+      p_->policy->on_evict(s, k);   // leaves the policy's candidate set
+      if (!p_->pin_count.empty()) p_->pin_count[cls]++;
+    }
     pinned++;
   }
   return pinned;
@@ -421,7 +428,11 @@ void ExpertCache::unpin(int layer, const int* ids, int n) {
   std::lock_guard<std::mutex> g(mu_);
   for (int i = 0; i < n; i++) {
     int s = map_[key(layer, ids[i])];
-    if (s >= 0 && slots_[s].pinned) { slots_[s].pinned = false; if (!p_->pin_count.empty()) p_->pin_count[slots_[s].cls]--; }
+    if (s >= 0 && slots_[s].pinned) {
+      slots_[s].pinned = false;
+      p_->policy->on_insert(s, slots_[s].key);
+      if (!p_->pin_count.empty()) p_->pin_count[slots_[s].cls]--;
+    }
   }
   cv_.notify_all();
 }
