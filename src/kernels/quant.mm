@@ -283,37 +283,52 @@ void encode_moe_decode(Enc& e, const MoeDecodeArgs& a) {
 }
 
 void encode_moe_decode_table(Enc& e, const MoeDecodeArgs& a, const Buffer& table) {
+  encode_moe_decode_table_part(e, a, table, MoePart::All);
+}
+
+void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& table, MoePart part) {
   const char* p_gu = moe_pair(a.t_gate_up, a.t_shared);
   const char* p_d = moe_pair(a.t_down, a.t_shared);
   if (!p_gu || !p_d) die("moe_decode_table type combo", a.t_gate_up, 0, 0);
+  if ((part == MoePart::SharedGu || part == MoePart::Shared) && !a.has_shared) return;
   static const long env_gu_nr = env_int("MACSEEK_MOE_GU_NR", 2), env_gu_ks = env_int("MACSEEK_MOE_GU_KS", 1),
                     env_gu_rsg = env_int("MACSEEK_MOE_GU_RSG", 4), env_d_nr = env_int("MACSEEK_MOE_D_NR", 4),
                     env_d_ks = env_int("MACSEEK_MOE_D_KS", 1), env_d_rsg = env_int("MACSEEK_MOE_D_RSG", 2);
-  const int n_exp = a.n_routed + (a.has_shared ? 1 : 0);
-  QMoeArgs args{(uint32_t)a.n_routed, a.has_shared ? 1u : 0u, (uint32_t)kExpertDim, (uint32_t)kExpertInter,
+  // which pieces this call encodes
+  const bool gu_r = part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Routed;
+  const bool gu_s = a.has_shared && (part == MoePart::All || part == MoePart::SharedGu || part == MoePart::Shared);
+  const bool d_r = gu_r;
+  const bool d_s = a.has_shared && (part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Shared);
+  const bool shared_only = !gu_r;   // n_routed = 0 views: scratch rebased to the shared expert's h row
+  const Buffer h = shared_only ? a.scratch.sub((size_t)a.n_routed * kExpertInter * 4, (size_t)kExpertInter * 4) : a.scratch;
+  QMoeArgs args{shared_only ? 0u : (uint32_t)a.n_routed, d_s ? 1u : 0u, (uint32_t)kExpertDim, (uint32_t)kExpertInter,
                 (uint32_t)row_bytes(a.t_gate_up, kExpertDim), (uint32_t)row_bytes(a.t_down, kExpertInter),
                 (uint32_t)row_bytes(a.t_shared, kExpertDim), (uint32_t)row_bytes(a.t_shared, kExpertInter), 1, 0};
-  {
+  const int n_gu = (gu_r ? a.n_routed : 0) + (gu_s ? 1 : 0);
+  if (n_gu > 0) {
     const int nr = (int)env_gu_nr, ks = (int)env_gu_ks, rsg = (int)env_gu_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     args.tiles = (kExpertInter + rows_per_tg - 1) / rows_per_tg;
     std::string fn = std::string("q_moe_gu_t_") + p_gu + "_r" + std::to_string(nr);
     e.set_pipeline(fn.c_str());
-    e.set_buffer(0, a.x); e.set_buffer(1, a.scratch); e.set_value(2, args);
+    e.set_buffer(0, a.x); e.set_buffer(1, h); e.set_value(2, args);
     e.set_buffer(3, a.weights); e.set_buffer(4, table);
     e.set_buffer(16, a.shared.gate); e.set_buffer(17, a.shared.up);
     e.set_threadgroup_memory(0, sizeof(float) * rows_per_tg * 2 * ks);
-    e.dispatch_groups(args.tiles * n_exp, 1, 1, 32 * rsg * ks);
+    // threadgroup e*tiles.. computes expert e; e >= args.n_routed is the shared expert, so the routed-only variant
+    // just dispatches n_routed experts' tiles (same per-row code => bit-identical to the fused dispatch)
+    e.dispatch_groups(args.tiles * n_gu, 1, 1, 32 * rsg * ks);
   }
-  e.barrier();
+  if (!d_r && !d_s) return;
+  if (n_gu > 0) e.barrier();
   {
     const int nr = (int)env_d_nr, ks = (int)env_d_ks, rsg = (int)env_d_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     std::string fn = std::string("q_moe_down_t_") + p_d + "_r" + std::to_string(nr);
     e.set_pipeline(fn.c_str());
-    e.set_buffer(0, a.scratch); e.set_buffer(1, a.y); e.set_value(2, args);
+    e.set_buffer(0, h); e.set_buffer(1, a.y); e.set_value(2, args);
     e.set_buffer(4, table); e.set_buffer(10, a.shared.down);
     e.set_threadgroup_memory(0, sizeof(float) * rows_per_tg * ks);
     e.dispatch_groups((kExpertDim + rows_per_tg - 1) / rows_per_tg, 1, 1, 32 * rsg * ks);

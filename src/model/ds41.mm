@@ -414,23 +414,55 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     const uint64_t b0 = tb;
     tb += cfg_.n_layers;
     const std::vector<Buffer> arena = cache_->buffers();
+    // MACSEEK_DEC_SYNC (docs/modules/dec_sync.md): how the GPU hides the per-layer router handshake.
+    //   event  (0, default): signal rdy; wait go; whole MoE. The GPU idles for the full round trip (~X 15 us GPU->CPU
+    //          + CPU + Y 30-60 us CPU->GPU wake-up; bench/sync_probe).
+    //   sgu    (1): the shared expert's gate/up runs between the rdy signal and the go wait (it does not depend on the
+    //          routing), so the wait is usually already satisfied when the GPU reaches it. Bit-identical to event.
+    //   shared (2): the whole shared expert (gate/up + down) runs in the gap: a bigger cover, but y = shared + routed is
+    //          summed in a different order (not bit-identical; same math).
+    // In sgu/shared the CPU also answers all-hit layers before the next-layer prefetch (off the critical path).
+    // Gap work is ordered after the attention side and before the routed MoE by MTLFences: consecutive compute
+    // encoders over untracked buffers are not ordered by themselves, and the go wait only orders work after it.
+    static const int dsync = [] {
+      const std::string v = env_str("MACSEEK_DEC_SYNC", "event");
+      if (v == "1" || v == "sgu") return 1;
+      if (v == "2" || v == "shared") return 2;
+      return 0;
+    }();
+    static id<MTLFence> f_att = [dev newFence];
+    static id<MTLFence> f_gap = [dev newFence];
+    auto ce_of = [](Enc& E) { return (__bridge id<MTLComputeCommandEncoder>)E.encoder(); };
     Timer tenc;
     for (int l = 0; l < cfg_.n_layers; l++) {
       LayerW& L = P.L[l];
       encode_attn_side(*e, l);
-      e->between([&](void* cb) {
-        id<MTLCommandBuffer> c = (__bridge id<MTLCommandBuffer>)cb;
-        [c encodeSignalEvent:rdy value:b0 + 1 + l];
-        [c encodeWaitForEvent:go value:b0 + 1 + l];
-      });
-      e->use_resources(arena);
       const auto& lay = cache_->layout().layers[l];
       q::MoeDecodeArgs m;
       m.t_gate_up = (QType)(int)lay.mat[0].type; m.t_down = (QType)(int)lay.mat[2].type;
       m.n_routed = 6; m.weights = P.rw; m.has_shared = true; m.t_shared = L.sh_gate.t;
       m.shared = q::ExpertSlot{L.sh_gate.b, L.sh_up.b, L.sh_down.b};
       m.x = P.x; m.y = P.sub; m.scratch = P.moe_dec_scratch;
-      q::encode_moe_decode_table(*e, m, P.tbl.sub((size_t)l * 6 * 3 * 8, 6 * 3 * 8));
+      const Buffer tl = P.tbl.sub((size_t)l * 6 * 3 * 8, 6 * 3 * 8);
+      if (dsync == 0) {
+        e->between([&](void* cb) {
+          id<MTLCommandBuffer> c = (__bridge id<MTLCommandBuffer>)cb;
+          [c encodeSignalEvent:rdy value:b0 + 1 + l];
+          [c encodeWaitForEvent:go value:b0 + 1 + l];
+        });
+        e->use_resources(arena);
+        q::encode_moe_decode_table(*e, m, tl);
+      } else {
+        [ce_of(*e) updateFence:f_att];
+        e->between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:rdy value:b0 + 1 + l]; });
+        [ce_of(*e) waitForFence:f_att];
+        q::encode_moe_decode_table_part(*e, m, tl, dsync == 1 ? q::MoePart::SharedGu : q::MoePart::Shared);
+        [ce_of(*e) updateFence:f_gap];
+        e->between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeWaitForEvent:go value:b0 + 1 + l]; });
+        [ce_of(*e) waitForFence:f_gap];
+        e->use_resources(arena);
+        q::encode_moe_decode_table_part(*e, m, tl, dsync == 1 ? q::MoePart::AfterSharedGu : q::MoePart::Routed);
+      }
       e->barrier();
     }
     encode_head(*e);
@@ -445,11 +477,18 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       wait_ms += tw.ms();
       Timer tx;
       ExpertLease lease = cache_->ensure(l, tforce ? tforced : (const int*)P.rids.cpu(), 6);
-      if (pred_on && !tforce) prefetch_predicted(l);
+      const bool pf = pred_on && !tforce;
       uint64_t* t = (uint64_t*)P.tbl.cpu() + (size_t)l * 18;
       for (int k = 0; k < 6; k++) for (int j = 0; j < 3; j++) t[k * 3 + j] = lease.views[k].gpu[j];
-      if (lease.ticket) lease.wait();
-      go.signaledValue = b0 + 1 + l;
+      if (dsync != 0 && !lease.ticket) {
+        // all hits: release the GPU first, then predict + prefetch the next layer
+        go.signaledValue = b0 + 1 + l;
+        if (pf) prefetch_predicted(l);
+      } else {
+        if (pf) prefetch_predicted(l);   // misses: issue the prefetch before blocking on the demand reads
+        if (lease.ticket) lease.wait();
+        go.signaledValue = b0 + 1 + l;
+      }
       leases.push_back(std::move(lease));
       exp_ms += tx.ms();
     }
