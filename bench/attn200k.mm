@@ -130,6 +130,49 @@ int main(int argc, char** argv) {
   const int n = nchunk, start = depth;
   g_reps = 1;  // prefill command buffers are long enough to run at full clock
   printf("\n== prefill, chunk of %d tokens at depth %d (all 40 layers) ==\n", n, start);
+  if (env_int("BENCH_AB", 0)) {
+    // Interleaved A/B: base = every prefill fast path of exp/attn-prefill off (TG-memory scorer epilogues, 3-kernel
+    // two-pass attention, full merges), new = defaults. Toggled at run time on the same state; min over rounds per
+    // component (robust to other GPU work).
+    if (!st.pfS.size) st.pfS = d.alloc((size_t)std::min(o.pf_qblock, n) * 64 * 640 * 4, "pfS");
+    const bool reg_ok = st.pf_score_reg_ok, fold_ok = st.pf_fold_ok;
+    const A::Options o0 = st.opt;
+    auto setv = [&](int v) {
+      st.opt = o0; st.pf_score_reg_ok = v && reg_ok; st.pf_fold_ok = v && fold_ok;
+      if (!v) st.opt.pf_merge_filter = false;
+    };
+    const int rounds = (int)env_int("BENCH_ROUNDS", 3);
+    const int idxL[8] = {2, 8, 14, 20, 24, 28, 32, 36};
+    enum { KV, I2, I20, I24, SP, TOT, NC };
+    double t[NC][2];
+    for (auto& x : t) x[0] = x[1] = 1e9;
+    for (int rd = 0; rd < rounds; rd++)
+      for (int v = 0; v < 2; v++) {
+        setv(v);
+        auto m = [&](int c, auto&& f) { t[c][v] = std::min(t[c][v], time_med(1, f)); };
+        m(KV, [&](Enc& e) { for (int L = 0; L < A::kLayers; L++) { A::encode_kv_window(e, st, L, kv, w512, start, n);
+            if (A::is_kv_source(L)) A::encode_compress(e, st, L, io_of(L), start, n); e.barrier(); A::encode_window_commit(e, st, L, start, n); } });
+        m(I2, [&](Enc& e) { A::encode_index_prefill(e, st, 2, iq, iw, start, n); });
+        m(I20, [&](Enc& e) { A::encode_index_prefill(e, st, 20, iq, iw, start, n); });
+        m(I24, [&](Enc& e) { A::encode_index_prefill(e, st, 24, iq, iw, start, n); });
+        m(SP, [&](Enc& e) { for (int L = 0; L < A::kLayers; L++) A::encode_sparse(e, st, L, q, sinks, out, start, n); });
+        m(TOT, [&](Enc& e) { for (int L = 0; L < A::kLayers; L++) A::encode_layer(e, st, io_of(L), start, n); });
+      }
+    setv(1);
+    (void)idxL;
+    printf("%-52s %10s %10s %8s\n", "component (min over rounds)", "base ms", "new ms", "speedup");
+    auto row = [&](const char* nm, double a0, double a1) { printf("%-52s %10.2f %10.2f %7.2fx\n", nm, a0, a1, a0 / a1); };
+    row("kv window + compressor + ring commit (40 layers)", t[KV][0], t[KV][1]);
+    row("indexer layer 2 (= 8, 14; dense, ~100K keys)", t[I2][0], t[I2][1]);
+    row("indexer layer 20 (dense ~200K keys + candidate blocks)", t[I20][0], t[I20][1]);
+    row("indexer layer 24 (= 28, 32, 36; candidate union)", t[I24][0], t[I24][1]);
+    const double ib = 3 * t[I2][0] + t[I20][0] + 4 * t[I24][0], in = 3 * t[I2][1] + t[I20][1] + 4 * t[I24][1];
+    row("indexer, all 8 index layers (3*L2 + L20 + 4*L24)", ib, in);
+    row("sparse attention (40 layers)", t[SP][0], t[SP][1]);
+    row("TOTAL attention side, one command buffer", t[TOT][0], t[TOT][1]);
+    printf("tok/s attention-side: base %.0f, new %.0f\n", n / (t[TOT][0] * 1e-3), n / (t[TOT][1] * 1e-3));
+    return 0;
+  }
   const int parts = (int)env_int("BENCH_PF_PARTS", 15);  // 1 kv, 2 indexer, 4 sparse attention, 8 total
   auto pall = [&](Enc& e) { for (int L = 0; L < A::kLayers; L++) A::encode_layer(e, st, io_of(L), start, n); };
   double p_all = 0, p_kv = 0, p_attn = 0;
