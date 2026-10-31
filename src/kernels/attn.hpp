@@ -34,6 +34,10 @@ struct Options {
   int dec_cand_cap = 32768;    // candidate capacity of the decode compaction (overflow -> exact fallback)
   bool pf_cand_union = true;  // prefill layers 24..36 score only the per-tile union of candidate blocks (0: dense
                               // scoring of all keys + mask). env MACSEEK_ATTN_PF_UNION
+  bool pf_mpp = true;      // prefill sparse attention on the tensor units, two-pass (scores, softmax, P.V)
+                           // (0: flash-style simdgroup kernel). env MACSEEK_ATTN_PF_MPP
+  bool dec_mpp = false;    // decode through the two-pass tensor path too (measured slower: 3 dependent dispatches)
+  int pf_qblock = 512;     // queries per two-pass block (bounds scratch: ~0.3 MB per query)
   int pf_heads_tg = 8;     // heads per sparse-attention threadgroup, prefill (8: 128 threads | 16: 256 threads). env MACSEEK_ATTN_PF_HEADS
   static Options from_env();
 };
@@ -63,6 +67,7 @@ struct State {
   Buffer Qi, wq;               // half [round2(max_chunk)][32][128], f32 [max_chunk][32]
   Buffer S, BS;                // f32 [max_chunk][key_chunk], [max_chunk][key_chunk/8]
   Buffer Rk, Ri, Rc, Bk, Bi, Bc;  // running top-k (positions k=512, blocks k=2048) per query
+  Buffer pfQ, pfS, pfP;   // prefill two-pass scratch: half [qblock][64][512], f32 / half [qblock][64][640]
   Buffer ulist, ucount;           // prefill: union of candidate blocks per 2-query tile, int [n/2][4096], int [n/2]
 };
 void init(State& s, const Options& o);

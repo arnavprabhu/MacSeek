@@ -30,6 +30,7 @@ constexpr int kUnionCap = 2 * kCandBlocks;
 struct FinArgs { int k, mode, mask_words; };
 struct SparseArgs { int start, nq, chunk_start, ntop, splits, rows_per_split; float scale; };
 struct CombArgs { int pos, splits; };
+struct PfArgs { int start, nq, q0, chunk_start, ntop, R; float scale; };
 
 Options Options::from_env() {
   Options o;
@@ -41,6 +42,9 @@ Options Options::from_env() {
   o.pf_heads_tg = (int)env_int("MACSEEK_ATTN_PF_HEADS", o.pf_heads_tg);
   o.dec_fast_index = env_int("MACSEEK_ATTN_DEC_FAST", 1) != 0;
   o.pf_cand_union = env_int("MACSEEK_ATTN_PF_UNION", 1) != 0;
+  o.pf_mpp = env_int("MACSEEK_ATTN_PF_MPP", 1) != 0;
+  o.dec_mpp = env_int("MACSEEK_ATTN_DEC_MPP", 0) != 0;
+  o.pf_qblock = (int)env_int("MACSEEK_ATTN_PF_QBLOCK", o.pf_qblock);
   return o;
 }
 
@@ -115,6 +119,12 @@ void init(State& s, const Options& o) {
   s.Bk = d.alloc((size_t)nmax * kCandBlocks * 4, "attn.Bk");
   s.Bi = d.alloc((size_t)nmax * kCandBlocks * 4, "attn.Bi");
   s.Bc = d.alloc((size_t)nmax * 4, "attn.Bc");
+  if ((o.pf_mpp && nmax > 1) || o.dec_mpp) {
+    const size_t qb = std::min(o.pf_qblock, nmax);
+    s.pfQ = d.alloc(qb * kH * kD * 2, "attn.pfQ");
+    s.pfS = d.alloc(qb * kH * (kWin + kTopk) * 4, "attn.pfS");
+    s.pfP = d.alloc(qb * kH * (kWin + kTopk) * 2, "attn.pfP");
+  }
   s.ulist = d.alloc((size_t)(nq2 / 2) * kUnionCap * 4, "attn.ulist");
   s.ucount = d.alloc((size_t)(nq2 / 2) * 4, "attn.ucount");
 }
@@ -331,7 +341,7 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
   const int ntop = r ? kTopk : 0;
   const int R = kWin + ntop;
   const Buffer& ckv = r ? s.ckv[src_slot(kv_source_of(L))] : s.win[L];
-  if (n == 1) {
+  if (n == 1 && !(s.opt.dec_mpp && s.pfQ)) {
     const int rps = std::max(16, s.opt.dec_rows_split / 16 * 16);
     const int splits = (R + rps - 1) / rps;
     SparseArgs a{start, 1, start + 1, ntop, splits, rps, 1.0f / std::sqrt((float)kD)};
@@ -347,6 +357,30 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     e.set_buffer(0, s.part); e.set_buffer(1, s.ml); e.set_buffer(2, sinks); e.set_buffer(3, tab_of(s, L));
     e.set_buffer(4, out); e.set_value(5, c);
     e.dispatch_groups(kH, 1, 1, 128);
+  } else if (s.opt.pf_mpp && s.pfQ) {
+    const int QB = std::min(s.opt.pf_qblock, s.opt.max_chunk);
+    for (int q0 = 0; q0 < n; q0 += QB) {
+      const int nb = std::min(QB, n - q0);
+      PfArgs a{start + q0, nb, q0, start, ntop, R, 1.0f / std::sqrt((float)kD)};
+      e.set_pipeline("attn_pf_qprep");
+      e.set_buffer(0, q); e.set_buffer(1, tab_of(s, L)); e.set_buffer(2, s.pfQ); e.set_value(3, a);
+      e.dispatch_groups(nb, 1, 1, 128);
+      e.barrier();
+      e.set_pipeline("attn_pf_scores");
+      e.set_buffer(0, s.pfQ); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
+      e.set_buffer(4, s.topk); e.set_buffer(5, s.pfS); e.set_value(6, a);
+      e.dispatch_groups(R / 64, nb, 1, 128);
+      e.barrier();
+      e.set_pipeline("attn_pf_softmax");
+      e.set_buffer(0, s.pfS); e.set_buffer(1, sinks); e.set_buffer(2, s.pfP); e.set_value(3, a);
+      e.dispatch_groups(nb, 1, 1, 1024);
+      e.barrier();
+      e.set_pipeline("attn_pf_pv");
+      e.set_buffer(0, s.pfP); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
+      e.set_buffer(4, s.topk); e.set_buffer(5, tab_of(s, L)); e.set_buffer(6, out); e.set_value(7, a);
+      e.dispatch_groups(kD / 64, nb, 1, 128);
+      e.barrier();
+    }
   } else {
     SparseArgs a{start, n, start, ntop, 1, R, 1.0f / std::sqrt((float)kD)};
     const int hg = s.opt.pf_heads_tg == 16 ? 16 : 8;
