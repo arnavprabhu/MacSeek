@@ -18,6 +18,8 @@ struct ArchHcParams {
   int iters;
   uint fused;       // decode: 1 = last threadgroup runs the tail (single dispatch), 0 = separate finalize dispatch
   uint has_pre;     // 0: skip hc_pre + RMSNorm (x_out untouched), e.g. the post-only step before engram
+  uint safe_inplace;  // decode step: write h_out only after every simdgroup has read h_in (h_out == h_in race fix)
+  uint row_splits;    // decode step: threadgroups per dim chunk, each computing 24/row_splits mix rows (h_out != h_in)
 };
 
 // ---- tail shared by the fused step and the finalize kernel (one threadgroup) ----
@@ -57,7 +59,7 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
                          coherent(device) device float* part [[buffer(10)]],
                          device atomic_uint* counter [[buffer(11)]],
                          constant ArchHcParams& p [[buffer(12)]],
-                         uint g [[threadgroup_position_in_grid]],
+                         uint tgi [[threadgroup_position_in_grid]],
                          ushort tid [[thread_position_in_threadgroup]],
                          ushort T [[threads_per_threadgroup]],
                          ushort sg [[simdgroup_index_in_threadgroup]],
@@ -65,6 +67,11 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
   threadgroup float red[32];
   threadgroup uint flag;
   const ushort nsg = T / 32;
+  // row_splits > 1: threadgroup tgi = dim chunk g, split sp; split sp computes mix rows [r0, r1) of the chunk (each row's
+  // partial is the same arithmetic as with one threadgroup per chunk); split 0 also does h_out / x_out / the sums.
+  const uint S = max(1u, p.row_splits), g = tgi / S, sp = tgi - g * S;
+  const uint r0 = sp * ARCH_MIX / S, r1 = (sp + 1) * ARCH_MIX / S;
+  const bool main_split = sp == 0;
   const uint nv = T / 4;                 // float4 per copy in this chunk
   const uint d0v = g * nv;               // chunk start in float4 units
   float pre[4], post[4], comb[16];
@@ -92,25 +99,28 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
     }
     if (p.has_mixes) {
       for (uint q = 0; q < MAXQ; q++) {
-        uint r = sg + q * nsg;
-        if (r >= ARCH_MIX) break;
+        uint r = r0 + sg + q * nsg;
+        if (r >= r1) break;
         float a = 0.0f;
         for (uint j = 0; j < 4; j++) a += dot(f4[r * (ARCH_HCD / 4) + j * (ARCH_DIM / 4) + dv], hn[j]);
         acc[q] += a;
       }
     }
-    if (sg == 0) {
-      // h_out is NOT written here: h_out may alias h_in, and the other simdgroups of this group are still reading
-      // h_in for the same chunk (that race made the mixes depend on simdgroup scheduling). Written after the barrier.
+    if (sg == 0 && main_split) {
+      if (p.has_post && !p.safe_inplace)
+        for (uint i = 0; i < 4; i++) ((device float4*)h_out)[i * (ARCH_DIM / 4) + dv] = hn[i];
       float4 xp = pre[0] * hn[0] + pre[1] * hn[1] + pre[2] * hn[2] + pre[3] * hn[3];
       if (p.has_pre) ((coherent(device) device float4*)x_out)[dv] = xp;
       ssh += dot(hn[0], hn[0]) + dot(hn[1], hn[1]) + dot(hn[2], hn[2]) + dot(hn[3], hn[3]);
       ssx += dot(xp, xp);
     }
   }
-  if (p.has_post) {
-    threadgroup_barrier(mem_flags::mem_device);   // every simdgroup has finished reading this chunk of h_in
-    if (sg == 0)
+  // h_out usually aliases h_in (decode updates h in place) and every simdgroup reads all of h_in above: simdgroup 0
+  // must not overwrite an element before the others have read it. Safe mode: wait for all simdgroups, then simdgroup 0
+  // recomputes h_new (same arithmetic -> same values) and stores it. (Unsafe legacy mode: MACSEEK_ARCH_HC_SAFE=0.)
+  if (p.has_post && p.safe_inplace) {
+    threadgroup_barrier(mem_flags::mem_none);
+    if (sg == 0 && main_split)
       for (uint c = lane; c < nv; c += 32) {
         const uint dv = d0v + c;
         float4 hn[4];
@@ -125,19 +135,19 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
   }
   if (p.has_mixes) {
     for (uint q = 0; q < MAXQ; q++) {
-      uint r = sg + q * nsg;
-      if (r >= ARCH_MIX) break;
+      uint r = r0 + sg + q * nsg;
+      if (r >= r1) break;
       float v = simd_sum(acc[q]);
       if (lane == 0) part[g * ARCH_PART_STRIDE + r] = v;
     }
   }
-  if (sg == 0) {
+  if (sg == 0 && main_split) {
     ssh = simd_sum(ssh);
     ssx = simd_sum(ssx);
     if (lane == 0) { part[g * ARCH_PART_STRIDE + 24] = ssh; part[g * ARCH_PART_STRIDE + 25] = ssx; }
   }
   if (!p.fused) return;
-  if (!arch_last_group(counter, p.n_groups, tid, &flag)) return;
+  if (!arch_last_group(counter, p.n_groups * S, tid, &flag)) return;
   arch_hc_tail(part, x_out, norm_w, mix_out, scale, base, p, tid, T, sg, lane, red);
   arch_reset_counter(counter, tid);
 }

@@ -154,6 +154,7 @@ void init(State& s, const Options& o) {
   }
   s.ulist = d.alloc((size_t)(nq2 / 2) * kUnionCap * 4, "attn.ulist");
   s.ucount = d.alloc((size_t)(nq2 / 2) * 4, "attn.ucount");
+  s.dec_cnt = d.alloc(64, "attn.dec_cnt");
 }
 
 std::vector<StateSpan> persistent_state(const State& s, int pos) {
@@ -212,13 +213,13 @@ static void compress_groups(Enc& e, State& s, int L, const LayerIO& io, int star
   }
 }
 
-void encode_compress(Enc& e, State& s, int L, const LayerIO& io, int start, int n) {
+void encode_compress(Enc& e, State& s, int L, const LayerIO& io, int start, int n, bool barrier_after) {
   bool ws;
   compress_groups(e, s, L, io, start, n, ws);
-  e.barrier();
+  if (barrier_after) e.barrier();
 }
 
-void encode_index_decode(Enc& e, State& s, int L, const Buffer& iq, const Buffer& iw, int pos) {
+void encode_index_decode(Enc& e, State& s, int L, const Buffer& iq, const Buffer& iw, int pos, const StageHook& hook) {
   const int r = ratio_of(L), sl = src_slot(kv_source_of(L));
   const int len = (pos + 1) / r;
   const bool lm = uses_cand(L), cs = is_cand_source(L);
@@ -255,9 +256,11 @@ void encode_index_decode(Enc& e, State& s, int L, const Buffer& iq, const Buffer
     };
     compact(0, s.dec_scores, nvirt, kTopk);
     if (cs) compact(1, s.dec_bscores, nblocks, kCandBlocks);
+    if (hook) hook(0);
     e.barrier();
     fin(0, s.dec_scores, nvirt, kTopk, s.topk);
     if (cs) fin(1, s.dec_bscores, nblocks, kCandBlocks, s.cand_list);
+    if (hook) hook(1);
     e.barrier();
     return;
   }
@@ -413,7 +416,8 @@ void encode_index_prefill(Enc& e, State& s, int L, const Buffer& iq, const Buffe
   e.barrier();
 }
 
-void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks, const Buffer& out, int start, int n) {
+void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks, const Buffer& out, int start, int n,
+                   bool fused_combine, const StageHook& hook) {
   const int r = ratio_of(L);
   const int ntop = r ? kTopk : 0;
   const int R = kWin + ntop;
@@ -423,17 +427,22 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     const int splits = (R + rps - 1) / rps;
     SparseArgs a{start, 1, start + 1, ntop, splits, rps, 1.0f / std::sqrt((float)kD)};
     const int hg = s.opt.dec_heads_tg == 16 ? 16 : 8;
-    e.set_pipeline(hg == 16 ? "attn_sparse_h16" : "attn_sparse_h8");
+    const bool lc = fused_combine && splits > 1;
+    e.set_pipeline(lc ? (hg == 16 ? "attn_sparse_lc_h16" : "attn_sparse_lc_h8") : (hg == 16 ? "attn_sparse_h16" : "attn_sparse_h8"));
     e.set_buffer(0, q); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.win[L]); e.set_buffer(3, ckv);
     e.set_buffer(4, s.topk); e.set_buffer(5, sinks); e.set_buffer(6, tab_of(s, L)); e.set_buffer(7, out);
     e.set_buffer(8, s.part); e.set_buffer(9, s.ml); e.set_value(10, a);
+    if (lc) { e.set_buffer(11, s.dec_cnt); e.set_buffer(12, s.part); e.set_buffer(13, s.ml); }
     e.dispatch_groups(kH / hg, splits, 1, hg == 16 ? 256 : 128);
+    if (hook) hook(2);
+    if (lc) { e.barrier(); return; }
     e.barrier();
     CombArgs c{start, splits};
     e.set_pipeline("attn_sparse_combine");
     e.set_buffer(0, s.part); e.set_buffer(1, s.ml); e.set_buffer(2, sinks); e.set_buffer(3, tab_of(s, L));
     e.set_buffer(4, out); e.set_value(5, c);
     e.dispatch_groups(kH, 1, 1, 128);
+    if (hook) hook(3);
   } else if (s.opt.pf_mpp && s.pfQ && s.pf_fold_ok && n > 1) {
     // Folded two-pass attention, software-pipelined over query blocks of QB: stage j dispatches qprep(j),
     // scores(j-1), pv(j-2) with no barrier between them (they touch disjoint scratch sets j%2 / (j-1)%2), one barrier

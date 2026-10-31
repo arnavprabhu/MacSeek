@@ -217,3 +217,72 @@ kernel void attn_sparse_combine(device const float* part [[buffer(0)]], device c
   }
   ((device float4*)(out + (size_t)h * ATTN_D))[t] = o;
 }
+
+// ---- decode: sparse attention + split-K combine in ONE dispatch (MACSEEK_DEC_COMBINE) ----
+// Every threadgroup runs attn_sparse_impl (partials as in the split path); the last threadgroup of each head group to
+// finish (device atomic counter per head group, reset by that threadgroup) then merges the partials of its heads with
+// exactly attn_sparse_combine's arithmetic (thread t of 128 owns dims 4t..4t+3 of each head) -> bit-identical output.
+inline bool attn_last_group(device atomic_uint* counter, uint n_groups, ushort tid, threadgroup uint* flag) {
+  threadgroup_barrier(mem_flags::mem_device);
+  if (tid == 0) {
+    atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device);
+    uint t = atomic_fetch_add_explicit(counter, 1u, memory_order_relaxed);
+    *flag = (t == n_groups - 1) ? 1u : 0u;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  bool last = *flag != 0;
+  if (last) atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device);
+  return last;
+}
+
+#define ATTN_SPARSE_LC_KERNEL(NAME, HT, NSG)                                                                      \
+  kernel void NAME(device const float* q [[buffer(0)]], device const half* ring [[buffer(1)]],                     \
+                   device const half* chunk [[buffer(2)]], device const half* ckv [[buffer(3)]],                   \
+                   device const int* topk [[buffer(4)]], device const float* sinks [[buffer(5)]],                  \
+                   device const float2* tab [[buffer(6)]], device float* out [[buffer(7)]],                        \
+                   device float* part [[buffer(8)]], device float2* ml [[buffer(9)]],                              \
+                   constant AttnSparseArgs& a [[buffer(10)]], device atomic_uint* cnt [[buffer(11)]],              \
+                   coherent(device) device const float* part_c [[buffer(12)]],                                     \
+                   coherent(device) device const float2* ml_c [[buffer(13)]],                                      \
+                   uint3 tg [[threadgroup_position_in_grid]],                                                      \
+                   ushort t [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],         \
+                   ushort ln [[thread_index_in_simdgroup]]) {                                                      \
+    threadgroup half Ks[16 * ATTN_LDK];                                                                            \
+    threadgroup float Sp[NSG * 8 * HT * 16];                                                                       \
+    threadgroup half Ps[8 * HT * 16];                                                                              \
+    threadgroup float As[8 * HT], Ms[8 * HT], Ls[8 * HT];                                                          \
+    threadgroup int vflag[16];                                                                                     \
+    threadgroup uint flag;                                                                                         \
+    attn_sparse_impl<HT, NSG>(q, ring, chunk, ckv, topk, sinks, tab, out, part, ml, a, tg, t, sg, ln, Ks, Sp, Ps,  \
+                              As, vflag, Ms, Ls);                                                                  \
+    if (!attn_last_group(cnt + tg.x, uint(a.splits), t, &flag)) return;                                           \
+    if (t < 128) {  /* all heads of the group interleaved (independent loads in flight); per head the same    */  \
+      constexpr int HG = 8 * HT; /* operations in the same order as attn_sparse_combine                       */  \
+      const int hb = int(tg.x) * HG;                                                                               \
+      float sink[HG], M[HG], L[HG];                                                                                \
+      float4 acc[HG];                                                                                              \
+      for (int hh = 0; hh < HG; hh++) { sink[hh] = sinks[hb + hh]; M[hh] = sink[hh]; }                             \
+      for (int s = 0; s < a.splits; s++)                                                                           \
+        for (int hh = 0; hh < HG; hh++) M[hh] = max(M[hh], ml_c[s * ATTN_H + hb + hh].x);                          \
+      for (int hh = 0; hh < HG; hh++) { L[hh] = exp(sink[hh] - M[hh]); acc[hh] = 0; }                              \
+      for (int s = 0; s < a.splits; s++)                                                                           \
+        for (int hh = 0; hh < HG; hh++) {                                                                          \
+          float2 v = ml_c[s * ATTN_H + hb + hh];                                                                   \
+          float w = exp(v.x - M[hh]);                                                                              \
+          L[hh] += w * v.y;                                                                                        \
+          acc[hh] += w * ((coherent(device) device const float4*)(part_c + ((size_t)s * ATTN_H + hb + hh) * ATTN_D))[t]; \
+        }                                                                                                          \
+      for (int hh = 0; hh < HG; hh++) {                                                                            \
+        float4 o = acc[hh] / L[hh];                                                                                \
+        if (t >= 112) {                                                                                            \
+          int pi = 2 * (t - 112);                                                                                  \
+          o.xy = attn_rot_inv(o.xy, tab[(size_t)a.start * 32 + pi]);                                               \
+          o.zw = attn_rot_inv(o.zw, tab[(size_t)a.start * 32 + pi + 1]);                                           \
+        }                                                                                                          \
+        ((device float4*)(out + (size_t)(hb + hh) * ATTN_D))[t] = o;                                               \
+      }                                                                                                            \
+    }                                                                                                              \
+    if (t == 0) atomic_store_explicit(cnt + tg.x, 0u, memory_order_relaxed);                                      \
+  }
+ATTN_SPARSE_LC_KERNEL(attn_sparse_lc_h8, 1, 4)
+ATTN_SPARSE_LC_KERNEL(attn_sparse_lc_h16, 2, 8)

@@ -31,11 +31,15 @@ file(GLOB NEW_GLOB LIST_DIRECTORIES true "/Users/arnav/Desktop/Projects/MacSeek/
 set(OLD_GLOB
   "/Users/arnav/Desktop/Projects/MacSeek/bench/arch.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/attn200k.mm"
+  "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_cache_probe.mm"
+  "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_coop_probe.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_dispatch_probe.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_layout_probe.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_mmprobe.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_pfprof.mm"
+  "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_pfsplit.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_prof.mm"
+  "/Users/arnav/Desktop/Projects/MacSeek/bench/decode_layer.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/engram_io.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/experts_io.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/bench/membw.mm"
@@ -161,6 +165,7 @@ set(OLD_GLOB
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal"
+  "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf2.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal"
@@ -257,8 +262,10 @@ set(OLD_GLOB
   "/Users/arnav/Desktop/Projects/MacSeek/tests/test_arch_router.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/tests/test_arch_sample.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_200k.mm"
+  "/Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_pf_paths.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_stack.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_units.mm"
+  "/Users/arnav/Desktop/Projects/MacSeek/tests/test_dec_fuse.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/tests/test_dec_sync.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/tests/test_quant_matmul.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/tests/test_quant_matvec.mm"
@@ -451,6 +458,7 @@ endif()
 # LIB_SRCS at CMakeLists.txt:34 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "/Users/arnav/Desktop/Projects/MacSeek/src/model/*.mm")
 set(OLD_GLOB
+  "/Users/arnav/Desktop/Projects/MacSeek/src/model/dec_layer.mm"
   "/Users/arnav/Desktop/Projects/MacSeek/src/model/ds41.mm"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")

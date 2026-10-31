@@ -148,6 +148,17 @@ build CMakeFiles/macseek_lib.dir/src/kernels/quant.mm.o: OBJCXX_COMPILER__macsee
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/kernels
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
+build CMakeFiles/macseek_lib.dir/src/model/dec_layer.mm.o: OBJCXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/model/dec_layer.mm || cmake_object_order_depends_target_macseek_lib
+  CONFIG = Release
+  DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
+  DEP_FILE = CMakeFiles/macseek_lib.dir/src/model/dec_layer.mm.o.d
+  FLAGS = -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64
+  INCLUDES = -I/Users/arnav/Desktop/Projects/MacSeek/src
+  LAUNCHER = /opt/homebrew/bin/ccache 
+  OBJECT_DIR = CMakeFiles/macseek_lib.dir
+  OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/model
+  TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
+
 build CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o: OBJCXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/model/ds41.mm || cmake_object_order_depends_target_macseek_lib
   CONFIG = Release
   DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
@@ -288,7 +299,7 @@ build CMakeFiles/macseek_lib.dir/src/tok/tokenizer.cpp.o: CXX_COMPILER__macseek_
 #############################################
 # Link the static library libmacseek_lib.a
 
-build libmacseek_lib.a: CXX_STATIC_LIBRARY_LINKER__macseek_lib_Release CMakeFiles/macseek_lib.dir/src/core/metal.mm.o CMakeFiles/macseek_lib.dir/src/gguf/gguf.cpp.o CMakeFiles/macseek_lib.dir/src/kernels/arch.mm.o CMakeFiles/macseek_lib.dir/src/kernels/attn.mm.o CMakeFiles/macseek_lib.dir/src/kernels/quant.mm.o CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o CMakeFiles/macseek_lib.dir/src/model/engram_hash.cpp.o CMakeFiles/macseek_lib.dir/src/server/http.cpp.o CMakeFiles/macseek_lib.dir/src/store/engram.cpp.o CMakeFiles/macseek_lib.dir/src/store/experts.mm.o CMakeFiles/macseek_lib.dir/src/store/io_pool.cpp.o CMakeFiles/macseek_lib.dir/src/store/memguard.cpp.o CMakeFiles/macseek_lib.dir/src/store/policy.cpp.o CMakeFiles/macseek_lib.dir/src/store/weights.cpp.o CMakeFiles/macseek_lib.dir/src/tok/chat.cpp.o CMakeFiles/macseek_lib.dir/src/tok/json.cpp.o CMakeFiles/macseek_lib.dir/src/tok/tokenizer.cpp.o || metallib
+build libmacseek_lib.a: CXX_STATIC_LIBRARY_LINKER__macseek_lib_Release CMakeFiles/macseek_lib.dir/src/core/metal.mm.o CMakeFiles/macseek_lib.dir/src/gguf/gguf.cpp.o CMakeFiles/macseek_lib.dir/src/kernels/arch.mm.o CMakeFiles/macseek_lib.dir/src/kernels/attn.mm.o CMakeFiles/macseek_lib.dir/src/kernels/quant.mm.o CMakeFiles/macseek_lib.dir/src/model/dec_layer.mm.o CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o CMakeFiles/macseek_lib.dir/src/model/engram_hash.cpp.o CMakeFiles/macseek_lib.dir/src/server/http.cpp.o CMakeFiles/macseek_lib.dir/src/store/engram.cpp.o CMakeFiles/macseek_lib.dir/src/store/experts.mm.o CMakeFiles/macseek_lib.dir/src/store/io_pool.cpp.o CMakeFiles/macseek_lib.dir/src/store/memguard.cpp.o CMakeFiles/macseek_lib.dir/src/store/policy.cpp.o CMakeFiles/macseek_lib.dir/src/store/weights.cpp.o CMakeFiles/macseek_lib.dir/src/tok/chat.cpp.o CMakeFiles/macseek_lib.dir/src/tok/json.cpp.o CMakeFiles/macseek_lib.dir/src/tok/tokenizer.cpp.o || metallib
   ARCH_FLAGS = -arch arm64
   CONFIG = Release
   LANGUAGE_COMPILE_FLAGS = -O3 -mcpu=native -DNDEBUG
@@ -659,6 +670,46 @@ build test_attn_200k: CXX_EXECUTABLE_LINKER__test_attn_200k_Release CMakeFiles/t
   TARGET_SUPPORT_DIR = CMakeFiles/test_attn_200k.dir
 
 # =============================================================================
+# Object build statements for EXECUTABLE target test_attn_pf_paths
+
+
+#############################################
+# Order-only phony target for test_attn_pf_paths
+
+build cmake_object_order_depends_target_test_attn_pf_paths: phony || cmake_object_order_depends_target_macseek_lib cmake_object_order_depends_target_macseek_ref
+
+build CMakeFiles/test_attn_pf_paths.dir/tests/test_attn_pf_paths.mm.o: OBJCXX_COMPILER__test_attn_pf_paths_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_pf_paths.mm || cmake_object_order_depends_target_test_attn_pf_paths
+  CONFIG = Release
+  DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
+  DEP_FILE = CMakeFiles/test_attn_pf_paths.dir/tests/test_attn_pf_paths.mm.o.d
+  FLAGS = -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64
+  INCLUDES = -I/Users/arnav/Desktop/Projects/MacSeek/src -I/Users/arnav/Desktop/Projects/MacSeek/tests
+  LAUNCHER = /opt/homebrew/bin/ccache 
+  OBJECT_DIR = CMakeFiles/test_attn_pf_paths.dir
+  OBJECT_FILE_DIR = CMakeFiles/test_attn_pf_paths.dir/tests
+  TARGET_SUPPORT_DIR = CMakeFiles/test_attn_pf_paths.dir
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target test_attn_pf_paths
+
+
+#############################################
+# Link the executable test_attn_pf_paths
+
+build test_attn_pf_paths: CXX_EXECUTABLE_LINKER__test_attn_pf_paths_Release CMakeFiles/test_attn_pf_paths.dir/tests/test_attn_pf_paths.mm.o | libmacseek_lib.a libmacseek_ref.a || libmacseek_lib.a libmacseek_ref.a
+  CONFIG = Release
+  FLAGS = -O3 -mcpu=native -DNDEBUG -arch arm64
+  LINK_FLAGS = -Wl,-search_paths_first -Wl,-headerpad_max_install_names
+  LINK_LIBRARIES = libmacseek_lib.a  libmacseek_ref.a  -framework Metal  -framework Foundation  -framework QuartzCore
+  OBJECT_DIR = CMakeFiles/test_attn_pf_paths.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = test_attn_pf_paths
+  TARGET_PDB = test_attn_pf_paths.dbg
+  TARGET_SUPPORT_DIR = CMakeFiles/test_attn_pf_paths.dir
+
+# =============================================================================
 # Object build statements for EXECUTABLE target test_attn_stack
 
 
@@ -737,6 +788,46 @@ build test_attn_units: CXX_EXECUTABLE_LINKER__test_attn_units_Release CMakeFiles
   TARGET_FILE = test_attn_units
   TARGET_PDB = test_attn_units.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_attn_units.dir
+
+# =============================================================================
+# Object build statements for EXECUTABLE target test_dec_fuse
+
+
+#############################################
+# Order-only phony target for test_dec_fuse
+
+build cmake_object_order_depends_target_test_dec_fuse: phony || cmake_object_order_depends_target_macseek_lib cmake_object_order_depends_target_macseek_ref
+
+build CMakeFiles/test_dec_fuse.dir/tests/test_dec_fuse.mm.o: OBJCXX_COMPILER__test_dec_fuse_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/tests/test_dec_fuse.mm || cmake_object_order_depends_target_test_dec_fuse
+  CONFIG = Release
+  DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
+  DEP_FILE = CMakeFiles/test_dec_fuse.dir/tests/test_dec_fuse.mm.o.d
+  FLAGS = -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64
+  INCLUDES = -I/Users/arnav/Desktop/Projects/MacSeek/src -I/Users/arnav/Desktop/Projects/MacSeek/tests
+  LAUNCHER = /opt/homebrew/bin/ccache 
+  OBJECT_DIR = CMakeFiles/test_dec_fuse.dir
+  OBJECT_FILE_DIR = CMakeFiles/test_dec_fuse.dir/tests
+  TARGET_SUPPORT_DIR = CMakeFiles/test_dec_fuse.dir
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target test_dec_fuse
+
+
+#############################################
+# Link the executable test_dec_fuse
+
+build test_dec_fuse: CXX_EXECUTABLE_LINKER__test_dec_fuse_Release CMakeFiles/test_dec_fuse.dir/tests/test_dec_fuse.mm.o | libmacseek_lib.a libmacseek_ref.a || libmacseek_lib.a libmacseek_ref.a
+  CONFIG = Release
+  FLAGS = -O3 -mcpu=native -DNDEBUG -arch arm64
+  LINK_FLAGS = -Wl,-search_paths_first -Wl,-headerpad_max_install_names
+  LINK_LIBRARIES = libmacseek_lib.a  libmacseek_ref.a  -framework Metal  -framework Foundation  -framework QuartzCore
+  OBJECT_DIR = CMakeFiles/test_dec_fuse.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = test_dec_fuse
+  TARGET_PDB = test_dec_fuse.dbg
+  TARGET_SUPPORT_DIR = CMakeFiles/test_dec_fuse.dir
 
 # =============================================================================
 # Object build statements for EXECUTABLE target test_dec_sync
@@ -1339,6 +1430,86 @@ build bench_attn200k: CXX_EXECUTABLE_LINKER__bench_attn200k_Release CMakeFiles/b
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn200k.dir
 
 # =============================================================================
+# Object build statements for EXECUTABLE target bench_attn_cache_probe
+
+
+#############################################
+# Order-only phony target for bench_attn_cache_probe
+
+build cmake_object_order_depends_target_bench_attn_cache_probe: phony || cmake_object_order_depends_target_macseek_lib
+
+build CMakeFiles/bench_attn_cache_probe.dir/bench/attn_cache_probe.mm.o: OBJCXX_COMPILER__bench_attn_cache_probe_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/bench/attn_cache_probe.mm || cmake_object_order_depends_target_bench_attn_cache_probe
+  CONFIG = Release
+  DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
+  DEP_FILE = CMakeFiles/bench_attn_cache_probe.dir/bench/attn_cache_probe.mm.o.d
+  FLAGS = -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64
+  INCLUDES = -I/Users/arnav/Desktop/Projects/MacSeek/src
+  LAUNCHER = /opt/homebrew/bin/ccache 
+  OBJECT_DIR = CMakeFiles/bench_attn_cache_probe.dir
+  OBJECT_FILE_DIR = CMakeFiles/bench_attn_cache_probe.dir/bench
+  TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_cache_probe.dir
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target bench_attn_cache_probe
+
+
+#############################################
+# Link the executable bench_attn_cache_probe
+
+build bench_attn_cache_probe: CXX_EXECUTABLE_LINKER__bench_attn_cache_probe_Release CMakeFiles/bench_attn_cache_probe.dir/bench/attn_cache_probe.mm.o | libmacseek_lib.a || libmacseek_lib.a
+  CONFIG = Release
+  FLAGS = -O3 -mcpu=native -DNDEBUG -arch arm64
+  LINK_FLAGS = -Wl,-search_paths_first -Wl,-headerpad_max_install_names
+  LINK_LIBRARIES = libmacseek_lib.a  -framework Metal  -framework Foundation  -framework QuartzCore
+  OBJECT_DIR = CMakeFiles/bench_attn_cache_probe.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = bench_attn_cache_probe
+  TARGET_PDB = bench_attn_cache_probe.dbg
+  TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_cache_probe.dir
+
+# =============================================================================
+# Object build statements for EXECUTABLE target bench_attn_coop_probe
+
+
+#############################################
+# Order-only phony target for bench_attn_coop_probe
+
+build cmake_object_order_depends_target_bench_attn_coop_probe: phony || cmake_object_order_depends_target_macseek_lib
+
+build CMakeFiles/bench_attn_coop_probe.dir/bench/attn_coop_probe.mm.o: OBJCXX_COMPILER__bench_attn_coop_probe_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/bench/attn_coop_probe.mm || cmake_object_order_depends_target_bench_attn_coop_probe
+  CONFIG = Release
+  DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
+  DEP_FILE = CMakeFiles/bench_attn_coop_probe.dir/bench/attn_coop_probe.mm.o.d
+  FLAGS = -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64
+  INCLUDES = -I/Users/arnav/Desktop/Projects/MacSeek/src
+  LAUNCHER = /opt/homebrew/bin/ccache 
+  OBJECT_DIR = CMakeFiles/bench_attn_coop_probe.dir
+  OBJECT_FILE_DIR = CMakeFiles/bench_attn_coop_probe.dir/bench
+  TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_coop_probe.dir
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target bench_attn_coop_probe
+
+
+#############################################
+# Link the executable bench_attn_coop_probe
+
+build bench_attn_coop_probe: CXX_EXECUTABLE_LINKER__bench_attn_coop_probe_Release CMakeFiles/bench_attn_coop_probe.dir/bench/attn_coop_probe.mm.o | libmacseek_lib.a || libmacseek_lib.a
+  CONFIG = Release
+  FLAGS = -O3 -mcpu=native -DNDEBUG -arch arm64
+  LINK_FLAGS = -Wl,-search_paths_first -Wl,-headerpad_max_install_names
+  LINK_LIBRARIES = libmacseek_lib.a  -framework Metal  -framework Foundation  -framework QuartzCore
+  OBJECT_DIR = CMakeFiles/bench_attn_coop_probe.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = bench_attn_coop_probe
+  TARGET_PDB = bench_attn_coop_probe.dbg
+  TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_coop_probe.dir
+
+# =============================================================================
 # Object build statements for EXECUTABLE target bench_attn_dispatch_probe
 
 
@@ -1499,6 +1670,46 @@ build bench_attn_pfprof: CXX_EXECUTABLE_LINKER__bench_attn_pfprof_Release CMakeF
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_pfprof.dir
 
 # =============================================================================
+# Object build statements for EXECUTABLE target bench_attn_pfsplit
+
+
+#############################################
+# Order-only phony target for bench_attn_pfsplit
+
+build cmake_object_order_depends_target_bench_attn_pfsplit: phony || cmake_object_order_depends_target_macseek_lib
+
+build CMakeFiles/bench_attn_pfsplit.dir/bench/attn_pfsplit.mm.o: OBJCXX_COMPILER__bench_attn_pfsplit_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/bench/attn_pfsplit.mm || cmake_object_order_depends_target_bench_attn_pfsplit
+  CONFIG = Release
+  DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
+  DEP_FILE = CMakeFiles/bench_attn_pfsplit.dir/bench/attn_pfsplit.mm.o.d
+  FLAGS = -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64
+  INCLUDES = -I/Users/arnav/Desktop/Projects/MacSeek/src
+  LAUNCHER = /opt/homebrew/bin/ccache 
+  OBJECT_DIR = CMakeFiles/bench_attn_pfsplit.dir
+  OBJECT_FILE_DIR = CMakeFiles/bench_attn_pfsplit.dir/bench
+  TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_pfsplit.dir
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target bench_attn_pfsplit
+
+
+#############################################
+# Link the executable bench_attn_pfsplit
+
+build bench_attn_pfsplit: CXX_EXECUTABLE_LINKER__bench_attn_pfsplit_Release CMakeFiles/bench_attn_pfsplit.dir/bench/attn_pfsplit.mm.o | libmacseek_lib.a || libmacseek_lib.a
+  CONFIG = Release
+  FLAGS = -O3 -mcpu=native -DNDEBUG -arch arm64
+  LINK_FLAGS = -Wl,-search_paths_first -Wl,-headerpad_max_install_names
+  LINK_LIBRARIES = libmacseek_lib.a  -framework Metal  -framework Foundation  -framework QuartzCore
+  OBJECT_DIR = CMakeFiles/bench_attn_pfsplit.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = bench_attn_pfsplit
+  TARGET_PDB = bench_attn_pfsplit.dbg
+  TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_pfsplit.dir
+
+# =============================================================================
 # Object build statements for EXECUTABLE target bench_attn_prof
 
 
@@ -1537,6 +1748,46 @@ build bench_attn_prof: CXX_EXECUTABLE_LINKER__bench_attn_prof_Release CMakeFiles
   TARGET_FILE = bench_attn_prof
   TARGET_PDB = bench_attn_prof.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_prof.dir
+
+# =============================================================================
+# Object build statements for EXECUTABLE target bench_decode_layer
+
+
+#############################################
+# Order-only phony target for bench_decode_layer
+
+build cmake_object_order_depends_target_bench_decode_layer: phony || cmake_object_order_depends_target_macseek_lib
+
+build CMakeFiles/bench_decode_layer.dir/bench/decode_layer.mm.o: OBJCXX_COMPILER__bench_decode_layer_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/bench/decode_layer.mm || cmake_object_order_depends_target_bench_decode_layer
+  CONFIG = Release
+  DEFINES = -DMACSEEK_METALLIB=\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\"
+  DEP_FILE = CMakeFiles/bench_decode_layer.dir/bench/decode_layer.mm.o.d
+  FLAGS = -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64
+  INCLUDES = -I/Users/arnav/Desktop/Projects/MacSeek/src
+  LAUNCHER = /opt/homebrew/bin/ccache 
+  OBJECT_DIR = CMakeFiles/bench_decode_layer.dir
+  OBJECT_FILE_DIR = CMakeFiles/bench_decode_layer.dir/bench
+  TARGET_SUPPORT_DIR = CMakeFiles/bench_decode_layer.dir
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target bench_decode_layer
+
+
+#############################################
+# Link the executable bench_decode_layer
+
+build bench_decode_layer: CXX_EXECUTABLE_LINKER__bench_decode_layer_Release CMakeFiles/bench_decode_layer.dir/bench/decode_layer.mm.o | libmacseek_lib.a || libmacseek_lib.a
+  CONFIG = Release
+  FLAGS = -O3 -mcpu=native -DNDEBUG -arch arm64
+  LINK_FLAGS = -Wl,-search_paths_first -Wl,-headerpad_max_install_names
+  LINK_LIBRARIES = libmacseek_lib.a  -framework Metal  -framework Foundation  -framework QuartzCore
+  OBJECT_DIR = CMakeFiles/bench_decode_layer.dir
+  POST_BUILD = :
+  PRE_LINK = :
+  TARGET_FILE = bench_decode_layer
+  TARGET_PDB = bench_decode_layer.dbg
+  TARGET_SUPPORT_DIR = CMakeFiles/bench_decode_layer.dir
 
 # =============================================================================
 # Object build statements for EXECUTABLE target bench_engram_io
@@ -1864,8 +2115,8 @@ build CMakeFiles/metallib | ${cmake_ninja_workdir}CMakeFiles/metallib: phony mac
 #############################################
 # Custom command for macseek.metal
 
-build macseek.metal | ${cmake_ninja_workdir}macseek.metal: CUSTOM_COMMAND metalc /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_engram.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_hc.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_router.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_sample.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_index.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_kv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe_prefill.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/smoke.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/sync.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_blocks.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_grids.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_tile.h || metalc
-  COMMAND = cd /Users/arnav/Desktop/Projects/MacSeek/build5 && /Users/arnav/Desktop/Projects/MacSeek/build5/metalc /Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_engram.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_hc.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_router.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_sample.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_index.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_kv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe_prefill.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/smoke.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/sync.metal
+build macseek.metal | ${cmake_ninja_workdir}macseek.metal: CUSTOM_COMMAND metalc /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_engram.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_hc.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_router.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_sample.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_index.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_kv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf2.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe_prefill.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/smoke.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/sync.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_blocks.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_grids.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_tile.h || metalc
+  COMMAND = cd /Users/arnav/Desktop/Projects/MacSeek/build5 && /Users/arnav/Desktop/Projects/MacSeek/build5/metalc /Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_engram.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_hc.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_router.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_sample.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_index.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_kv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf2.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe_prefill.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/smoke.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/sync.metal
   DESC = Generating macseek.metal
   restat = 1
 
@@ -1884,7 +2135,7 @@ build macseek_ref: phony libmacseek_ref.a
 #############################################
 # Folder: /Users/arnav/Desktop/Projects/MacSeek/build5
 
-build all: phony metalc metallib libmacseek_lib.a macseek libmacseek_ref.a test_arch_engram test_arch_engram_hash test_arch_hc test_arch_router test_arch_sample test_attn_200k test_attn_stack test_attn_units test_dec_sync test_gguf test_quant_matmul test_quant_matvec test_quant_matvec_n test_quant_moe test_quant_moe_prefill test_quant_ref test_smoke test_store_engram test_store_experts test_store_weights test_tok bench_arch bench_attn200k bench_attn_dispatch_probe bench_attn_layout_probe bench_attn_mmprobe bench_attn_pfprof bench_attn_prof bench_engram_io bench_experts_io bench_membw bench_qmatmul bench_qmatvec bench_sync_probe bench_weights_load
+build all: phony metalc metallib libmacseek_lib.a macseek libmacseek_ref.a test_arch_engram test_arch_engram_hash test_arch_hc test_arch_router test_arch_sample test_attn_200k test_attn_pf_paths test_attn_stack test_attn_units test_dec_fuse test_dec_sync test_gguf test_quant_matmul test_quant_matvec test_quant_matvec_n test_quant_moe test_quant_moe_prefill test_quant_ref test_smoke test_store_engram test_store_experts test_store_weights test_tok bench_arch bench_attn200k bench_attn_cache_probe bench_attn_coop_probe bench_attn_dispatch_probe bench_attn_layout_probe bench_attn_mmprobe bench_attn_pfprof bench_attn_pfsplit bench_attn_prof bench_decode_layer bench_engram_io bench_experts_io bench_membw bench_qmatmul bench_qmatvec bench_sync_probe bench_weights_load
 
 # =============================================================================
 # Built-in targets

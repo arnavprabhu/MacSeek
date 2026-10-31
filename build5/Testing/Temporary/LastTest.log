@@ -1,62 +1,102 @@
-Start testing: Oct 31 06:31 CDT
+Start testing: Oct 31 06:50 CDT
 ----------------------------------------------------------
-1/21 Testing: test_arch_engram
-1/21 Test: test_arch_engram
-Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_engram"
+11/23 Testing: test_dec_sync
+11/23 Test: test_dec_sync
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_dec_sync"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_arch_engram" start time: Oct 31 06:31 CDT
+"test_dec_sync" start time: Oct 31 06:50 CDT
 Output:
 ----------------------------------------------------------
-real blk.1.engram_gate [4][5120]: min -0.3906 max 43.89 mean 0.008199
-engram_gate n=1 (real weights), gates[0..3] = 0.6913 0.3975 0.2672 0.7421
-  gate                                         ok    worst 0.000708 of tol at [3] got 0.74206883 ref 0.74206889
-  h                                            ok    worst 0.00792 of tol at [7306] got -2.0111606 ref -2.0111609
-engram_gate n=3 (real weights), gates[0..3] = 0.6790 0.4101 0.4053 0.6674
-  gate                                         ok    worst 0.000864 of tol at [9] got 0.59003967 ref 0.59003961
-  h                                            ok    worst 0.00996 of tol at [4207] got 0.0053563984 ref 0.0053564985
-engram_gate n=33 (real weights), gates[0..3] = 0.6678 0.4011 0.3893 0.6590
-  gate                                         ok    worst 0.00119 of tol at [94] got 0.15147319 ref 0.15147316
-  h                                            ok    worst 0.0105 of tol at [126004] got 0.060517352 ref 0.060517464
-iq4nl_rows synthetic
-  rows                                         ok   bit-exact (0 / 30720 differ)
-iq4nl_rows real per_layer_token_embd rows (read ok), row0[0..3] = -0.275131 0.740738 -0.80423 -0.0211639
-  real rows                                    ok   bit-exact (0 / 1536 differ)
-embed_q6k (real token_embd rows 0..2 + synthetic)
-  h (4 copies)                                 ok   bit-exact (0 / 102400 differ)
-  x (1 copy)                                   ok   bit-exact (0 / 25600 differ)
-test_arch_engram: ALL OK
+A) split table MoE equivalence
+  split gu=IQ1_S   down=IQ1_S   shared=Q6_K : sgu bit-identical yes | shared max|dy| 4.88e-04 | table vs slot kernel 0.00e+00 (|y| 4.44e+03)
+  split gu=IQ1_S   down=IQ2_XXS shared=Q8_0 : sgu bit-identical yes | shared max|dy| 9.16e-05 | table vs slot kernel 0.00e+00 (|y| 6.39e+02)
+  split gu=IQ2_XXS down=IQ2_XXS shared=Q6_K : sgu bit-identical yes | shared max|dy| 7.32e-04 | table vs slot kernel 0.00e+00 (|y| 5.59e+03)
+B) emulated decode loop
+  loop: 40 layers x 48 experts, arena 640 slots (33% of experts), ExpertCache: arena 0.03 GiB, 640 slots, policy lru, 4 io threads, chunk 16 KiB, align 16384, ring 0
+  class 0: slot 49152 B (regions 16384/16384/16384, types IQ1_S/IQ1_S/IQ1_S), 40 layers, 640 slots (16.0/layer, 33.3% of experts)
+
+  loop[misses]: 24 tokens/mode, demand hit rate 0.53, layers with a miss 98%, evictions 7510, prefetch issued 2741
+  loop: ms/token event min 25.00 med 37.22 | overlap min 21.26 med 34.40 | saved per handshake: min 93.6 us, med 70.6 us
+  loop: stale/evicted expert reads 0, gap-ordering violations 0, chain mismatches 0, CPU id mismatches 0
+  loop: 40 layers x 48 experts, arena 1920 slots (100% of experts), ExpertCache: arena 0.09 GiB, 1920 slots, policy lru, 4 io threads, chunk 16 KiB, align 16384, ring 0
+  class 0: slot 49152 B (regions 16384/16384/16384, types IQ1_S/IQ1_S/IQ1_S), 40 layers, 1920 slots (48.0/layer, 100.0% of experts)
+
+  loop[all-hit]: 24 tokens/mode, demand hit rate 1.00, layers with a miss 0%, evictions 0, prefetch issued 0
+  loop: ms/token event min 10.38 med 10.49 | overlap min 5.39 med 5.41 | saved per handshake: min 124.9 us, med 127.1 us
+  loop: stale/evicted expert reads 0, gap-ordering violations 0, chain mismatches 0, CPU id mismatches 0
+all OK
 <end of output>
-Test time =   0.10 sec
+Test time =   4.76 sec
 ----------------------------------------------------------
 Test Passed.
-"test_arch_engram" end time: Oct 31 06:31 CDT
-"test_arch_engram" time elapsed: 00:00:00
+"test_dec_sync" end time: Oct 31 06:50 CDT
+"test_dec_sync" time elapsed: 00:00:04
 ----------------------------------------------------------
 
-2/21 Testing: test_arch_engram_hash
-2/21 Test: test_arch_engram_hash
-Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_engram_hash"
+16/23 Testing: test_quant_moe
+16/23 Test: test_quant_moe
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_moe"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_arch_engram_hash" start time: Oct 31 06:31 CDT
+"test_quant_moe" start time: Oct 31 06:50 CDT
 Output:
 ----------------------------------------------------------
-synthetic: streaming/chunked/masked/state round-trips vs whole-sequence ref: ok (0 bad)
-real metadata (token_map, pad, multipliers, primes, offsets): ok
-golden hashes (engram.py port, tools/engram_hash_check.py): ok
-test_arch_engram_hash: ALL OK
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=6  clamped= 2756  h_err 5.20e-09  y_err 3.63e-08  ok
+  gu=IQ1_S   down=IQ2_XXS shared=Q8_0 routed=6  clamped=  841  h_err 5.20e-09  y_err 2.35e-08  ok
+  gu=IQ1_S   down=IQ2_XXS shared=Q6_K routed=6  clamped= 2756  h_err 5.20e-09  y_err 3.33e-08  ok
+  gu=IQ2_XXS down=IQ2_XXS shared=Q6_K routed=6  clamped=13927  h_err 4.79e-09  y_err 2.27e-08  ok
+  gu=IQ2_XXS down=IQ2_XXS shared=-    routed=3  clamped= 5985  h_err 4.79e-09  y_err 3.09e-08  ok
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=0  clamped= 1867  h_err 4.04e-09  y_err 4.21e-08  ok
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=6  clamped=15817  h_err 4.12e-09  y_err 1.13e-07  ok
+all OK
 <end of output>
-Test time =   0.07 sec
+Test time =   2.43 sec
 ----------------------------------------------------------
 Test Passed.
-"test_arch_engram_hash" end time: Oct 31 06:31 CDT
-"test_arch_engram_hash" time elapsed: 00:00:00
+"test_quant_moe" end time: Oct 31 06:50 CDT
+"test_quant_moe" time elapsed: 00:00:02
 ----------------------------------------------------------
 
-3/21 Testing: test_arch_hc
-3/21 Test: test_arch_hc
+5/23 Testing: test_arch_sample
+5/23 Test: test_arch_sample
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_sample"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_arch_sample" start time: Oct 31 06:50 CDT
+Output:
+----------------------------------------------------------
+argmax rows=6 x3 + 300-dispatch stress: ok
+gumbel sampling T=0.8, 20000 draws: p_emp vs p_ref: 0.072/0.073 0.251/0.253 0.037/0.039 0.478/0.473 0.005/0.006 0.135/0.136 0.021/0.021
+  chi2 = 4.11 (6 dof, limit 22.5): ok
+  lse row 0 T=1.0                              ok    worst 0 of tol at [0] got 16.315609 ref 16.315609
+  lse row 1 T=1.0                              ok    worst 0 of tol at [0] got 22.304783 ref 22.304783
+  lse row 2 T=1.0                              ok    worst 0 of tol at [0] got 16.177397 ref 16.177397
+topk k=64 T=1.0 rows=3: ok
+  lse row 0 T=0.7                              ok    worst 0 of tol at [0] got 20.863409 ref 20.863409
+  lse row 1 T=0.7                              ok    worst 0.00467 of tol at [0] got 30.874043 ref 30.874041
+  lse row 2 T=0.7                              ok    worst 0 of tol at [0] got 20.492775 ref 20.492775
+topk k=64 T=0.7 rows=3: ok
+sample_top_p (T=0.7, p=0.3, nucleus 2 tokens): ok
+log_softmax rows=2
+  out                                          ok    worst 0.00908 of tol at [8076] got -32.00032 ref -32.000324
+  in place                                     ok    worst 0.00908 of tol at [8076] got -32.00032 ref -32.000324
+  rmsnorm dim=128 rows=37 (strided)            ok    worst 0.0107 of tol at [3580] got -3.4646335 ref -3.464633
+  rmsnorm dim=512 rows=37 (strided)            ok    worst 0.0128 of tol at [14976] got -2.7138648 ref -2.7138643
+  rmsnorm dim=1280 rows=37 (strided)           ok    worst 0.0157 of tol at [3503] got 2.0334015 ref 2.033402
+  rmsnorm dim=5120 rows=37 (strided)           ok    worst 0.0133 of tol at [4784] got -2.574053 ref -2.5740535
+  rmsnorm dim=20480 rows=37 (strided)          ok    worst 0.0158 of tol at [16042] got -2.0205359 ref -2.0205364
+test_arch_sample: ALL OK
+<end of output>
+Test time =   0.83 sec
+----------------------------------------------------------
+Test Passed.
+"test_arch_sample" end time: Oct 31 06:50 CDT
+"test_arch_sample" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/23 Testing: test_arch_hc
+3/23 Test: test_arch_hc
 Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_hc"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_arch_hc" start time: Oct 31 06:31 CDT
+"test_arch_hc" start time: Oct 31 06:50 CDT
 Output:
 ----------------------------------------------------------
 decode fused T=128 (n=1 post=1 mixes=1 pre=1)
@@ -181,18 +221,18 @@ real prefill mma32 (n=32 post=0 mixes=1 pre=1)
   x_out                                        ok    worst 0.000811 of tol at [24237] got 0.16763607 ref 0.1676361
 test_arch_hc: ALL OK
 <end of output>
-Test time =   0.51 sec
+Test time =   0.45 sec
 ----------------------------------------------------------
 Test Passed.
-"test_arch_hc" end time: Oct 31 06:31 CDT
+"test_arch_hc" end time: Oct 31 06:50 CDT
 "test_arch_hc" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-4/21 Testing: test_arch_router
-4/21 Test: test_arch_router
+4/23 Testing: test_arch_router
+4/23 Test: test_arch_router
 Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_router"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_arch_router" start time: Oct 31 06:31 CDT
+"test_arch_router" start time: Oct 31 06:50 CDT
 Output:
 ----------------------------------------------------------
 router_topk n=1: ok (near-ties 0)
@@ -222,44 +262,664 @@ test_arch_router: ALL OK
 Test time =   0.37 sec
 ----------------------------------------------------------
 Test Passed.
-"test_arch_router" end time: Oct 31 06:31 CDT
+"test_arch_router" end time: Oct 31 06:50 CDT
 "test_arch_router" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-5/21 Testing: test_arch_sample
-5/21 Test: test_arch_sample
-Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_sample"
+1/23 Testing: test_arch_engram
+1/23 Test: test_arch_engram
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_engram"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_arch_sample" start time: Oct 31 06:31 CDT
+"test_arch_engram" start time: Oct 31 06:50 CDT
 Output:
 ----------------------------------------------------------
-argmax rows=6 x3 + 300-dispatch stress: ok
-gumbel sampling T=0.8, 20000 draws: p_emp vs p_ref: 0.072/0.073 0.251/0.253 0.037/0.039 0.478/0.473 0.005/0.006 0.135/0.136 0.021/0.021
-  chi2 = 4.11 (6 dof, limit 22.5): ok
-  lse row 0 T=1.0                              ok    worst 0 of tol at [0] got 16.315609 ref 16.315609
-  lse row 1 T=1.0                              ok    worst 0 of tol at [0] got 22.304783 ref 22.304783
-  lse row 2 T=1.0                              ok    worst 0 of tol at [0] got 16.177397 ref 16.177397
-topk k=64 T=1.0 rows=3: ok
-  lse row 0 T=0.7                              ok    worst 0 of tol at [0] got 20.863409 ref 20.863409
-  lse row 1 T=0.7                              ok    worst 0.00467 of tol at [0] got 30.874043 ref 30.874041
-  lse row 2 T=0.7                              ok    worst 0 of tol at [0] got 20.492775 ref 20.492775
-topk k=64 T=0.7 rows=3: ok
-sample_top_p (T=0.7, p=0.3, nucleus 2 tokens): ok
-log_softmax rows=2
-  out                                          ok    worst 0.00908 of tol at [8076] got -32.00032 ref -32.000324
-  in place                                     ok    worst 0.00908 of tol at [8076] got -32.00032 ref -32.000324
-  rmsnorm dim=128 rows=37 (strided)            ok    worst 0.0107 of tol at [3580] got -3.4646335 ref -3.464633
-  rmsnorm dim=512 rows=37 (strided)            ok    worst 0.0128 of tol at [14976] got -2.7138648 ref -2.7138643
-  rmsnorm dim=1280 rows=37 (strided)           ok    worst 0.0157 of tol at [3503] got 2.0334015 ref 2.033402
-  rmsnorm dim=5120 rows=37 (strided)           ok    worst 0.0133 of tol at [4784] got -2.574053 ref -2.5740535
-  rmsnorm dim=20480 rows=37 (strided)          ok    worst 0.0158 of tol at [16042] got -2.0205359 ref -2.0205364
-test_arch_sample: ALL OK
+real blk.1.engram_gate [4][5120]: min -0.3906 max 43.89 mean 0.008199
+engram_gate n=1 (real weights), gates[0..3] = 0.6913 0.3975 0.2672 0.7421
+  gate                                         ok    worst 0.000708 of tol at [3] got 0.74206883 ref 0.74206889
+  h                                            ok    worst 0.00792 of tol at [7306] got -2.0111606 ref -2.0111609
+engram_gate n=3 (real weights), gates[0..3] = 0.6790 0.4101 0.4053 0.6674
+  gate                                         ok    worst 0.000864 of tol at [9] got 0.59003967 ref 0.59003961
+  h                                            ok    worst 0.00996 of tol at [4207] got 0.0053563984 ref 0.0053564985
+engram_gate n=33 (real weights), gates[0..3] = 0.6678 0.4011 0.3893 0.6590
+  gate                                         ok    worst 0.00119 of tol at [94] got 0.15147319 ref 0.15147316
+  h                                            ok    worst 0.0105 of tol at [126004] got 0.060517352 ref 0.060517464
+iq4nl_rows synthetic
+  rows                                         ok   bit-exact (0 / 30720 differ)
+iq4nl_rows real per_layer_token_embd rows (read ok), row0[0..3] = -0.275131 0.740738 -0.80423 -0.0211639
+  real rows                                    ok   bit-exact (0 / 1536 differ)
+embed_q6k (real token_embd rows 0..2 + synthetic)
+  h (4 copies)                                 ok   bit-exact (0 / 102400 differ)
+  x (1 copy)                                   ok   bit-exact (0 / 25600 differ)
+test_arch_engram: ALL OK
 <end of output>
-Test time =   0.70 sec
+Test time =   0.12 sec
 ----------------------------------------------------------
 Test Passed.
-"test_arch_sample" end time: Oct 31 06:31 CDT
-"test_arch_sample" time elapsed: 00:00:00
+"test_arch_engram" end time: Oct 31 06:50 CDT
+"test_arch_engram" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Oct 31 06:31 CDT
+19/23 Testing: test_smoke
+19/23 Test: test_smoke
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_smoke"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_smoke" start time: Oct 31 06:50 CDT
+Output:
+----------------------------------------------------------
+smoke OK
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"test_smoke" end time: Oct 31 06:50 CDT
+"test_smoke" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/23 Testing: test_arch_engram_hash
+2/23 Test: test_arch_engram_hash
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_engram_hash"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_arch_engram_hash" start time: Oct 31 06:50 CDT
+Output:
+----------------------------------------------------------
+synthetic: streaming/chunked/masked/state round-trips vs whole-sequence ref: ok (0 bad)
+real metadata (token_map, pad, multipliers, primes, offsets): ok
+golden hashes (engram.py port, tools/engram_hash_check.py): ok
+test_arch_engram_hash: ALL OK
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"test_arch_engram_hash" end time: Oct 31 06:50 CDT
+"test_arch_engram_hash" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/23 Testing: test_quant_moe_prefill
+17/23 Test: test_quant_moe_prefill
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_moe_prefill"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_quant_moe_prefill" start time: Oct 31 06:50 CDT
+Output:
+----------------------------------------------------------
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K path=-1 shdense=-1 popular n=80 k=2 experts=5 entries=160 (m 18..80) checked=80  err(half-emul) 7.97e-06  err(vs F32) 1.85e-04  repeat bit-identical  ok
+  gu=IQ2_XXS down=IQ2_XXS shared=Q8_0 path=-1 shdense=-1 popular n=70 k=2 experts=4 entries=140 (m 21..70) checked=70  err(half-emul) 6.13e-06  err(vs F32) 1.27e-04  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ2_XXS shared=-    path=-1 shdense=-1 popular n=40 k=3 experts=4 entries=120 (m 21..40) checked=40  err(half-emul) 1.39e-05  err(vs F32) 9.75e-05  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K path=-1 shdense=-1 sizes   n=600 k=6 experts=20 entries=1813 (m 1..600) checked=55  err(half-emul) 7.93e-06  err(vs F32) 1.73e-04  repeat bit-identical  ok
+  gu=IQ2_XXS down=IQ1_S   shared=Q8_0 path=-1 shdense= 0 sizes   n=600 k=6 experts=20 entries=1813 (m 1..600) checked=55  err(half-emul) 3.53e-06  err(vs F32) 1.05e-04  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ2_XXS shared=Q6_K path=-1 shdense=-1 zipf    n=256 k=6 experts=64 entries=1536 (m 4..171) checked=49  err(half-emul) 6.20e-06  err(vs F32) 1.34e-04  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ1_S   shared=Q6_K path= 0 shdense= 0 popular n=80 k=2 experts=5 entries=160 (m 18..80) checked=80  err(half-emul) 7.97e-06  err(vs F32) 1.85e-04  repeat bit-identical  ok
+  gu=IQ1_S   down=IQ2_XXS shared=Q8_0 path= 0 shdense= 1 zipf    n=256 k=6 experts=64 entries=1536 (m 4..171) checked=49  err(half-emul) 9.92e-06  err(vs F32) 6.28e-05  repeat bit-identical  ok
+all OK
+<end of output>
+Test time =  15.52 sec
+----------------------------------------------------------
+Test Passed.
+"test_quant_moe_prefill" end time: Oct 31 06:50 CDT
+"test_quant_moe_prefill" time elapsed: 00:00:15
+----------------------------------------------------------
+
+6/23 Testing: test_attn_200k
+6/23 Test: test_attn_200k
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_attn_200k"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_attn_200k" start time: Oct 31 06:50 CDT
+Output:
+----------------------------------------------------------
+decode at pos 200000 (layer 2/3: 100000 compressed rows, layer 20/21/24: 200001)
+  [ ok ] layer 0: out rel_rms 1.71e-04 rel_max 2.24e-04
+  [ ok ] layer 2: top-512 identical to reference
+  [ ok ] layer 2: out rel_rms 1.71e-04 rel_max 2.14e-04
+  [ ok ] layer 3: out rel_rms 1.73e-04 rel_max 2.27e-04
+  [ ok ] layer 20: top-512 identical to reference
+  [ ok ] layer 20: out rel_rms 1.85e-04 rel_max 2.15e-04
+  [ ok ] layer 21: out rel_rms 1.77e-04 rel_max 1.84e-04
+  [ ok ] layer 24: top-512 identical to reference
+  [ ok ] layer 24: out rel_rms 1.82e-04 rel_max 1.98e-04
+decode at pos 262143 (layer 2/3: 131072 compressed rows, layer 20/21/24: 262144)
+  [ ok ] layer 0: out rel_rms 1.75e-04 rel_max 2.11e-04
+  [ ok ] layer 2: top-512 identical to reference
+  [ ok ] layer 2: out rel_rms 1.67e-04 rel_max 2.24e-04
+  [ ok ] layer 3: out rel_rms 1.62e-04 rel_max 1.88e-04
+  [ ok ] layer 20: top-512 identical to reference
+  [ ok ] layer 20: out rel_rms 1.70e-04 rel_max 2.08e-04
+  [ ok ] layer 21: out rel_rms 1.69e-04 rel_max 2.32e-04
+  [ ok ] layer 24: top-512 identical to reference
+  [ ok ] layer 24: out rel_rms 1.79e-04 rel_max 2.00e-04
+ACTQ=0 (no quant simulation): 300 tokens from 0, prefill 250 + 50 decode vs reference
+  [ ok ] ACTQ=0 last-token outputs: rel_rms 2.73e-04 rel_max 3.75e-04
+all passed
+<end of output>
+Test time =  13.65 sec
+----------------------------------------------------------
+Test Passed.
+"test_attn_200k" end time: Oct 31 06:51 CDT
+"test_attn_200k" time elapsed: 00:00:13
+----------------------------------------------------------
+
+7/23 Testing: test_attn_pf_paths
+7/23 Test: test_attn_pf_paths
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_attn_pf_paths"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_attn_pf_paths" start time: Oct 31 06:50 CDT
+Output:
+----------------------------------------------------------
+threshold-filtered running top-k merge vs full merge vs CPU reference
+  [ ok ] random, 5 chunks
+  [ ok ] random, 3.5 chunks
+  [ ok ] -inf holes
+  [ ok ] increasing scores (late chunks win: survivor overflow -> full path)
+  [ ok ] ties at few levels (threshold ties inside chunk 0 only)
+at depth: S0=40001, chunk of 160 (3 key chunks, candidate masking + union active)
+  [ ok ] all fast paths vs all off: worst out rel_rms 2.81e-04, top-k lists identical (0 differ)
+  [ ok ] pf_score_reg off: worst out rel_rms 0.00e+00, top-k lists identical (0 differ)
+  [ ok ] pf_fold_softmax off: worst out rel_rms 2.81e-04, top-k lists identical (0 differ)
+  [ ok ] pf2_qblock 16 (10-stage pipeline) vs 64: worst out rel_rms 0.00e+00, top-k lists identical (0 differ)
+  [ ok ] pf2_qblock 160 (one block) vs 64: worst out rel_rms 0.00e+00, top-k lists identical (0 differ)
+  [ ok ] pf_idx_qblock 0 (unblocked): worst out rel_rms 0.00e+00, top-k lists identical (0 differ)
+  [ ok ] pf_idx_qblock 34 (5 blocks, odd tail): worst out rel_rms 0.00e+00, top-k lists identical (0 differ)
+  [ ok ] pf_merge_filter off: worst out rel_rms 0.00e+00, top-k lists identical (0 differ)
+shallow: from position 0, chunk of 300 (invalid rows, -1 padding, skipped tiles)
+  [ ok ] all fast paths vs all off: worst out rel_rms 2.65e-04, top-k lists identical (0 differ)
+all passed
+<end of output>
+Test time =   8.94 sec
+----------------------------------------------------------
+Test Passed.
+"test_attn_pf_paths" end time: Oct 31 06:51 CDT
+"test_attn_pf_paths" time elapsed: 00:00:08
+----------------------------------------------------------
+
+9/23 Testing: test_attn_units
+9/23 Test: test_attn_units
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_attn_units"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_attn_units" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+quant sims (bit-exact vs CPU reference)
+  [ ok ] mode 0: 0 / 1048576 mismatches
+  [ ok ] mode 1: 0 / 1048576 mismatches
+  [ ok ] mode 2: 0 / 1048576 mismatches
+  [ ok ] e4m3 rounding spot checks
+  [ ok ] e2m1 rounding spot checks
+top-k selection (attn_topk_dec)
+  [ ok ] n=0
+  [ ok ] n=5
+  [ ok ] n=512
+  [ ok ] n=513
+  [ ok ] n=100000 random
+  [ ok ] n=200000 random
+  [ ok ] n=262144 random
+  [ ok ] ties: all equal n=5000
+  [ ok ] ties: few levels n=30000
+  [ ok ] with -inf holes n=50000
+  [ ok ] blocks k=2048 n=25000
+  [ ok ] negative scores n=10000
+indexer decode scoring + top-k (full scan, candidate blocks, list mode) vs CPU reference
+  [ ok ] layer 20 scores: rel_max 1.43e-07
+  [ ok ] layer 20 top-512 == reference
+  [ ok ] layer 20 candidate blocks == reference (2048, newest pinned)
+  [ ok ] layer 24 (candidate-restricted) top-512 == reference
+  [ ok ] pos=100: all 101 visible rows selected, rest -1
+sparse attention (decode split-K and prefill-shaped) vs CPU reference
+  [ ok ] decode pos=5 topk=0: rel_rms 1.42e-04 rel_max 2.51e-04
+  [ ok ] decode pos=5 topk=7: rel_rms 1.36e-04 rel_max 1.69e-04
+  [ ok ] decode pos=5 topk=512: rel_rms 1.55e-04 rel_max 2.15e-04
+  [ ok ] decode pos=127 topk=0: rel_rms 1.67e-04 rel_max 2.05e-04
+  [ ok ] decode pos=127 topk=7: rel_rms 1.66e-04 rel_max 1.99e-04
+  [ ok ] decode pos=127 topk=512: rel_rms 1.57e-04 rel_max 1.88e-04
+  [ ok ] decode pos=1000 topk=0: rel_rms 1.68e-04 rel_max 1.93e-04
+  [ ok ] decode pos=1000 topk=7: rel_rms 1.68e-04 rel_max 1.93e-04
+  [ ok ] decode pos=1000 topk=512: rel_rms 1.60e-04 rel_max 2.24e-04
+  [ ok ] decode pos=6000 topk=0: rel_rms 1.70e-04 rel_max 2.15e-04
+  [ ok ] decode pos=6000 topk=7: rel_rms 1.70e-04 rel_max 2.31e-04
+  [ ok ] decode pos=6000 topk=512: rel_rms 1.72e-04 rel_max 1.83e-04
+all passed
+<end of output>
+Test time =   0.42 sec
+----------------------------------------------------------
+Test Passed.
+"test_attn_units" end time: Oct 31 06:51 CDT
+"test_attn_units" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/23 Testing: test_dec_fuse
+10/23 Test: test_dec_fuse
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_dec_fuse"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_dec_fuse" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+matvec_rmsnorm Q6_K    32768 x 1280: 0 rows differ
+matvec_rmsnorm Q5_K    32768 x 1280: 0 rows differ
+matvec_rmsnorm BF16     4096 x 1280: 0 rows differ
+matvec_rmsnorm Q8_0     1000 x 2048: 0 rows differ
+matvec_rmsnorm F32        77 x 1536: 0 rows differ
+matvec_rmsnorm Q6_K      300 x 5120: 0 rows differ
+synthetic weights 0.55 GB
+layer 1      base (repeat)          bit-identical
+layer 1      reorder                bit-identical
+layer 1      normqb                 bit-identical
+layer 1      normqb+reorder         bit-identical
+layer 1      combine                bit-identical
+layer 1      sgu_router=1           bit-identical
+layer 1      sgu_router=2           bit-identical
+layer 1      engram_bg=1            bit-identical
+layer 1      engram_bg=2            bit-identical
+layer 1      fuse(all)              bit-identical
+layer 1      fuse(all) sgur=2       bit-identical
+layer 1      fuse(all) sync=sgu     bit-identical
+layer 1      hc_splits=2            bit-identical
+layer 1      hc_splits=3            bit-identical
+layer 1      hc_splits=4            bit-identical
+layer 1      fuse(all) hcs=2        bit-identical
+layer 1      moe shapes             bit-identical
+layer 2      base (repeat)          bit-identical
+layer 2      reorder                bit-identical
+layer 2      normqb                 bit-identical
+layer 2      normqb+reorder         bit-identical
+layer 2      combine                bit-identical
+layer 2      sgu_router=1           bit-identical
+layer 2      sgu_router=2           bit-identical
+layer 2      engram_bg=1            bit-identical
+layer 2      engram_bg=2            bit-identical
+layer 2      fuse(all)              bit-identical
+layer 2      fuse(all) sgur=2       bit-identical
+layer 2      fuse(all) sync=sgu     bit-identical
+layer 2      hc_splits=2            bit-identical
+layer 2      hc_splits=3            bit-identical
+layer 2      hc_splits=4            bit-identical
+layer 2      fuse(all) hcs=2        bit-identical
+layer 2      moe shapes             bit-identical
+layer 5      base (repeat)          bit-identical
+layer 5      reorder                bit-identical
+layer 5      normqb                 bit-identical
+layer 5      normqb+reorder         bit-identical
+layer 5      combine                bit-identical
+layer 5      sgu_router=1           bit-identical
+layer 5      sgu_router=2           bit-identical
+layer 5      engram_bg=1            bit-identical
+layer 5      engram_bg=2            bit-identical
+layer 5      fuse(all)              bit-identical
+layer 5      fuse(all) sgur=2       bit-identical
+layer 5      fuse(all) sync=sgu     bit-identical
+layer 5      hc_splits=2            bit-identical
+layer 5      hc_splits=3            bit-identical
+layer 5      hc_splits=4            bit-identical
+layer 5      fuse(all) hcs=2        bit-identical
+layer 5      moe shapes             bit-identical
+layer 20     base (repeat)          bit-identical
+layer 20     reorder                bit-identical
+layer 20     normqb                 bit-identical
+layer 20     normqb+reorder         bit-identical
+layer 20     combine                bit-identical
+layer 20     sgu_router=1           bit-identical
+layer 20     sgu_router=2           bit-identical
+layer 20     engram_bg=1            bit-identical
+layer 20     engram_bg=2            bit-identical
+layer 20     fuse(all)              bit-identical
+layer 20     fuse(all) sgur=2       bit-identical
+layer 20     fuse(all) sync=sgu     bit-identical
+layer 20     hc_splits=2            bit-identical
+layer 20     hc_splits=3            bit-identical
+layer 20     hc_splits=4            bit-identical
+layer 20     fuse(all) hcs=2        bit-identical
+layer 20     moe shapes             bit-identical
+layer 24     base (repeat)          bit-identical
+layer 24     reorder                bit-identical
+layer 24     normqb                 bit-identical
+layer 24     normqb+reorder         bit-identical
+layer 24     combine                bit-identical
+layer 24     sgu_router=1           bit-identical
+layer 24     sgu_router=2           bit-identical
+layer 24     engram_bg=1            bit-identical
+layer 24     engram_bg=2            bit-identical
+layer 24     fuse(all)              bit-identical
+layer 24     fuse(all) sgur=2       bit-identical
+layer 24     fuse(all) sync=sgu     bit-identical
+layer 24     hc_splits=2            bit-identical
+layer 24     hc_splits=3            bit-identical
+layer 24     hc_splits=4            bit-identical
+layer 24     fuse(all) hcs=2        bit-identical
+layer 24     moe shapes             bit-identical
+layer 31     base (repeat)          bit-identical
+layer 31     reorder                bit-identical
+layer 31     normqb                 bit-identical
+layer 31     normqb+reorder         bit-identical
+layer 31     combine                bit-identical
+layer 31     sgu_router=1           bit-identical
+layer 31     sgu_router=2           bit-identical
+layer 31     engram_bg=1            bit-identical
+layer 31     engram_bg=2            bit-identical
+layer 31     fuse(all)              bit-identical
+layer 31     fuse(all) sgur=2       bit-identical
+layer 31     fuse(all) sync=sgu     bit-identical
+layer 31     hc_splits=2            bit-identical
+layer 31     hc_splits=3            bit-identical
+layer 31     hc_splits=4            bit-identical
+layer 31     fuse(all) hcs=2        bit-identical
+layer 31     moe shapes             bit-identical
+layers 0-2   base (repeat)          bit-identical
+layers 0-2   reorder                bit-identical
+layers 0-2   normqb                 bit-identical
+layers 0-2   normqb+reorder         bit-identical
+layers 0-2   combine                bit-identical
+layers 0-2   sgu_router=1           bit-identical
+layers 0-2   sgu_router=2           bit-identical
+layers 0-2   engram_bg=1            bit-identical
+layers 0-2   engram_bg=2            bit-identical
+layers 0-2   fuse(all)              bit-identical
+layers 0-2   fuse(all) sgur=2       bit-identical
+layers 0-2   fuse(all) sync=sgu     bit-identical
+layers 0-2   hc_splits=2            bit-identical
+layers 0-2   hc_splits=3            bit-identical
+layers 0-2   hc_splits=4            bit-identical
+layers 0-2   fuse(all) hcs=2        bit-identical
+layers 0-2   moe shapes             bit-identical
+layers 12-14 base (repeat)          bit-identical
+layers 12-14 reorder                bit-identical
+layers 12-14 normqb                 bit-identical
+layers 12-14 normqb+reorder         bit-identical
+layers 12-14 combine                bit-identical
+layers 12-14 sgu_router=1           bit-identical
+layers 12-14 sgu_router=2           bit-identical
+layers 12-14 engram_bg=1            bit-identical
+layers 12-14 engram_bg=2            bit-identical
+layers 12-14 fuse(all)              bit-identical
+layers 12-14 fuse(all) sgur=2       bit-identical
+layers 12-14 fuse(all) sync=sgu     bit-identical
+layers 12-14 hc_splits=2            bit-identical
+layers 12-14 hc_splits=3            bit-identical
+layers 12-14 hc_splits=4            bit-identical
+layers 12-14 fuse(all) hcs=2        bit-identical
+layers 12-14 moe shapes             bit-identical
+OK
+<end of output>
+Test time =   0.77 sec
+----------------------------------------------------------
+Test Passed.
+"test_dec_fuse" end time: Oct 31 06:51 CDT
+"test_dec_fuse" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/23 Testing: test_gguf
+12/23 Test: test_gguf
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_gguf"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_gguf" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+test_gguf: parsed 5 splits, 1043 tensors, 96 kv in 6.4 ms; 1043/1043 tensor rows match docs/tensors.txt; OK
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"test_gguf" end time: Oct 31 06:51 CDT
+"test_gguf" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/23 Testing: test_quant_matmul
+13/23 Test: test_quant_matmul
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_matmul"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_quant_matmul" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+  Q6_K     attn_q_a       [ 5120 ->  1280] n=77   err(half-exact) 1.47e-07  err(vs F32) 3.06e-05  ok
+  Q5_K     attn_q_b part  [ 1280 ->  1024] n=160  err(half-exact) 1.84e-07  err(vs F32) 7.08e-05  ok
+  Q6_K     attn_kv        [ 5120 ->   512] n=64   err(half-exact) 1.79e-07  err(vs F32) 3.07e-05  ok
+  Q8_0     shexp gate     [ 5120 ->  2304] n=33   err(half-exact) 1.41e-07  err(vs F32) 2.68e-05  ok
+  Q6_K     attn_out_b     [ 8192 ->   640] n=40   err(half-exact) 1.22e-07  err(vs F32) 2.35e-05  ok
+  IQ1_S    exp gate       [ 5120 ->  2304] n=50   err(half-exact) 1.62e-07  err(vs F32) 3.77e-05  ok
+  IQ2_XXS  exp down       [ 2304 ->  5120] n=37   err(half-exact) 1.71e-07  err(vs F32) 6.80e-05  ok
+  IQ1_S    odd rows       [ 2304 ->   300] n=129  err(half-exact) 1.50e-07  err(vs F32) 4.91e-05  ok
+  BF16     compressor     [ 5120 ->   512] n=48   err(half-exact) 1.18e-07  err(vs F32) 2.16e-05  ok
+  F16      f16            [ 1280 ->   256] n=70   err(half-exact) 9.99e-08  err(vs F32) 4.07e-05  ok
+  F32      router f32     [ 5120 ->   384] n=36   err(half-exact) 2.80e-07  err(vs F32) 1.71e-05  ok
+all OK
+<end of output>
+Test time =   2.49 sec
+----------------------------------------------------------
+Test Passed.
+"test_quant_matmul" end time: Oct 31 06:51 CDT
+"test_quant_matmul" time elapsed: 00:00:02
+----------------------------------------------------------
+
+14/23 Testing: test_quant_matvec
+14/23 Test: test_quant_matvec
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_matvec"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_quant_matvec" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+  Q6_K     attn_q_a             [ 5120 ->   1280] g1  max_err 1.66e-08 ok
+  Q5_K     attn_q_a             [ 5120 ->   1280] g1  max_err 1.17e-08 ok
+  Q6_K     attn_q_b             [ 1280 ->  32768] g1  max_err 2.42e-08 ok
+  Q5_K     attn_q_b             [ 1280 ->  32768] g1  max_err 1.84e-08 ok
+  Q6_K     attn_kv              [ 5120 ->    512] g1  max_err 1.03e-08 ok
+  Q5_K     attn_kv acc          [ 5120 ->    512] g1  max_err 9.14e-09 ok
+  Q6_K     attn_output_a        [ 4096 ->   8192] g8  max_err 1.33e-08 ok
+  Q5_K     attn_output_a acc    [ 4096 ->   8192] g8  max_err 1.61e-08 ok
+  Q6_K     attn_output_b        [ 8192 ->   5120] g1  max_err 1.01e-08 ok
+  Q5_K     attn_output_b        [ 8192 ->   5120] g1  max_err 1.22e-08 ok
+  IQ1_S    exp gate             [ 5120 ->   2304] g1  max_err 1.17e-08 ok
+  IQ1_S    exp down acc         [ 2304 ->   5120] g1  max_err 1.74e-08 ok
+  IQ2_XXS  exp gate             [ 5120 ->   2304] g1  max_err 1.04e-08 ok
+  IQ2_XXS  exp down             [ 2304 ->   5120] g1  max_err 2.01e-08 ok
+  Q6_K     shexp gate           [ 5120 ->   2304] g1  max_err 1.39e-08 ok
+  Q6_K     shexp down           [ 2304 ->   5120] g1  max_err 1.37e-08 ok
+  Q8_0     shexp gate           [ 5120 ->   2304] g1  max_err 8.73e-09 ok
+  Q8_0     shexp down acc       [ 2304 ->   5120] g1  max_err 1.77e-08 ok
+  Q6_K     output head          [ 5120 -> 129280] g1  max_err 1.59e-08 ok
+  Q6_K     engram_kv            [ 6144 ->  25600] g1  max_err 1.39e-08 ok
+  F32      router               [ 5120 ->    384] g1  max_err 9.08e-09 ok
+  F32      hc_fn                [20480 ->     24] g1  max_err 2.86e-09 ok
+  BF16     compressor_kv        [ 5120 ->    512] g1  max_err 7.61e-09 ok
+  BF16     indexer q_b          [ 1280 ->   4096] g1  max_err 1.60e-08 ok
+  BF16     indexer proj         [ 5120 ->     32] g1  max_err 8.99e-09 ok
+  BF16     indexer k            [  512 ->    128] g1  max_err 2.17e-08 ok
+  F16      f16 synthetic        [ 5120 ->   1280] g1  max_err 1.06e-08 ok
+  F16      f16 odd rows         [  768 ->      7] g1  max_err 6.65e-09 ok
+  Q6_K     tiny                 [  256 ->      3] g1  max_err 7.92e-09 ok
+all OK
+<end of output>
+Test time =   4.05 sec
+----------------------------------------------------------
+Test Passed.
+"test_quant_matvec" end time: Oct 31 06:51 CDT
+"test_quant_matvec" time elapsed: 00:00:04
+----------------------------------------------------------
+
+15/23 Testing: test_quant_matvec_n
+15/23 Test: test_quant_matvec_n
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_matvec_n"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_quant_matvec_n" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+  Q6_K     [ 5120 ->  1280] g1 n=2      err(x half) 1.37e-08  err(vs F32) 1.82e-05 ok
+  Q5_K     [ 5120 ->  1280] g1 n=3  acc err(x half) 1.45e-08  err(vs F32) 1.67e-05 ok
+  Q8_0     [ 5120 ->  2304] g1 n=5      err(x half) 1.27e-08  err(vs F32) 1.74e-05 ok
+  IQ1_S    [ 5120 ->  2304] g1 n=8      err(x half) 2.25e-05  err(vs F32) 3.05e-05 ok
+  IQ2_XXS  [ 2304 ->  5120] g1 n=16 acc err(x half) 3.90e-05  err(vs F32) 4.82e-05 ok
+  IQ1_S    [ 2304 ->  5120] g1 n=13     err(x half) 3.53e-05  err(vs F32) 4.65e-05 ok
+  Q6_K     [ 4096 ->  8192] g8 n=6      err(x half) 1.90e-08  err(vs F32) 2.44e-05 ok
+  BF16     [ 5120 ->   512] g1 n=4      err(x half) 1.12e-08  err(vs F32) 1.52e-05 ok
+  F32      [20480 ->    24] g1 n=5      err(x half) 7.09e-09  err(vs F32) 6.92e-06 ok
+  F16      [ 1280 ->   300] g1 n=16     err(x half) 1.12e-07  err(vs F32) 3.21e-05 ok
+  Q6_K     [ 1280 -> 32768] g1 n=9      err(x half) 5.13e-05  err(vs F32) 6.33e-05 ok
+all OK
+<end of output>
+Test time =   2.41 sec
+----------------------------------------------------------
+Test Passed.
+"test_quant_matvec_n" end time: Oct 31 06:51 CDT
+"test_quant_matvec_n" time elapsed: 00:00:02
+----------------------------------------------------------
+
+18/23 Testing: test_quant_ref
+18/23 Test: test_quant_ref
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_ref"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_quant_ref" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+random blocks:
+  F32      random                       n=1048576   bit-exact
+  F16      random                       n=1048576   bit-exact
+  BF16     random                       n=1048576   bit-exact
+  Q8_0     random                       n=1048576   bit-exact
+  Q5_K     random                       n=1048576   bit-exact
+  Q6_K     random                       n=1048576   bit-exact
+  IQ1_S    random                       n=1048576   bit-exact
+  IQ2_XXS  random                       n=1048576   bit-exact
+  IQ4_NL   random                       n=1048576   bit-exact
+  MXFP4    random                       n=1048576   bit-exact
+real rows (pread, middle of tensor):
+  IQ1_S    blk.3.ffn_gate_exps.weight   n=327680    bit-exact
+  IQ1_S    blk.3.ffn_down_exps.weight   n=327680    bit-exact
+  IQ2_XXS  blk.30.ffn_up_exps.weight    n=327680    bit-exact
+  IQ2_XXS  blk.25.ffn_down_exps.weight  n=327680    bit-exact
+  Q6_K     blk.5.attn_q_b.weight        n=327680    bit-exact
+  Q5_K     blk.30.attn_q_b.weight       n=327680    bit-exact
+  Q8_0     blk.15.ffn_up_shexp.weight   n=327680    bit-exact
+  BF16     blk.2.attn_compressor_kv.weight n=327680    bit-exact
+  F32      blk.3.ffn_gate_inp.weight    n=327680    bit-exact
+  IQ4_NL   per_layer_token_embd.weight  n=1048576   bit-exact
+  MXFP4    blk.0.ffn_down_exps.weight   n=327680    bit-exact
+all OK
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"test_quant_ref" end time: Oct 31 06:51 CDT
+"test_quant_ref" time elapsed: 00:00:00
+----------------------------------------------------------
+
+20/23 Testing: test_store_engram
+20/23 Test: test_store_engram
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_store_engram"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_store_engram" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+mode exact: decode 48 rows -> 46 unique, 46 reads; batch 20000 rows -> 19047 reads, 2.7 MB read, 25.35 ms
+mode 4k   : decode 48 rows -> 46 unique, 42 reads; batch 20000 rows -> 600 reads, 27.4 MB read, 2.57 ms
+mode 16k  : decode 48 rows -> 46 unique, 40 reads; batch 20000 rows -> 450 reads, 29.4 MB read, 2.44 ms
+test_store_engram: OK
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"test_store_engram" end time: Oct 31 06:51 CDT
+"test_store_engram" time elapsed: 00:00:00
+----------------------------------------------------------
+
+21/23 Testing: test_store_experts
+21/23 Test: test_store_experts
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_store_experts"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_store_experts" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+ExpertCache: arena 0.01 GiB, 56 slots, policy lru, 4 io threads, chunk 16 KiB, align 16384, ring 0
+  class 0: slot 245760 B (regions 81920/81920/81920, types IQ1_S/IQ1_S/IQ1_S), 2 layers, 28 slots (14.0/layer, 43.8% of experts)
+  class 1: slot 262144 B (regions 81920/81920/98304, types IQ1_S/IQ1_S/IQ2_XXS), 2 layers, 28 slots (14.0/layer, 43.8% of experts)
+-- T2
+-- T3
+-- T4
+-- T5
+-- T6
+ExpertCache: arena 0.02 GiB, 80 slots, policy static, 4 io threads, chunk 16 KiB, align 16384, ring 0
+  class 0: slot 245760 B (regions 81920/81920/81920, types IQ1_S/IQ1_S/IQ1_S), 2 layers, 42 slots (21.0/layer, 65.6% of experts)
+  class 1: slot 262144 B (regions 81920/81920/98304, types IQ1_S/IQ1_S/IQ2_XXS), 2 layers, 38 slots (19.0/layer, 59.4% of experts)
+-- T7
+-- T8
+-- T9
+-- T10
+ExpertCache: arena 0.85 GiB, 120 slots, policy lru, 8 io threads, chunk 1024 KiB, align 16384, ring 0
+  class 0: slot 6979584 B (regions 2326528/2326528/2326528, types IQ1_S/IQ1_S/IQ1_S), 20 layers, 60 slots (3.0/layer, 0.8% of experts)
+  class 1: slot 7716864 B (regions 2326528/2326528/3063808, types IQ1_S/IQ1_S/IQ2_XXS), 14 layers, 42 slots (3.0/layer, 0.8% of experts)
+  class 2: slot 9191424 B (regions 3063808/3063808/3063808, types IQ2_XXS/IQ2_XXS/IQ2_XXS), 6 layers, 18 slots (3.0/layer, 0.8% of experts)
+layer   hits  misses  hit%   pf_iss pf_used pf_waste  evict   read_GB  stream  stall_ms
+    0      0       2   0.0        0       0        0      0     0.014       0      0.32
+   25      0       1   0.0        0       0        0      0     0.008       0      0.15
+   33      0       1   0.0        0       0        0      0     0.009       0      0.19
+   39      0       1   0.0        0       0        0      0     0.009       0      0.17
+total      0       5   0.0        0       0        0      0     0.040       0      0.83
+test_store_experts: OK
+<end of output>
+Test time =   0.20 sec
+----------------------------------------------------------
+Test Passed.
+"test_store_experts" end time: Oct 31 06:51 CDT
+"test_store_experts" time elapsed: 00:00:00
+----------------------------------------------------------
+
+22/23 Testing: test_store_weights
+22/23 Test: test_store_weights
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_store_weights"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_store_weights" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+mem: total 64.0 GiB | avail 52.8 (free 44.1 inactive 7.5 spec 1.2 purg 0.1) | active 7.7 wired 4.0 compressed 0.5 | swap 1.84/3.00 | self rss 0.01 footprint 0.00
+recommend_arena_bytes(other=10 GiB) = 34.8 GiB (now)
+loaded 48 tensors, 0.962 GB in 59.1 ms (16.26 GB/s), 2 buffers
+after: self rss 1.64 GiB footprint 1.62 GiB; swap grew: no
+test_store_weights: OK
+<end of output>
+Test time =   0.25 sec
+----------------------------------------------------------
+Test Passed.
+"test_store_weights" end time: Oct 31 06:51 CDT
+"test_store_weights" time elapsed: 00:00:00
+----------------------------------------------------------
+
+23/23 Testing: test_tok
+23/23 Test: test_tok
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_tok"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_tok" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+  tokenizer load: 20.0 ms
+  oracle files checked: 13
+  speed: 4.2 MB in 36.9 ms = 114.5 MB/s (1031101 tokens)
+test_tok: 174 passed, 0 failed
+<end of output>
+Test time =   0.15 sec
+----------------------------------------------------------
+Test Passed.
+"test_tok" end time: Oct 31 06:51 CDT
+"test_tok" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/23 Testing: test_attn_stack
+8/23 Test: test_attn_stack
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_attn_stack"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_attn_stack" start time: Oct 31 06:51 CDT
+Output:
+----------------------------------------------------------
+from position 0: N=600 tokens
+  [ ok ] one-shot prefill vs CPU ref: out rel_rms 1.30e-04 (worst 1.99e-04) rel_max 1.44e-04 | top-k overlap 1.00000, identical lists 252/252
+  [ ok ] chunked prefill+decode vs CPU ref: out rel_rms 1.30e-04 (worst 1.99e-04) rel_max 1.44e-04 | top-k overlap 1.00000, identical lists 252/252
+  [ ok ] pure decode vs CPU ref: out rel_rms 1.28e-04 (worst 1.94e-04) rel_max 1.44e-04 | top-k overlap 1.00000, identical lists 252/252
+  [ ok ] prefill chunks vs one-shot (GPU, must be bit-exact): out rel_rms 0.00e+00 (worst 0.00e+00) rel_max 0.00e+00 | top-k overlap 1.00000, identical lists 252/252
+  [ ok ] chunked+decode vs one-shot (GPU; decode split-K rounding): out rel_rms 1.25e-05 (worst 1.57e-04) rel_max 3.08e-05 | top-k overlap 1.00000, identical lists 252/252
+  [ ok ] decode vs one-shot (GPU; decode split-K rounding): out rel_rms 7.97e-05 (worst 1.64e-04) rel_max 4.64e-05 | top-k overlap 1.00000, identical lists 252/252
+at depth: S0=40001, chunk of 96 (key_chunk 16384 -> 3 key chunks; candidate masking active)
+  [ ok ] depth one-shot vs CPU ref: out rel_rms 1.78e-04 (worst 1.90e-04) rel_max 2.47e-04 | top-k overlap 1.00000, identical lists 60/60
+  [ ok ] depth chunked vs CPU ref: out rel_rms 1.78e-04 (worst 1.90e-04) rel_max 2.47e-04 | top-k overlap 1.00000, identical lists 60/60
+  [ ok ] depth chunked vs one-shot (GPU): out rel_rms 0.00e+00 (worst 0.00e+00) rel_max 0.00e+00 | top-k overlap 1.00000, identical lists 60/60
+all passed
+<end of output>
+Test time =  16.99 sec
+----------------------------------------------------------
+Test Passed.
+"test_attn_stack" end time: Oct 31 06:51 CDT
+"test_attn_stack" time elapsed: 00:00:16
+----------------------------------------------------------
+
+End testing: Oct 31 06:51 CDT

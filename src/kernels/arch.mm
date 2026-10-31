@@ -11,7 +11,7 @@
 namespace ms::arch {
 namespace {
 
-struct HcParams { uint32_t n_groups, has_post, has_mixes, n_tokens; float norm_eps, hc_eps; int32_t iters; uint32_t fused, has_pre; };
+struct HcParams { uint32_t n_groups, has_post, has_mixes, n_tokens; float norm_eps, hc_eps; int32_t iters; uint32_t fused, has_pre, safe_inplace, row_splits; };
 struct RouterParams { uint32_t n_tokens, n_groups; float route_scale; uint32_t pad; };
 struct EngramParams { uint32_t n_tokens; float eps, clamp; uint32_t pad; };
 struct EmbedParams { uint32_t n_tokens, row_stride, copies, dim; };
@@ -52,6 +52,7 @@ Options& options() {
     x.hc_prefill_rows = pf == "rows";
     x.hc_prefill_mma8 = pf == "mma8";
     x.router_groups = (int)env_int("MACSEEK_ARCH_ROUTER_G", 96);
+    x.hc_row_splits = (int)env_int("MACSEEK_ARCH_HC_SPLITS", 1);
     return x;
   }();
   return o;
@@ -87,14 +88,21 @@ void encode_hc_step(Enc& e, const HcStep& a, const Scratch& s) {
   ARCH_PSO(p_rows, "arch_hc_mixes_rows");
   ARCH_PSO(p_mma32, "arch_hc_mixes_mma32");
   const bool has_post = (bool)a.x_sub, has_mixes = (bool)a.fn, has_pre = (bool)a.x_out;
+  static const bool safe = env_int("MACSEEK_ARCH_HC_SAFE", 1) != 0;
   HcParams P{0, has_post ? 1u : 0u, has_mixes ? 1u : 0u, (uint32_t)a.n, kNormEps, kHcEps, kSinkhornIters, 1,
-             has_pre ? 1u : 0u};
+             has_pre ? 1u : 0u, safe ? 1u : 0u, 1u};
   const Buffer h_new = has_post ? a.h_out : a.h_in;
   HcMode mode = hc_mode();
   if (a.n == 1 && mode != HcMode::Rows) {
     const uint32_t T = hc_threads();
     P.n_groups = kDim / T;
     P.fused = mode == HcMode::Fused ? 1u : 0u;
+    // mix-row splits (fused decode step, h_out a different buffer than h_in: other splits read h_in while split 0
+    // writes h_out). Bit-identical to 1 split.
+    int S = a.row_splits > 0 ? a.row_splits : options().hc_row_splits;
+    const bool inplace = has_post && a.h_in.buf == a.h_out.buf && a.h_in.off == a.h_out.off;
+    if (S < 1 || 24 % S != 0 || !has_mixes || inplace || mode != HcMode::Fused) S = 1;
+    P.row_splits = (uint32_t)S;
     e.set_pipeline(p_step);
     e.set_buffer(0, a.h_in);
     e.set_buffer(1, has_post ? a.h_out : s.dummy);
@@ -109,7 +117,7 @@ void encode_hc_step(Enc& e, const HcStep& a, const Scratch& s) {
     e.set_buffer(10, s.hc_part);
     e.set_buffer(11, counter(s, kCounterHc));
     e.set_value(12, P);
-    e.dispatch_groups(P.n_groups, 1, 1, T);
+    e.dispatch_groups(P.n_groups * P.row_splits, 1, 1, T);
     if (mode == HcMode::Split) {
       e.barrier();
       e.set_pipeline(p_fin);

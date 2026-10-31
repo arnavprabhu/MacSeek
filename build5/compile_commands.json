@@ -37,6 +37,12 @@
 },
 {
   "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
+  "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/macseek_lib.dir/src/model/dec_layer.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/src/model/dec_layer.mm",
+  "file": "/Users/arnav/Desktop/Projects/MacSeek/src/model/dec_layer.mm",
+  "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/macseek_lib.dir/src/model/dec_layer.mm.o"
+},
+{
+  "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
   "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/src/model/ds41.mm",
   "file": "/Users/arnav/Desktop/Projects/MacSeek/src/model/ds41.mm",
   "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o"
@@ -181,6 +187,12 @@
 },
 {
   "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
+  "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -I/Users/arnav/Desktop/Projects/MacSeek/tests -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/test_attn_pf_paths.dir/tests/test_attn_pf_paths.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_pf_paths.mm",
+  "file": "/Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_pf_paths.mm",
+  "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/test_attn_pf_paths.dir/tests/test_attn_pf_paths.mm.o"
+},
+{
+  "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
   "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -I/Users/arnav/Desktop/Projects/MacSeek/tests -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/test_attn_stack.dir/tests/test_attn_stack.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_stack.mm",
   "file": "/Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_stack.mm",
   "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/test_attn_stack.dir/tests/test_attn_stack.mm.o"
@@ -190,6 +202,12 @@
   "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -I/Users/arnav/Desktop/Projects/MacSeek/tests -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/test_attn_units.dir/tests/test_attn_units.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_units.mm",
   "file": "/Users/arnav/Desktop/Projects/MacSeek/tests/test_attn_units.mm",
   "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/test_attn_units.dir/tests/test_attn_units.mm.o"
+},
+{
+  "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
+  "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -I/Users/arnav/Desktop/Projects/MacSeek/tests -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/test_dec_fuse.dir/tests/test_dec_fuse.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/tests/test_dec_fuse.mm",
+  "file": "/Users/arnav/Desktop/Projects/MacSeek/tests/test_dec_fuse.mm",
+  "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/test_dec_fuse.dir/tests/test_dec_fuse.mm.o"
 },
 {
   "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
@@ -283,6 +301,18 @@
 },
 {
   "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
+  "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/bench_attn_cache_probe.dir/bench/attn_cache_probe.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/bench/attn_cache_probe.mm",
+  "file": "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_cache_probe.mm",
+  "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/bench_attn_cache_probe.dir/bench/attn_cache_probe.mm.o"
+},
+{
+  "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
+  "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/bench_attn_coop_probe.dir/bench/attn_coop_probe.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/bench/attn_coop_probe.mm",
+  "file": "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_coop_probe.mm",
+  "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/bench_attn_coop_probe.dir/bench/attn_coop_probe.mm.o"
+},
+{
+  "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
   "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/bench_attn_dispatch_probe.dir/bench/attn_dispatch_probe.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/bench/attn_dispatch_probe.mm",
   "file": "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_dispatch_probe.mm",
   "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/bench_attn_dispatch_probe.dir/bench/attn_dispatch_probe.mm.o"
@@ -307,9 +337,21 @@
 },
 {
   "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
+  "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/bench_attn_pfsplit.dir/bench/attn_pfsplit.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/bench/attn_pfsplit.mm",
+  "file": "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_pfsplit.mm",
+  "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/bench_attn_pfsplit.dir/bench/attn_pfsplit.mm.o"
+},
+{
+  "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
   "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/bench_attn_prof.dir/bench/attn_prof.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/bench/attn_prof.mm",
   "file": "/Users/arnav/Desktop/Projects/MacSeek/bench/attn_prof.mm",
   "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/bench_attn_prof.dir/bench/attn_prof.mm.o"
+},
+{
+  "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",
+  "command": "/usr/bin/clang++ -DMACSEEK_METALLIB=\\\"/Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal\\\" -I/Users/arnav/Desktop/Projects/MacSeek/src -x objective-c++  -fobjc-arc -O3 -mcpu=native -DNDEBUG -std=gnu++2a -arch arm64 -o CMakeFiles/bench_decode_layer.dir/bench/decode_layer.mm.o -c /Users/arnav/Desktop/Projects/MacSeek/bench/decode_layer.mm",
+  "file": "/Users/arnav/Desktop/Projects/MacSeek/bench/decode_layer.mm",
+  "output": "/Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/bench_decode_layer.dir/bench/decode_layer.mm.o"
 },
 {
   "directory": "/Users/arnav/Desktop/Projects/MacSeek/build5",

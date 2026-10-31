@@ -234,6 +234,8 @@ struct ArchHcParams {
   int iters;
   uint fused;       // decode: 1 = last threadgroup runs the tail (single dispatch), 0 = separate finalize dispatch
   uint has_pre;     // 0: skip hc_pre + RMSNorm (x_out untouched), e.g. the post-only step before engram
+  uint safe_inplace;  // decode step: write h_out only after every simdgroup has read h_in (h_out == h_in race fix)
+  uint row_splits;    // decode step: threadgroups per dim chunk, each computing 24/row_splits mix rows (h_out != h_in)
 };
 
 // ---- tail shared by the fused step and the finalize kernel (one threadgroup) ----
@@ -273,7 +275,7 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
                          coherent(device) device float* part [[buffer(10)]],
                          device atomic_uint* counter [[buffer(11)]],
                          constant ArchHcParams& p [[buffer(12)]],
-                         uint g [[threadgroup_position_in_grid]],
+                         uint tgi [[threadgroup_position_in_grid]],
                          ushort tid [[thread_position_in_threadgroup]],
                          ushort T [[threads_per_threadgroup]],
                          ushort sg [[simdgroup_index_in_threadgroup]],
@@ -281,6 +283,11 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
   threadgroup float red[32];
   threadgroup uint flag;
   const ushort nsg = T / 32;
+  // row_splits > 1: threadgroup tgi = dim chunk g, split sp; split sp computes mix rows [r0, r1) of the chunk (each row's
+  // partial is the same arithmetic as with one threadgroup per chunk); split 0 also does h_out / x_out / the sums.
+  const uint S = max(1u, p.row_splits), g = tgi / S, sp = tgi - g * S;
+  const uint r0 = sp * ARCH_MIX / S, r1 = (sp + 1) * ARCH_MIX / S;
+  const bool main_split = sp == 0;
   const uint nv = T / 4;                 // float4 per copy in this chunk
   const uint d0v = g * nv;               // chunk start in float4 units
   float pre[4], post[4], comb[16];
@@ -308,25 +315,28 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
     }
     if (p.has_mixes) {
       for (uint q = 0; q < MAXQ; q++) {
-        uint r = sg + q * nsg;
-        if (r >= ARCH_MIX) break;
+        uint r = r0 + sg + q * nsg;
+        if (r >= r1) break;
         float a = 0.0f;
         for (uint j = 0; j < 4; j++) a += dot(f4[r * (ARCH_HCD / 4) + j * (ARCH_DIM / 4) + dv], hn[j]);
         acc[q] += a;
       }
     }
-    if (sg == 0) {
-      // h_out is NOT written here: h_out may alias h_in, and the other simdgroups of this group are still reading
-      // h_in for the same chunk (that race made the mixes depend on simdgroup scheduling). Written after the barrier.
+    if (sg == 0 && main_split) {
+      if (p.has_post && !p.safe_inplace)
+        for (uint i = 0; i < 4; i++) ((device float4*)h_out)[i * (ARCH_DIM / 4) + dv] = hn[i];
       float4 xp = pre[0] * hn[0] + pre[1] * hn[1] + pre[2] * hn[2] + pre[3] * hn[3];
       if (p.has_pre) ((coherent(device) device float4*)x_out)[dv] = xp;
       ssh += dot(hn[0], hn[0]) + dot(hn[1], hn[1]) + dot(hn[2], hn[2]) + dot(hn[3], hn[3]);
       ssx += dot(xp, xp);
     }
   }
-  if (p.has_post) {
-    threadgroup_barrier(mem_flags::mem_device);   // every simdgroup has finished reading this chunk of h_in
-    if (sg == 0)
+  // h_out usually aliases h_in (decode updates h in place) and every simdgroup reads all of h_in above: simdgroup 0
+  // must not overwrite an element before the others have read it. Safe mode: wait for all simdgroups, then simdgroup 0
+  // recomputes h_new (same arithmetic -> same values) and stores it. (Unsafe legacy mode: MACSEEK_ARCH_HC_SAFE=0.)
+  if (p.has_post && p.safe_inplace) {
+    threadgroup_barrier(mem_flags::mem_none);
+    if (sg == 0 && main_split)
       for (uint c = lane; c < nv; c += 32) {
         const uint dv = d0v + c;
         float4 hn[4];
@@ -341,19 +351,19 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
   }
   if (p.has_mixes) {
     for (uint q = 0; q < MAXQ; q++) {
-      uint r = sg + q * nsg;
-      if (r >= ARCH_MIX) break;
+      uint r = r0 + sg + q * nsg;
+      if (r >= r1) break;
       float v = simd_sum(acc[q]);
       if (lane == 0) part[g * ARCH_PART_STRIDE + r] = v;
     }
   }
-  if (sg == 0) {
+  if (sg == 0 && main_split) {
     ssh = simd_sum(ssh);
     ssx = simd_sum(ssx);
     if (lane == 0) { part[g * ARCH_PART_STRIDE + 24] = ssh; part[g * ARCH_PART_STRIDE + 25] = ssx; }
   }
   if (!p.fused) return;
-  if (!arch_last_group(counter, p.n_groups, tid, &flag)) return;
+  if (!arch_last_group(counter, p.n_groups * S, tid, &flag)) return;
   arch_hc_tail(part, x_out, norm_w, mix_out, scale, base, p, tid, T, sg, lane, red);
   arch_reset_counter(counter, tid);
 }
@@ -1358,6 +1368,134 @@ inline void attn_idx_score_pf_impl(device half* Qi, device const float* wq, devi
   }
 ATTN_IDX_PF_KERNEL(attn_idx_score_pf, 2, 128)  // (4 queries x 64 keys: -30%; 2 x 64: -3%)
 
+// Register epilogue variant (2 queries x 128 keys, 4 simdgroups). Relies on the cooperative destination layout of
+// matmul2d(64, 128, 128) on 4 simdgroups (verified at init by attn_idx_layout_check; else the TG-memory kernel is used):
+//   thread (sg, l), element i: row = R(sg,l) + 8*((i>>2)&1) + 32*(i>>5), col = C(sg,l) + (i&3) + 32*((i>>3)&3)
+//   R = ((l>>1)&3) + 4*((l>>4)&1) + 16*(sg>>1),  C = 4*(l&1) + 8*((l>>3)&1) + 16*(sg&1)
+// Head sum: in-thread (rows r, r+8), reduce-scatter over lane bits 1, 2, 4 (16 heads), then sg 2/3 -> sg 0/1 via 1 KB of
+// threadgroup memory. Each lane of sg 0/1 ends with 4 consecutive keys of one query.
+inline int attn_pf2_row(ushort sg, ushort l) { return ((l >> 1) & 3) + 4 * ((l >> 4) & 1) + 16 * (sg >> 1); }
+inline int attn_pf2_col(ushort sg, ushort l) { return 4 * (l & 1) + 8 * ((l >> 3) & 1) + 16 * (sg & 1); }
+kernel void attn_idx_score_pf2(device half* Qi [[buffer(0)]], device const float* wq [[buffer(1)]],
+                               device half* ikey [[buffer(2)]], device float* S [[buffer(3)]],
+                               device const uint* mask [[buffer(4)]], device float* BS [[buffer(5)]],
+                               constant AttnIdxPfArgs& a [[buffer(6)]], uint2 tg [[threadgroup_position_in_grid]],
+                               ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
+  constexpr int NK = 128;
+  threadgroup float4 red[64];
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qi, dextents<int32_t, 2>(ATTN_ID, a.qrows));
+  auto tB = tensor<device half, dextents<int32_t, 2>, tensor_inline>(ikey, dextents<int32_t, 2>(ATTN_ID, a.krows));
+  constexpr auto desc = matmul2d_descriptor(64, NK, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto mA = tA.template slice<ATTN_ID, 64>(0, int(tg.y) * 64);
+  auto mB = tB.template slice<ATTN_ID, NK>(0, a.kc0 + int(tg.x) * NK);
+  auto cT = op.template get_destination_cooperative_tensor<decltype(mA), decltype(mB), float>();
+  #pragma unroll
+  for (uint16_t i = 0; i < 64; ++i) cT[i] = 0;
+  op.run(mA, mB, cT);
+  const int r0 = attn_pf2_row(sg, l), q0 = int(tg.y) * 2;
+  float w[2][2];  // [query][row +0 / +8]
+  for (int qq = 0; qq < 2; qq++)
+    for (int hb = 0; hb < 2; hb++) w[qq][hb] = q0 + qq < a.n ? wq[(q0 + qq) * ATTN_IH + r0 + 8 * hb] : 0.0f;
+  float v[32];  // [q][j][c] = v[q*16 + j*4 + c]
+  #pragma unroll
+  for (int qq = 0; qq < 2; qq++)
+    #pragma unroll
+    for (int j = 0; j < 4; j++)
+      #pragma unroll
+      for (int c = 0; c < 4; c++) {
+        const int i0 = c + 8 * j + 32 * qq;
+        v[qq * 16 + j * 4 + c] = max(cT[i0], 0.0f) * w[qq][0] + max(cT[i0 + 4], 0.0f) * w[qq][1];
+      }
+  // lane bit 1: keep query b1
+  const bool b1 = (l >> 1) & 1, b2 = (l >> 2) & 1, b4 = (l >> 4) & 1;
+  float u[16];
+  #pragma unroll
+  for (int x = 0; x < 16; x++) {
+    float send = b1 ? v[x] : v[16 + x];
+    float keep = b1 ? v[16 + x] : v[x];
+    u[x] = keep + simd_shuffle_xor(send, 2);
+  }
+  // lane bit 2: keep j in {2*b2, 2*b2+1}
+  float t8[8];
+  #pragma unroll
+  for (int x = 0; x < 8; x++) {
+    float send = b2 ? u[x] : u[8 + x];
+    float keep = b2 ? u[8 + x] : u[x];
+    t8[x] = keep + simd_shuffle_xor(send, 4);
+  }
+  // lane bit 4: keep j = 2*b2 + b4
+  float4 f;
+  #pragma unroll
+  for (int x = 0; x < 4; x++) {
+    float send = b4 ? t8[x] : t8[4 + x];
+    float keep = b4 ? t8[4 + x] : t8[x];
+    f[x] = keep + simd_shuffle_xor(send, 16);
+  }
+  if (sg >= 2) red[(sg & 1) * 32 + l] = f;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sg >= 2) return;
+  f += red[(sg & 1) * 32 + l];
+  const int q = q0 + int(b1);
+  const int key0 = attn_pf2_col(sg, l) + 32 * (2 * int(b2) + int(b4));
+  const int tl = int(tg.x) * NK + key0, tabs = a.kc0 + tl;
+  const int len = (a.start + q + 1) / a.ratio;
+  const bool qok = q < a.n;
+  float4 sc;
+  #pragma unroll
+  for (int c = 0; c < 4; c++) {
+    bool vis = qok && tabs + c < len && tl + c < a.kc;
+    if (vis && a.use_mask) vis = (mask[(size_t)q * a.mask_words + ((tabs + c) >> 8)] >> (((tabs + c) >> 3) & 31)) & 1u;
+    sc[c] = vis ? f[c] : -INFINITY;
+  }
+  if (qok) {
+    device float* dst = S + (size_t)q * a.ld_s + tl;
+    if (tl + 4 <= a.kc) *(device float4*)dst = sc;
+    else for (int c = 0; c < 4; c++) if (tl + c < a.kc) dst[c] = sc[c];
+  }
+  if (a.cand_src) {  // block of 8 keys = this lane's 4 + lane^1's 4
+    float bm = max(max(sc[0], sc[1]), max(sc[2], sc[3]));
+    bm = max(bm, simd_shuffle_xor(bm, 1));
+    if (len > 0 && (tabs >> 3) == (len - 1) / 8) bm = INFINITY;
+    if (qok && tl < a.kc && (l & 1) == 0) BS[(size_t)q * (a.ld_s / 8) + (tl >> 3)] = bm;
+  }
+}
+
+// Layout check for attn_idx_score_pf2: out[t] = number of elements whose (row, col) differ from the assumed formula
+// (all zeros = layout as assumed). grid 1, 128 threads.
+kernel void attn_idx_layout_check(device half* Qi [[buffer(0)]], device half* ikey [[buffer(1)]], device int* out [[buffer(2)]],
+                                  ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qi, dextents<int32_t, 2>(ATTN_ID, 64));
+  auto tB = tensor<device half, dextents<int32_t, 2>, tensor_inline>(ikey, dextents<int32_t, 2>(ATTN_ID, 128));
+  constexpr auto desc = matmul2d_descriptor(64, 128, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+  int bad = cT.get_capacity() == 64 ? 0 : 1000;
+  for (uint16_t i = 0; i < cT.get_capacity() && i < 64; ++i) {
+    if (!cT.is_valid_element(i)) { bad++; continue; }
+    auto id = cT.get_multidimensional_index(i);
+    int row = attn_pf2_row(sg, l) + 8 * ((i >> 2) & 1) + 32 * (i >> 5);
+    int col = attn_pf2_col(sg, l) + (i & 3) + 32 * ((i >> 3) & 3);
+    if (int(id[1]) != row || int(id[0]) != col) bad++;
+  }
+  {
+    threadgroup half Kg[64 * ATTN_ID];
+    auto tB2 = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Kg, dextents<int32_t, 2>(ATTN_ID, 64));
+    constexpr auto desc2 = matmul2d_descriptor(64, 64, ATTN_ID, false, true, false);
+    matmul2d<desc2, execution_simdgroups<4>> op2;
+    auto c2 = op2.template get_destination_cooperative_tensor<decltype(tA), decltype(tB2), float>();
+    if (c2.get_capacity() != 32) bad += 1000;
+    for (uint16_t i = 0; i < c2.get_capacity() && i < 32; ++i) {
+      if (!c2.is_valid_element(i)) { bad++; continue; }
+      auto id = c2.get_multidimensional_index(i);
+      int row = attn_pf2_row(sg, l) + 8 * ((i >> 2) & 1) + 32 * ((i >> 4) & 1);
+      int col = attn_pf2_col(sg, l) + (i & 3) + 32 * ((i >> 3) & 1);
+      if (int(id[1]) != row || int(id[0]) != col) bad++;
+    }
+  }
+  out[sg * 32 + l] = bad;
+}
+
 struct AttnSrcMerge {
   device const uint* rk;
   device const int* ri;
@@ -1388,6 +1526,89 @@ kernel void attn_topk_merge(device const float* S [[buffer(0)]], device uint* Rk
   AttnSrcMerge src{Rk + (size_t)q * a.k, Ri + (size_t)q * a.k, rc, S + (size_t)q * a.ld_s, a.base};
   attn_select(src, rc + a.cnt, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
   int m = atomic_load_explicit(&ocnt, memory_order_relaxed);
+  for (int i = tid; i < m; i += 1024) { Rk[(size_t)q * a.k + i] = okey[i]; Ri[(size_t)q * a.k + i] = oidx[i]; }
+  if (tid == 0) Rc[q] = m;
+}
+
+// ---- threshold-filtered running merge (k <= 512): when the running list is full (rc == k), a new element can only enter
+// if its key is strictly greater than the list minimum T (ties at T lose: running entries precede the chunk in source
+// order, i.e. have lower indices). The chunk is compacted in index order to the survivors (> T), then the usual exact
+// select runs over running + survivors -> same result as the full merge. Survivor overflow -> full merge.
+constant constexpr int ATTN_MF_CAP = 2048;
+struct AttnSrcMergeTG {
+  device const uint* rk;
+  device const int* ri;
+  int rc;
+  threadgroup const uint* ck;
+  threadgroup const int* ci;
+  uint key(int i) const { return i < rc ? rk[i] : ck[i - rc]; }
+  int idx(int i) const { return i < rc ? ri[i] : ci[i - rc]; }
+};
+// Returns survivors count (> ATTN_MF_CAP: overflow). key_of(j) / idx_of(j) read chunk element j.
+template <typename KF, typename IF>
+inline int attn_mf_compact(int cnt, uint T, thread const KF& key_of, thread const IF& idx_of, threadgroup uint* ck,
+                           threadgroup int* ci, threadgroup uint* tmp, ushort tid, ushort sg, ushort ln) {
+  int base = 0;
+  for (int j0 = 0; j0 < cnt; j0 += 1024) {
+    const int j = j0 + tid;
+    uint kk = j < cnt ? key_of(j) : 0u;
+    uint f = kk > T ? 1u : 0u;
+    uint tot;
+    uint ex = attn_scan_excl(f, tmp, sg, ln, 32, tot);
+    if (f && base + int(ex) < ATTN_MF_CAP) { ck[base + ex] = kk; ci[base + ex] = idx_of(j); }
+    base += int(tot);
+    if (base > ATTN_MF_CAP) break;  // uniform
+  }
+  return base;
+}
+inline uint attn_mf_min(device const uint* rk, int rc, threadgroup uint* tmp, ushort tid, ushort ln) {
+  if (tid == 0) tmp[36] = 0xFFFFFFFFu;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  uint mn = 0xFFFFFFFFu;
+  for (int i = tid; i < rc; i += 1024) mn = min(mn, rk[i]);
+  mn = simd_min(mn);
+  if (ln == 0) atomic_fetch_min_explicit((threadgroup atomic_uint*)&tmp[36], mn, memory_order_relaxed);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  uint T = tmp[36];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  return T;
+}
+// Same contract as attn_topk_merge (k <= 512).
+kernel void attn_topk_merge_f(device const float* S [[buffer(0)]], device uint* Rk [[buffer(1)]], device int* Ri [[buffer(2)]],
+                              device int* Rc [[buffer(3)]], constant AttnMergeArgs& a [[buffer(4)]],
+                              uint q [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
+                              ushort sg [[simdgroup_index_in_threadgroup]], ushort ln [[thread_index_in_simdgroup]]) {
+  threadgroup uint hist[2048];
+  threadgroup uint tmp[40];
+  threadgroup uint okey[512];
+  threadgroup int oidx[512];
+  threadgroup uint ck[ATTN_MF_CAP];
+  threadgroup int ci[ATTN_MF_CAP];
+  threadgroup atomic_int ocnt;
+  const int rc = a.first ? 0 : Rc[q];
+  device const uint* rk = Rk + (size_t)q * a.k;
+  device const int* ri = Ri + (size_t)q * a.k;
+  device const float* sq = S + (size_t)q * a.ld_s;
+  int m;
+  bool done = false;
+  if (rc == a.k) {
+    const uint T = attn_mf_min(rk, rc, tmp, tid, ln);
+    auto kf = [&](int j) { return attn_fkey(sq[j]); };
+    auto jf = [&](int j) { return a.base + j; };
+    const int ns = attn_mf_compact(a.cnt, T, kf, jf, ck, ci, tmp, tid, sg, ln);
+    if (ns <= ATTN_MF_CAP) {
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      AttnSrcMergeTG src{rk, ri, rc, ck, ci};
+      attn_select(src, rc + ns, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+      done = true;
+    }
+  }
+  if (!done) {
+    AttnSrcMerge src{rk, ri, rc, sq, a.base};
+    attn_select(src, rc + a.cnt, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+  }
+  m = atomic_load_explicit(&ocnt, memory_order_relaxed);
+  threadgroup_barrier(mem_flags::mem_threadgroup);  // all reads of rk/ri done before overwriting them
   for (int i = tid; i < m; i += 1024) { Rk[(size_t)q * a.k + i] = okey[i]; Ri[(size_t)q * a.k + i] = oidx[i]; }
   if (tid == 0) Rc[q] = m;
 }
@@ -1698,6 +1919,89 @@ kernel void attn_idx_score_pf_list(device half* Qi [[buffer(0)]], device const f
   S[(size_t)q * a.ld_s + tl] = vis ? s : -INFINITY;
 }
 
+// Register-epilogue variant of attn_idx_score_pf_list (same layout family as attn_idx_score_pf2; the 64x64 destination:
+// element i -> row = R + 8*((i>>2)&1) + 32*((i>>4)&1), col = C + (i&3) + 32*((i>>3)&1); checked at init).
+kernel void attn_idx_score_pf_list2(device half* Qi [[buffer(0)]], device const float* wq [[buffer(1)]],
+                                    device const half* ikey [[buffer(2)]], device float* S [[buffer(3)]],
+                                    device const uint* mask [[buffer(4)]], device const int* ulist [[buffer(5)]],
+                                    device const int* ucount [[buffer(6)]], constant AttnIdxPfListArgs& a [[buffer(7)]],
+                                    uint2 tg [[threadgroup_position_in_grid]], ushort t [[thread_index_in_threadgroup]],
+                                    ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
+  threadgroup half Kg[64 * ATTN_ID];
+  threadgroup float2 red[64];
+  const int nvirt = ucount[tg.y] * 8;
+  const int v0 = a.kc0 + int(tg.x) * 64;
+  if (v0 >= nvirt) return;
+  {  // gather 8 blocks x 8 keys x 128 dims: thread t -> key t/2, half row (64 dims)
+    int kl = t >> 1, part = t & 1, v = v0 + kl;
+    threadgroup uint4* dst = (threadgroup uint4*)(Kg + kl * ATTN_ID + part * 64);
+    if (v < nvirt) {
+      int pos = ulist[(size_t)tg.y * a.cap + (v >> 3)] * 8 + (v & 7);
+      device const uint4* src = (device const uint4*)(ikey + (size_t)pos * ATTN_ID + part * 64);
+      for (int j = 0; j < 8; j++) dst[j] = src[j];
+    } else {
+      for (int j = 0; j < 8; j++) dst[j] = uint4(0);
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qi, dextents<int32_t, 2>(ATTN_ID, a.qrows));
+  auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Kg, dextents<int32_t, 2>(ATTN_ID, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 64, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto mA = tA.template slice<ATTN_ID, 64>(0, int(tg.y) * 64);
+  auto cT = op.template get_destination_cooperative_tensor<decltype(mA), decltype(tB), float>();
+  #pragma unroll
+  for (uint16_t i = 0; i < 32; ++i) cT[i] = 0;
+  op.run(mA, tB, cT);
+  const int r0 = attn_pf2_row(sg, l), q0 = int(tg.y) * 2;
+  float w[2][2];
+  for (int qq = 0; qq < 2; qq++)
+    for (int hb = 0; hb < 2; hb++) w[qq][hb] = q0 + qq < a.n ? wq[(q0 + qq) * ATTN_IH + r0 + 8 * hb] : 0.0f;
+  float v[16];  // [q][j][c]
+  #pragma unroll
+  for (int qq = 0; qq < 2; qq++)
+    #pragma unroll
+    for (int j = 0; j < 2; j++)
+      #pragma unroll
+      for (int c = 0; c < 4; c++) {
+        const int i0 = c + 8 * j + 16 * qq;
+        v[qq * 8 + j * 4 + c] = max(cT[i0], 0.0f) * w[qq][0] + max(cT[i0 + 4], 0.0f) * w[qq][1];
+      }
+  const bool b1 = (l >> 1) & 1, b2 = (l >> 2) & 1, b4 = (l >> 4) & 1;
+  float u[8];
+  #pragma unroll
+  for (int x = 0; x < 8; x++) { float sd = b1 ? v[x] : v[8 + x]; float kp = b1 ? v[8 + x] : v[x]; u[x] = kp + simd_shuffle_xor(sd, 2); }
+  float t4[4];
+  #pragma unroll
+  for (int x = 0; x < 4; x++) { float sd = b2 ? u[x] : u[4 + x]; float kp = b2 ? u[4 + x] : u[x]; t4[x] = kp + simd_shuffle_xor(sd, 4); }
+  float2 f;
+  #pragma unroll
+  for (int x = 0; x < 2; x++) { float sd = b4 ? t4[x] : t4[2 + x]; float kp = b4 ? t4[2 + x] : t4[x]; f[x] = kp + simd_shuffle_xor(sd, 16); }
+  if (sg >= 2) red[(sg & 1) * 32 + l] = f;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sg >= 2) return;
+  f += red[(sg & 1) * 32 + l];
+  const int q = q0 + int(b1);
+  const int key0 = attn_pf2_col(sg, l) + 32 * int(b2) + 2 * int(b4);
+  if (q >= a.n) return;
+  const int len = (a.start + q + 1) / a.ratio;
+  float2 sc;
+  for (int c = 0; c < 2; c++) {
+    const int vv = v0 + key0 + c;
+    bool vis = vv < nvirt;
+    if (vis) {
+      int blk = ulist[(size_t)tg.y * a.cap + (vv >> 3)];
+      int pos = blk * 8 + (vv & 7);
+      vis = pos < len && ((mask[(size_t)q * a.mask_words + (blk >> 5)] >> (blk & 31)) & 1u);
+    }
+    sc[c] = vis ? f[c] : -INFINITY;
+  }
+  const int tl = v0 + key0 - a.kc0;
+  device float* dst = S + (size_t)q * a.ld_s + tl;
+  if (tl + 2 <= a.kc) *(device float2*)dst = sc;
+  else if (tl < a.kc) dst[0] = sc[0];
+}
+
 struct AttnSrcMergeList {
   device const uint* rk;
   device const int* ri;
@@ -1733,6 +2037,51 @@ kernel void attn_topk_merge_list(device const float* S [[buffer(0)]], device uin
   if (tid == 0) Rc[q] = m;
 }
 
+
+// Threshold-filtered variant of attn_topk_merge_list (k <= 512); see attn_topk_merge_f.
+kernel void attn_topk_merge_list_f(device const float* S [[buffer(0)]], device uint* Rk [[buffer(1)]],
+                                   device int* Ri [[buffer(2)]], device int* Rc [[buffer(3)]],
+                                   device const int* ulist [[buffer(4)]], device const int* ucount [[buffer(5)]],
+                                   constant AttnMergeListArgs& a [[buffer(6)]], uint q [[threadgroup_position_in_grid]],
+                                   ushort tid [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
+                                   ushort ln [[thread_index_in_simdgroup]]) {
+  threadgroup uint hist[2048];
+  threadgroup uint tmp[40];
+  threadgroup uint okey[512];
+  threadgroup int oidx[512];
+  threadgroup uint ck[ATTN_MF_CAP];
+  threadgroup int ci[ATTN_MF_CAP];
+  threadgroup atomic_int ocnt;
+  const int tile = int(q) / 2;
+  const int cnt = clamp(ucount[tile] * 8 - a.base, 0, a.kc);
+  const int rc = a.first ? 0 : Rc[q];
+  if (!a.first && cnt == 0) return;
+  device const uint* rk = Rk + (size_t)q * a.k;
+  device const int* ri = Ri + (size_t)q * a.k;
+  device const float* sq = S + (size_t)q * a.ld_s;
+  device const int* ul = ulist + (size_t)tile * a.cap;
+  bool done = false;
+  if (rc == a.k) {
+    const uint T = attn_mf_min(rk, rc, tmp, tid, ln);
+    auto kf = [&](int j) { return attn_fkey(sq[j]); };
+    auto jf = [&](int j) { int v = a.base + j; return ul[v >> 3] * 8 + (v & 7); };
+    const int ns = attn_mf_compact(cnt, T, kf, jf, ck, ci, tmp, tid, sg, ln);
+    if (ns <= ATTN_MF_CAP) {
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      AttnSrcMergeTG src{rk, ri, rc, ck, ci};
+      attn_select(src, rc + ns, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+      done = true;
+    }
+  }
+  if (!done) {
+    AttnSrcMergeList src{rk, ri, rc, sq, a.base, ul};
+    attn_select(src, rc + cnt, a.k, hist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+  }
+  const int m = atomic_load_explicit(&ocnt, memory_order_relaxed);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  for (int i = tid; i < m; i += 1024) { Rk[(size_t)q * a.k + i] = okey[i]; Ri[(size_t)q * a.k + i] = oidx[i]; }
+  if (tid == 0) Rc[q] = m;
+}
 
 // Decode fast path, candidate-list mode (layers 24..36): virtual key v -> row blist[v/8]*8 + v%8. Keys of each 64-key
 // tile (8 blocks) are gathered into threadgroup memory; histogram via device atomics. Same outputs as dec2.
@@ -2057,6 +2406,52 @@ kernel void attn_probe_layout(device float* out [[buffer(0)]], ushort ln [[threa
   auto e = a.thread_elements();
   out[ln * 2] = e[0]; out[ln * 2 + 1] = e[1];
 }
+
+// cooperative destination layout probe: out[t * 256 + i] = row * 4096 + col (or -1), out[128*256 + t] = capacity
+template <int TM, int TN>
+inline void probe_coop_layout(device half* A, device half* B, device int* out, ushort t) {
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(A, dextents<int32_t, 2>(128, TM));
+  auto tB = tensor<device half, dextents<int32_t, 2>, tensor_inline>(B, dextents<int32_t, 2>(128, TN));
+  constexpr auto desc = matmul2d_descriptor(TM, TN, 128, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) {
+    int v = -1;
+    if (cT.is_valid_element(i)) { auto id = cT.get_multidimensional_index(i); v = id[1] * 4096 + id[0]; }
+    if (i < 256) out[t * 256 + i] = v;
+  }
+  out[128 * 256 + t] = cT.get_capacity();
+}
+kernel void attn_probe_coop_64x128(device half* A [[buffer(0)]], device half* B [[buffer(1)]], device int* out [[buffer(2)]],
+                                   ushort t [[thread_index_in_threadgroup]]) { probe_coop_layout<64, 128>(A, B, out, t); }
+kernel void attn_probe_coop_64x64(device half* A [[buffer(0)]], device half* B [[buffer(1)]], device int* out [[buffer(2)]],
+                                  ushort t [[thread_index_in_threadgroup]]) { probe_coop_layout<64, 64>(A, B, out, t); }
+kernel void attn_probe_coop_128x64(device half* A [[buffer(0)]], device half* B [[buffer(1)]], device int* out [[buffer(2)]],
+                                   ushort t [[thread_index_in_threadgroup]]) { probe_coop_layout<128, 64>(A, B, out, t); }
+// 8-simdgroup NN 64x128 (K=64) destination layout: out[t * 256 + i] = row * 4096 + col, out[256*256 + t] = capacity
+kernel void attn_probe_coop8_64x128(device int* out [[buffer(0)]], ushort t [[thread_index_in_threadgroup]]) {
+  threadgroup half X[64 * 128];
+  auto tA = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(64, 64));
+  auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(128, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 128, 64, false, false, false, matmul2d_descriptor::mode::multiply);
+  matmul2d<desc, execution_simdgroups<8>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) {
+    int v = -1;
+    if (cT.is_valid_element(i)) { auto id = cT.get_multidimensional_index(i); v = id[1] * 4096 + id[0]; }
+    if (i < 256) out[t * 256 + i] = v;
+  }
+  out[256 * 256 + t] = cT.get_capacity();
+}
+
+// cache-capacity probe: every thread re-reads its grid-stride share of a W-byte buffer `reps` times
+kernel void attn_probe_bw_rep(device const float4* a [[buffer(0)]], device float* out [[buffer(1)]], constant uint2& nr [[buffer(2)]],
+                              uint gid [[thread_position_in_grid]], uint gsz [[threads_per_grid]]) {
+  float4 s = 0;
+  for (uint r = 0; r < nr.y; r++)
+    for (uint i = gid; i < nr.x; i += gsz) s += a[(i + r * 4099u) % nr.x];
+  if (s.x == 1234.5f) out[0] = s.y + s.z + s.w;
+}
 #line 1 "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal"
 // ---- /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal
 // Attention module: sparse attention with per-head sink over window rows (ring / prefill chunk) + top-k compressed
@@ -2278,6 +2673,75 @@ kernel void attn_sparse_combine(device const float* part [[buffer(0)]], device c
   }
   ((device float4*)(out + (size_t)h * ATTN_D))[t] = o;
 }
+
+// ---- decode: sparse attention + split-K combine in ONE dispatch (MACSEEK_DEC_COMBINE) ----
+// Every threadgroup runs attn_sparse_impl (partials as in the split path); the last threadgroup of each head group to
+// finish (device atomic counter per head group, reset by that threadgroup) then merges the partials of its heads with
+// exactly attn_sparse_combine's arithmetic (thread t of 128 owns dims 4t..4t+3 of each head) -> bit-identical output.
+inline bool attn_last_group(device atomic_uint* counter, uint n_groups, ushort tid, threadgroup uint* flag) {
+  threadgroup_barrier(mem_flags::mem_device);
+  if (tid == 0) {
+    atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device);
+    uint t = atomic_fetch_add_explicit(counter, 1u, memory_order_relaxed);
+    *flag = (t == n_groups - 1) ? 1u : 0u;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  bool last = *flag != 0;
+  if (last) atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device);
+  return last;
+}
+
+#define ATTN_SPARSE_LC_KERNEL(NAME, HT, NSG)                                                                      \
+  kernel void NAME(device const float* q [[buffer(0)]], device const half* ring [[buffer(1)]],                     \
+                   device const half* chunk [[buffer(2)]], device const half* ckv [[buffer(3)]],                   \
+                   device const int* topk [[buffer(4)]], device const float* sinks [[buffer(5)]],                  \
+                   device const float2* tab [[buffer(6)]], device float* out [[buffer(7)]],                        \
+                   device float* part [[buffer(8)]], device float2* ml [[buffer(9)]],                              \
+                   constant AttnSparseArgs& a [[buffer(10)]], device atomic_uint* cnt [[buffer(11)]],              \
+                   coherent(device) device const float* part_c [[buffer(12)]],                                     \
+                   coherent(device) device const float2* ml_c [[buffer(13)]],                                      \
+                   uint3 tg [[threadgroup_position_in_grid]],                                                      \
+                   ushort t [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],         \
+                   ushort ln [[thread_index_in_simdgroup]]) {                                                      \
+    threadgroup half Ks[16 * ATTN_LDK];                                                                            \
+    threadgroup float Sp[NSG * 8 * HT * 16];                                                                       \
+    threadgroup half Ps[8 * HT * 16];                                                                              \
+    threadgroup float As[8 * HT], Ms[8 * HT], Ls[8 * HT];                                                          \
+    threadgroup int vflag[16];                                                                                     \
+    threadgroup uint flag;                                                                                         \
+    attn_sparse_impl<HT, NSG>(q, ring, chunk, ckv, topk, sinks, tab, out, part, ml, a, tg, t, sg, ln, Ks, Sp, Ps,  \
+                              As, vflag, Ms, Ls);                                                                  \
+    if (!attn_last_group(cnt + tg.x, uint(a.splits), t, &flag)) return;                                           \
+    if (t < 128) {  /* all heads of the group interleaved (independent loads in flight); per head the same    */  \
+      constexpr int HG = 8 * HT; /* operations in the same order as attn_sparse_combine                       */  \
+      const int hb = int(tg.x) * HG;                                                                               \
+      float sink[HG], M[HG], L[HG];                                                                                \
+      float4 acc[HG];                                                                                              \
+      for (int hh = 0; hh < HG; hh++) { sink[hh] = sinks[hb + hh]; M[hh] = sink[hh]; }                             \
+      for (int s = 0; s < a.splits; s++)                                                                           \
+        for (int hh = 0; hh < HG; hh++) M[hh] = max(M[hh], ml_c[s * ATTN_H + hb + hh].x);                          \
+      for (int hh = 0; hh < HG; hh++) { L[hh] = exp(sink[hh] - M[hh]); acc[hh] = 0; }                              \
+      for (int s = 0; s < a.splits; s++)                                                                           \
+        for (int hh = 0; hh < HG; hh++) {                                                                          \
+          float2 v = ml_c[s * ATTN_H + hb + hh];                                                                   \
+          float w = exp(v.x - M[hh]);                                                                              \
+          L[hh] += w * v.y;                                                                                        \
+          acc[hh] += w * ((coherent(device) device const float4*)(part_c + ((size_t)s * ATTN_H + hb + hh) * ATTN_D))[t]; \
+        }                                                                                                          \
+      for (int hh = 0; hh < HG; hh++) {                                                                            \
+        float4 o = acc[hh] / L[hh];                                                                                \
+        if (t >= 112) {                                                                                            \
+          int pi = 2 * (t - 112);                                                                                  \
+          o.xy = attn_rot_inv(o.xy, tab[(size_t)a.start * 32 + pi]);                                               \
+          o.zw = attn_rot_inv(o.zw, tab[(size_t)a.start * 32 + pi + 1]);                                           \
+        }                                                                                                          \
+        ((device float4*)(out + (size_t)(hb + hh) * ATTN_D))[t] = o;                                               \
+      }                                                                                                            \
+    }                                                                                                              \
+    if (t == 0) atomic_store_explicit(cnt + tg.x, 0u, memory_order_relaxed);                                      \
+  }
+ATTN_SPARSE_LC_KERNEL(attn_sparse_lc_h8, 1, 4)
+ATTN_SPARSE_LC_KERNEL(attn_sparse_lc_h16, 2, 8)
 #line 1 "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal"
 // ---- /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal
 // Attention module: prefill sparse attention on the tensor units (Metal 4 matmul2d), two-pass form per query block:
@@ -2441,6 +2905,259 @@ kernel void attn_pf_pv(device half* P [[buffer(0)]], device const half* ring [[b
     if (d >= ATTN_D - ATTN_RD) v = attn_rot_inv(v, tab[(size_t)p * 32 + (d - (ATTN_D - ATTN_RD)) / 2]);
     *(device float2*)(oq + (size_t)h * ATTN_D + d) = v;
   }
+}
+#line 1 "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf2.metal"
+// ---- /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf2.metal
+// Attention module: prefill sparse attention, two-pass on the tensor units with the softmax folded into both passes
+// (no f32 score matrix, no separate softmax dispatch):
+//   attn_pf2_scores : per (64-row tile t, query): S = scale * Qh . rows^T (64 heads x 64 rows), per-head tile max m_t and
+//                     sum l_t = sum exp(S - m_t); writes P_t = exp(S - m_t) (half, <= 1) and ML[q][t][h] = (m_t, l_t)
+//   attn_pf2_pv     : per (64-dim slice, query): M = max(sink, m_t), L = exp(sink - M) + sum l_t exp(m_t - M);
+//                     out = inverse_rope(sum_t (exp(m_t - M) / L) * (P_t . rows_t))
+// Tiles whose 64 rows are all invalid (shallow depth, -1 top-k padding) are skipped in both passes.
+// Row gathers are double-buffered (global loads of chunk k+1 are issued before the matmul of chunk k).
+// Row r of query q: r < 128 -> window position p-127+r (chunk row if >= chunk_start, else ring), else topk[q][r-128].
+#line 11 "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf2.metal"
+#include <metal_tensor>
+#include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
+using namespace mpp::tensor_ops;
+
+struct AttnPf2Args {
+  int start;        // absolute position of query 0 of this block
+  int nq;           // queries in this block
+  int q0;           // index of query 0 of this block within the chunk
+  int chunk_start;  // absolute position of chunk row 0
+  int ntop;         // compressed rows per query (0 or 512)
+  int R;            // rows per query = 128 + ntop (multiple of 64)
+  float scale;
+};
+
+inline device const half* attn_pf2_rowp(constant AttnPf2Args& a, int qb, int r, device const half* ring,
+                                        device const half* chunk, device const half* ckv, device const int* topk) {
+  const int p = a.start + qb;
+  if (r < ATTN_W) {
+    int wp = p - (ATTN_W - 1) + r;
+    if (wp < 0) return nullptr;
+    return wp >= a.chunk_start ? chunk + (size_t)(wp - a.chunk_start) * ATTN_D : ring + (size_t)(wp % ATTN_W) * ATTN_D;
+  }
+  int id = topk[(size_t)(a.q0 + qb) * a.ntop + (r - ATTN_W)];
+  return id >= 0 ? ckv + (size_t)id * ATTN_D : nullptr;
+}
+
+// cooperative destination layout of matmul2d(64, 64, K) on 4 simdgroups (same family as attn_idx_score_pf2; checked at
+// init): element i -> row = R + 8*((i>>2)&1) + 32*((i>>4)&1), col = C + (i&3) + 32*((i>>3)&1)
+inline int attn_pf2_r(ushort sg, ushort l) { return ((l >> 1) & 3) + 4 * ((l >> 4) & 1) + 16 * (sg >> 1); }
+inline int attn_pf2_c(ushort sg, ushort l) { return 4 * (l & 1) + 8 * ((l >> 3) & 1) + 16 * (sg & 1); }
+inline int attn_pf2_ri(int i) { return 8 * ((i >> 2) & 1) + 32 * ((i >> 4) & 1); }
+inline int attn_pf2_ci(int i) { return (i & 3) + 32 * ((i >> 3) & 1); }
+
+// grid (R/64, nq), 128 threads. P half [nq][64][R], ML float2 [nq][R/64][64].
+// A = Qh (half, roped, from attn_pf_qprep). (An f32-A variant reading the raw q was tried: slower, and the f32-A
+// destination layout differs from the one the epilogue assumes.)
+inline void attn_pf2_scores_impl(device half* Qh, device const half* ring, device const half* chunk,
+                                 device const half* ckv, device const int* topk, device half* P, device float2* ML,
+                                 constant AttnPf2Args& a, uint2 tg, ushort t, ushort sg, ushort l,
+                                 threadgroup half (&Kt)[2][64 * 64], threadgroup int* vf, threadgroup float (&red)[2][64],
+                                 threadgroup int& anyv) {
+  const int qb = int(tg.y), r0 = int(tg.x) * 64, nt = a.R / 64;
+  const int rl = t >> 1, part = t & 1;
+  device const half* src = attn_pf2_rowp(a, qb, r0 + rl, ring, chunk, ckv, topk);
+  if (t == 0) anyv = 0;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (part == 0) { vf[rl] = src != nullptr; if (src) anyv = 1; }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  device float2* mlq = ML + ((size_t)qb * nt + tg.x) * ATTN_H;
+  if (!anyv) {  // whole tile invalid: P never read for it (pass 2 skips tiles with m = -inf)
+    if (t < 64) mlq[t] = float2(-INFINITY, 0.0f);
+    return;
+  }
+  const int arow0 = qb * ATTN_H;
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(Qh, dextents<int32_t, 2>(ATTN_D, a.nq * ATTN_H));
+  auto tB0 = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Kt[0], dextents<int32_t, 2>(64, 64));
+  auto tB1 = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Kt[1], dextents<int32_t, 2>(64, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 64, 64, false, true, false, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto mA0 = tA.template slice<64, 64>(0, arow0);
+  auto cT = op.template get_destination_cooperative_tensor<decltype(mA0), decltype(tB0), float>();
+  #pragma unroll
+  for (uint16_t i = 0; i < 32; ++i) cT[i] = 0;
+  uint4 reg[4];
+  auto load = [&](int d0) {
+    if (src) { device const uint4* s4 = (device const uint4*)(src + d0 + part * 32); for (int j = 0; j < 4; j++) reg[j] = s4[j]; }
+    else for (int j = 0; j < 4; j++) reg[j] = uint4(0);
+  };
+  load(0);
+  for (int k = 0; k < ATTN_D / 64; k++) {
+    threadgroup uint4* dst = (threadgroup uint4*)(Kt[k & 1] + rl * 64 + part * 32);
+    for (int j = 0; j < 4; j++) dst[j] = reg[j];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (k + 1 < ATTN_D / 64) load((k + 1) * 64);
+    auto mA = tA.template slice<64, 64>(k * 64, arow0);
+    if (k & 1) op.run(mA, tB1, cT); else op.run(mA, tB0, cT);
+  }
+  // per-head max over the tile's 64 rows (cols of the tile)
+  const int R0 = attn_pf2_r(sg, l), C0 = attn_pf2_c(sg, l);
+  float m4[4];
+  #pragma unroll
+  for (int hh = 0; hh < 4; hh++) {
+    float m = -INFINITY;
+    #pragma unroll
+    for (int x = 0; x < 8; x++) {
+      const int i = (x & 3) | ((hh & 1) << 2) | ((x >> 2) << 3) | ((hh >> 1) << 4);
+      const int col = C0 + attn_pf2_ci(i);
+      float s = vf[col] ? cT[i] * a.scale : -INFINITY;
+      cT[i] = s;
+      m = max(m, s);
+    }
+    m = max(m, simd_shuffle_xor(m, 1));
+    m = max(m, simd_shuffle_xor(m, 8));
+    m4[hh] = m;
+  }
+  const bool wr = (l & 9) == 0;
+  if (wr) for (int hh = 0; hh < 4; hh++) red[sg & 1][R0 + 8 * (hh & 1) + 32 * (hh >> 1)] = m4[hh];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  for (int hh = 0; hh < 4; hh++) { const int h = R0 + 8 * (hh & 1) + 32 * (hh >> 1); m4[hh] = max(red[0][h], red[1][h]); }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  device half* Pq = P + (size_t)qb * ATTN_H * a.R + r0;
+  float s4[4];
+  #pragma unroll
+  for (int hh = 0; hh < 4; hh++) {
+    const int h = R0 + 8 * (hh & 1) + 32 * (hh >> 1);
+    float sum = 0;
+    #pragma unroll
+    for (int jx = 0; jx < 2; jx++) {
+      half4 pv;
+      #pragma unroll
+      for (int c = 0; c < 4; c++) {
+        const int i = c | ((hh & 1) << 2) | (jx << 3) | ((hh >> 1) << 4);
+        float e = exp(cT[i] - m4[hh]);  // -inf -> 0 (m finite: the tile has a valid row)
+        sum += e;
+        pv[c] = half(e);
+      }
+      *(device half4*)(Pq + (size_t)h * a.R + C0 + 32 * jx) = pv;
+    }
+    sum += simd_shuffle_xor(sum, 1);
+    sum += simd_shuffle_xor(sum, 8);
+    s4[hh] = sum;
+  }
+  if (wr) for (int hh = 0; hh < 4; hh++) red[sg & 1][R0 + 8 * (hh & 1) + 32 * (hh >> 1)] = s4[hh];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (wr && (sg & 1) == 0)
+    for (int hh = 0; hh < 4; hh++) {
+      const int h = R0 + 8 * (hh & 1) + 32 * (hh >> 1);
+      mlq[h] = float2(m4[hh], red[0][h] + red[1][h]);
+    }
+}
+
+kernel void attn_pf2_scores(device half* Qh [[buffer(0)]], device const half* ring [[buffer(1)]],
+                            device const half* chunk [[buffer(2)]], device const half* ckv [[buffer(3)]],
+                            device const int* topk [[buffer(4)]], device half* P [[buffer(5)]],
+                            device float2* ML [[buffer(6)]], constant AttnPf2Args& a [[buffer(7)]],
+                            uint2 tg [[threadgroup_position_in_grid]], ushort t [[thread_index_in_threadgroup]],
+                            ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
+  threadgroup half Kt[2][64 * 64];
+  threadgroup int vf[64];
+  threadgroup float red[2][64];
+  threadgroup int anyv;
+  attn_pf2_scores_impl(Qh, ring, chunk, ckv, topk, P, ML, a, tg, t, sg, l, Kt, vf, red, anyv);
+}
+// grid (8, nq), 128 threads: out[q][h][d0..d0+63] for d0 = 64*tg.x
+kernel void attn_pf2_pv(device half* P [[buffer(0)]], device const half* ring [[buffer(1)]],
+                        device const half* chunk [[buffer(2)]], device const half* ckv [[buffer(3)]],
+                        device const int* topk [[buffer(4)]], device const float2* tab [[buffer(5)]],
+                        device float* out [[buffer(6)]], device const float2* ML [[buffer(7)]],
+                        device const float* sinks [[buffer(8)]], constant AttnPf2Args& a [[buffer(9)]],
+                        uint2 tg [[threadgroup_position_in_grid]], ushort t [[thread_index_in_threadgroup]],
+                        ushort sg [[simdgroup_index_in_threadgroup]], ushort l [[thread_index_in_simdgroup]]) {
+  threadgroup half Vt[2][64 * 64];
+  threadgroup float al[10][64];  // alpha[tile][head] (R <= 640)
+  threadgroup int tv[10];         // tile has a valid row
+  const int qb = int(tg.y), d0 = int(tg.x) * 64, nt = a.R / 64;
+  const int rl = t >> 1, part = t & 1;
+  device const float2* mlq = ML + (size_t)qb * nt * ATTN_H;
+  if (t < 64) {
+    float M = sinks[t];
+    for (int k = 0; k < nt; k++) M = max(M, mlq[k * ATTN_H + t].x);
+    float L = exp(sinks[t] - M);
+    for (int k = 0; k < nt; k++) { float2 v = mlq[k * ATTN_H + t]; L += v.y * exp(v.x - M); }
+    const float inv = 1.0f / L;
+    for (int k = 0; k < nt; k++) { float mk = mlq[k * ATTN_H + t].x; al[k][t] = mk == -INFINITY ? 0.0f : exp(mk - M) * inv; }
+    if (t < nt) tv[t] = mlq[t * ATTN_H].x != -INFINITY;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  auto tA = tensor<device half, dextents<int32_t, 2>, tensor_inline>(P, dextents<int32_t, 2>(a.R, a.nq * ATTN_H));
+  auto tB0 = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Vt[0], dextents<int32_t, 2>(64, 64));
+  auto tB1 = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Vt[1], dextents<int32_t, 2>(64, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 64, 64, false, false, false, matmul2d_descriptor::mode::multiply);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto mA0 = tA.template slice<64, 64>(0, qb * ATTN_H);
+  auto acc = op.template get_destination_cooperative_tensor<decltype(mA0), decltype(tB0), float>();
+  auto tmp = op.template get_destination_cooperative_tensor<decltype(mA0), decltype(tB0), float>();
+  #pragma unroll
+  for (uint16_t i = 0; i < 32; ++i) acc[i] = 0;
+  const int R0 = attn_pf2_r(sg, l);
+  // valid tiles (uniform per tile: all heads share row validity)
+  uint4 reg[4];
+  auto load = [&](int k) {
+    device const half* src = attn_pf2_rowp(a, qb, k * 64 + rl, ring, chunk, ckv, topk);
+    if (src) { device const uint4* s4 = (device const uint4*)(src + d0 + part * 32); for (int j = 0; j < 4; j++) reg[j] = s4[j]; }
+    else for (int j = 0; j < 4; j++) reg[j] = uint4(0);
+  };
+  auto next_valid = [&](int k) { while (k < nt && !tv[k]) k++; return k; };
+  int k = next_valid(0);
+  if (k < nt) load(k);
+  int buf = 0;
+  while (k < nt) {
+    const int kn = next_valid(k + 1);
+    threadgroup uint4* dst = (threadgroup uint4*)(Vt[buf] + rl * 64 + part * 32);
+    for (int j = 0; j < 4; j++) dst[j] = reg[j];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (kn < nt) load(kn);
+    auto mA = tA.template slice<64, 64>(k * 64, qb * ATTN_H);
+    if (buf) op.run(mA, tB1, tmp); else op.run(mA, tB0, tmp);
+    #pragma unroll
+    for (uint16_t i = 0; i < 32; ++i) acc[i] += al[k][R0 + attn_pf2_ri(i)] * tmp[i];
+    buf ^= 1;
+    k = kn;
+  }
+  const int C0 = attn_pf2_c(sg, l);
+  const int p = a.start + qb;
+  device float* oq = out + (size_t)(a.q0 + qb) * ATTN_H * ATTN_D;
+  #pragma unroll
+  for (int g = 0; g < 8; g++) {  // groups of 4 consecutive dims: i = 4g .. 4g+3
+    const int i = 4 * g, h = R0 + attn_pf2_ri(i), d = d0 + C0 + attn_pf2_ci(i);
+    float4 v = float4(acc[i], acc[i + 1], acc[i + 2], acc[i + 3]);
+    if (d >= ATTN_D - ATTN_RD) {
+      const int pi = (d - (ATTN_D - ATTN_RD)) / 2;
+      v.xy = attn_rot_inv(v.xy, tab[(size_t)p * 32 + pi]);
+      v.zw = attn_rot_inv(v.zw, tab[(size_t)p * 32 + pi + 1]);
+    }
+    *(device float4*)(oq + (size_t)h * ATTN_D + d) = v;
+  }
+}
+
+// Layout check for the pf2 kernels: out[t] = elements of the (64,64,64) NT multiply-accumulate and NN multiply
+// destinations whose (row, col) differ from attn_pf2_r/c/ri/ci. grid 1, 128 threads.
+template <bool TR, bool ACC>
+inline int attn_pf2_check_one(threadgroup half* X, ushort sg, ushort l) {
+  auto tA = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(64, 64));
+  auto tB = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(X, dextents<int32_t, 2>(64, 64));
+  constexpr auto desc = matmul2d_descriptor(64, 64, 64, false, TR, false,
+                                            ACC ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(tB), float>();
+  int bad = cT.get_capacity() == 32 ? 0 : 1000;
+  for (uint16_t i = 0; i < cT.get_capacity() && i < 32; ++i) {
+    if (!cT.is_valid_element(i)) { bad++; continue; }
+    auto id = cT.get_multidimensional_index(i);
+    if (int(id[1]) != attn_pf2_r(sg, l) + attn_pf2_ri(i) || int(id[0]) != attn_pf2_c(sg, l) + attn_pf2_ci(i)) bad++;
+  }
+  return bad;
+}
+kernel void attn_pf2_layout_check(device int* out [[buffer(0)]], ushort sg [[simdgroup_index_in_threadgroup]],
+                                  ushort l [[thread_index_in_simdgroup]]) {
+  threadgroup half X[64 * 64];
+  out[sg * 32 + l] = attn_pf2_check_one<true, true>(X, sg, l) + attn_pf2_check_one<false, false>(X, sg, l);
 }
 #line 1 "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal"
 // ---- /Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal
@@ -5242,6 +5959,91 @@ Q_MV_INST(QB_Q5K, "q5_k")
 Q_MV_INST(QB_Q6K, "q6_k")
 Q_MV_INST(QB_IQ1S, "iq1_s")
 Q_MV_INST(QB_IQ2XXS, "iq2_xxs")
+
+// ---------------- decode matvec with the input RMSNorm fused into the x loads ----------------
+// y = W . (x * rsqrt(mean(x^2) + eps) * nw)   (decode q_a_norm -> attn_q_b / indexer q_b).
+// Every threadgroup computes the scale itself with exactly the reduction of arch_rmsnorm (threadgroup variant, one row
+// of na.dim elements, na.nt threads): virtual thread v sums x[v], x[v + nt], ... ; simd_sum per 32 virtual threads;
+// simd_sum of the per-simdgroup sums; rsqrt(sum / dim + eps). The normalized element is (x * r) * nw as in
+// arch_rmsnorm, so the result is bit-identical to rmsnorm -> barrier -> q_mv. No block-diagonal groups.
+struct QNormArgs { uint dim; float eps; uint nt; uint tiles_per_tg; };
+
+// A threadgroup computes the scale once and then walks tiles_per_tg consecutive row tiles (rsg*NR rows each), so the
+// norm prologue is amortized; each row's arithmetic is exactly q_mv's.
+template <typename Q, int NR>
+kernel void q_mv_rn(device const uchar* W [[buffer(0)]], device const float* x [[buffer(1)]], device float* y [[buffer(2)]],
+                    constant QMvArgs& a [[buffer(3)]], device const float* nw [[buffer(4)]],
+                    constant QNormArgs& na [[buffer(5)]], threadgroup float* red [[threadgroup(0)]],
+                    uint tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
+                    ushort lane [[thread_index_in_simdgroup]], ushort nsg [[simdgroups_per_threadgroup]]) {
+  threadgroup float nred[32];
+  {
+    const ushort nvs = na.nt / 32;
+    for (ushort v = sg; v < nvs; v += nsg) {
+      const uint vt = uint(v) * 32 + lane;
+      float ss = 0.0f;
+      for (uint i = vt; i < na.dim; i += na.nt) ss += x[i] * x[i];
+      ss = simd_sum(ss);
+      if (lane == 0) nred[v] = ss;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float rsum = lane < ushort(na.nt / 32) ? nred[lane] : 0.0f;
+  rsum = simd_sum(rsum);
+  const float rs = rsqrt(rsum / float(na.dim) + na.eps);
+
+  const ushort ks = a.ksplit, kk = sg % ks, rs_ = sg / ks, rsg = nsg / ks;
+  constexpr ushort BPI = 32 / Q::LPB;
+  const ushort sub = lane % Q::LPB, slot = lane / Q::LPB;
+  const uint nb = a.cols / Q::QK;
+  const uint ntiles = (a.rows + rsg * NR - 1) / (rsg * NR);
+  const uint t0 = tg * na.tiles_per_tg, t1 = min(ntiles, t0 + na.tiles_per_tg);
+  for (uint tile = t0; tile < t1; tile++) {
+    const uint row0 = (tile * rsg + rs_) * NR;
+    device const uchar* wr[NR];
+    for (int r = 0; r < NR; r++) wr[r] = W + (ulong)min(row0 + r, a.rows - 1) * a.row_bytes;
+    float acc[NR];
+    for (int r = 0; r < NR; r++) acc[r] = 0.f;
+    for (uint ib = kk * BPI + slot; ib < nb; ib += ks * BPI) {
+      float4 xr[Q::X4], wn[Q::X4];
+      Q::load_x(x + ib * Q::QK, sub, xr);
+      Q::load_x(nw + ib * Q::QK, sub, wn);
+      for (int k = 0; k < Q::X4; k++) xr[k] = xr[k] * rs * wn[k];
+      for (int r = 0; r < NR; r++) acc[r] += Q::dot(wr[r] + ib * Q::BB, sub, xr);
+    }
+    for (int r = 0; r < NR; r++) acc[r] = simd_sum(acc[r]);
+    if (ks > 1) {
+      if (lane == 0) for (int r = 0; r < NR; r++) red[(rs_ * NR + r) * ks + kk] = acc[r];
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      if (kk == 0) {
+        for (int r = 0; r < NR; r++) { float s = 0; for (ushort k = 0; k < ks; k++) s += red[(rs_ * NR + r) * ks + k]; acc[r] = s; }
+        if (lane == 0)
+          for (int r = 0; r < NR; r++) {
+            const uint row = row0 + r;
+            if (row < a.rows) y[row] = a.accumulate ? y[row] + acc[r] : acc[r];
+          }
+      }
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+    } else if (lane == 0) {
+      for (int r = 0; r < NR; r++) {
+        const uint row = row0 + r;
+        if (row < a.rows) y[row] = a.accumulate ? y[row] + acc[r] : acc[r];
+      }
+    }
+  }
+}
+
+#define Q_MVRN_INST1(Q, name, NR)                                                                                  \
+  template [[host_name("q_mv_rn_" name "_r" #NR)]] kernel void q_mv_rn<Q, NR>(device const uchar*, device const float*, \
+      device float*, constant QMvArgs&, device const float*, constant QNormArgs&, threadgroup float*, uint, ushort,      \
+      ushort, ushort);
+#define Q_MVRN_INST(Q, name) Q_MVRN_INST1(Q, name, 1) Q_MVRN_INST1(Q, name, 2) Q_MVRN_INST1(Q, name, 4)
+Q_MVRN_INST(QB_F32, "f32")
+Q_MVRN_INST(QB_F16, "f16")
+Q_MVRN_INST(QB_BF16, "bf16")
+Q_MVRN_INST(QB_Q8_0, "q8_0")
+Q_MVRN_INST(QB_Q5K, "q5_k")
+Q_MVRN_INST(QB_Q6K, "q6_k")
 
 // ---------------- matvec_n: n in 2..NT activation columns share one weight read ----------------
 // The threadgroup stages x[t][c0 .. c0+CK) for all n columns in threadgroup memory as half (CK = one simdgroup
