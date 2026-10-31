@@ -62,6 +62,36 @@ int main(int argc, char** argv) {
   double peak = peak_f16(true);
   printf("F16 GEMM peak: %.2f TFLOPS\n", peak);
   if (only_peak) return 0;
-  (void)filt;
+  struct Shape { QType t; int rows, cols; const char* what; };
+  const Shape shapes[] = {
+      {QType::Q6_K, 32768, 1280, "attn_q_b"}, {QType::Q6_K, 5120, 8192, "attn_output_b"},
+      {QType::Q5_K, 5120, 8192, "attn_output_b"}, {QType::Q6_K, 1280, 5120, "attn_q_a"},
+      {QType::Q8_0, 2304, 5120, "shexp gate/up"}, {QType::IQ1_S, 2304, 5120, "exp gate/up"},
+      {QType::IQ2_XXS, 5120, 2304, "exp down"}, {QType::BF16, 4096, 1280, "indexer q_b"},
+      {QType::F16, 8192, 4096, "f16 synthetic"},
+  };
+  const int ns[] = {32, 128, 512, 2048, 4096};
+  printf("%-8s %-14s %-14s", "type", "tensor", "shape");
+  for (int n : ns) printf("  n=%-5d", n);
+  printf("   (TFLOPS; %% of F16 peak at n=4096)\n");
+  auto& d = Device::get();
+  for (const Shape& s : shapes) {
+    std::string lab = std::string(q::type_name(s.t)) + " " + s.what;
+    if (filt && lab.find(filt) == std::string::npos) continue;
+    Buffer W = d.alloc(q::row_bytes(s.t, s.cols) * s.rows);
+    fill_rand(W, 5, s.t == QType::F32 ? 0x3f7f3f7fu : 0x3bff3bffu);
+    Buffer X16 = d.alloc((size_t)4096 * s.cols * 2), Y = d.alloc((size_t)4096 * s.rows * 4);
+    fill_rand(X16, 6);
+    char shape[32]; snprintf(shape, sizeof shape, "[%d->%d]", s.cols, s.rows);
+    printf("%-8s %-14s %-14s", q::type_name(s.t), s.what, shape);
+    double last = 0;
+    for (int n : ns) {
+      double ms = best_ms(5, [&](Enc& e) { q::encode_matmul_h(e, s.t, W, s.rows, s.cols, X16, Y, n); });
+      last = 2.0 * n * s.rows * s.cols / ms / 1e9;
+      printf("  %7.2f", last);
+    }
+    printf("   %4.0f%%\n", 100 * last / peak);
+    d.release(W); d.release(X16); d.release(Y);
+  }
   return 0;
 }

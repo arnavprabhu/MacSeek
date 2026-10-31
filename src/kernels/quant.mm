@@ -115,21 +115,26 @@ void encode_matvec_n(Enc& e, QType t, const Buffer& W, int rows, int cols, const
 namespace {
 struct QMmArgs { uint32_t n, rows, cols, row_bytes, x_stride, y_stride, accumulate; };
 struct MmTile { int tm, tn, nsg, nbuf; };
-MmTile mm_tile() {
-  static MmTile t = [] {
-    std::string s = env_str("MACSEEK_MM_TILE", "64x64_b2");
-    MmTile r{64, 64, 4, 2};
-    if (sscanf(s.c_str(), "%dx%d_b%d", &r.tm, &r.tn, &r.nbuf) != 3) r = {64, 64, 4, 2};
+// fused dequant-tile kernel shape: 64-token tiles for small n, 128-token tiles otherwise (bench_qmatmul)
+MmTile mm_tile(int n) {
+  static const std::string env = env_str("MACSEEK_MM_TILE", "");
+  MmTile r = n <= 96 ? MmTile{64, 64, 4, 2} : MmTile{128, 64, 4, 2};
+  if (!env.empty() && sscanf(env.c_str(), "%dx%d_b%d", &r.tm, &r.tn, &r.nbuf) == 3)
     r.nsg = (r.tm == 128 && r.tn == 128) ? 8 : 4;
-    return r;
-  }();
-  return t;
+  return r;
 }
 Buffer& mm_scratch(size_t bytes) {
   static Buffer b;
   if (b.size < bytes) b = Device::get().alloc(std::max(bytes, (size_t)64 << 20), "quant.mm.x16");
   return b;
 }
+Buffer& deq_scratch(size_t bytes) {
+  static Buffer b;
+  if (b.size < bytes) b = Device::get().alloc(std::max(bytes, (size_t)64 << 20), "quant.mm.w16");
+  return b;
+}
+// n at/above which the weight is dequantized to half once and multiplied by the dense GEMM (0 = never)
+int predeq_min_n() { static const int v = (int)env_int("MACSEEK_MM_PREDEQ_N", 512); return v; }
 }  // namespace
 
 void encode_f32_to_f16(Enc& e, const Buffer& X, const Buffer& X16, size_t count) {
@@ -147,12 +152,31 @@ void encode_matmul_h(Enc& e, QType t, const Buffer& W, int rows, int cols, const
                (uint32_t)(x_stride ? x_stride : cols), (uint32_t)rows, accumulate ? 1u : 0u};
   std::string fn;
   int tm, tn, nsg;
+  const bool predeq = block_elems(t) > 1 && predeq_min_n() > 0 && n >= predeq_min_n() &&
+                      (size_t)rows * cols * 2 <= ((size_t)1 << 30);
+  if (predeq) {  // dequantize W once to half (shared module scratch; barriers around it), then the dense GEMM
+    Buffer& w16 = deq_scratch((size_t)rows * cols * 2);
+    e.barrier();
+    uint32_t d[4] = {(uint32_t)rows, (uint32_t)cols, args.row_bytes, 0};
+    std::string dn = std::string("q_deq_f16_") + kn;
+    e.set_pipeline(dn.c_str());
+    e.set_buffer(0, W); e.set_buffer(1, w16); e.set_bytes(2, d, 16);
+    const int epl = (t == QType::Q8_0) ? 8 : 16;
+    e.dispatch_threads(cols / epl, rows, 1, 64, 1);
+    e.barrier();
+    e.set_pipeline("q_mm_f16_64x128");
+    args.row_bytes = (uint32_t)(cols * 2);
+    e.set_buffer(0, w16); e.set_buffer(1, X16); e.set_buffer(2, Y);
+    e.set_value(3, args);
+    e.dispatch_groups((rows + 127) / 128, (n + 63) / 64, 1, 128);
+    return;
+  }
   if (block_elems(t) == 1) {  // dense: right operand straight from device memory
     tm = 64; tn = 128; nsg = 4;
     fn = std::string("q_mm_") + kn + "_64x128";
     e.set_pipeline(fn.c_str());
   } else {
-    MmTile mt = mm_tile();
+    MmTile mt = mm_tile(n);
     tm = mt.tm; tn = mt.tn; nsg = mt.nsg;
     fn = std::string("q_mm_") + kn + "_" + std::to_string(tm) + "x" + std::to_string(tn) + "_b" + std::to_string(mt.nbuf);
     e.set_pipeline(fn.c_str());

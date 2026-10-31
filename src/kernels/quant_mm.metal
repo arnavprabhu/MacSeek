@@ -160,6 +160,28 @@ kernel void q_mm_dense(device const WT* W [[buffer(0)]], device const half* X [[
   cT.store(ty);
 }
 
+// Whole-matrix dequantization to half (prefill with large n: dequant once, then the dense tensor-API GEMM).
+// One thread per lane-slice; grid = rows x (cols / EPL).
+template <typename Q>
+kernel void q_deq_f16(device const uchar* W [[buffer(0)]], device half* out [[buffer(1)]], constant uint4& d [[buffer(2)]],
+                      uint2 gid [[thread_position_in_grid]]) {  // d = (rows, cols, row_bytes)
+  const uint row = gid.y, g = gid.x;
+  if (row >= d.x || g >= d.y / Q::EPL) return;
+  const uint blk = g / Q::LPB;
+  const ushort sub = g - blk * Q::LPB;
+  float4 w[Q::EPL / 4];
+  Q::deq(W + (ulong)row * d.z + (ulong)blk * Q::BB, sub, w);
+  device half* o = out + (ulong)row * d.y + blk * Q::QK;
+  for (int q = 0; q < Q::EPL / 4; q++) *(device half4*)(o + Q::pos(sub, 4 * q)) = half4(w[q]);
+}
+#define Q_DEQ_INST(Q, name) \
+  template [[host_name("q_deq_f16_" name)]] kernel void q_deq_f16<Q>(device const uchar*, device half*, constant uint4&, uint2);
+Q_DEQ_INST(QB_Q8_0, "q8_0")
+Q_DEQ_INST(QB_Q5K, "q5_k")
+Q_DEQ_INST(QB_Q6K, "q6_k")
+Q_DEQ_INST(QB_IQ1S, "iq1_s")
+Q_DEQ_INST(QB_IQ2XXS, "iq2_xxs")
+
 #define Q_MM_INST1(Q, name, TM, TN, NSG, NBUF)                                                                   \
   template [[host_name("q_mm_" name "_" #TM "x" #TN "_b" #NBUF)]] kernel void q_mm<Q, TM, TN, NSG, NBUF>(      \
       device const uchar*, device const half*, device float*, constant QMmArgs&, threadgroup half*, uint2, ushort);
