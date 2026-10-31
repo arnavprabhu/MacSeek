@@ -4,7 +4,10 @@
 #include "store/memguard.hpp"
 #include "store/weights.hpp"
 
+#include <sys/mman.h>
+
 #include <cstdio>
+#include <vector>
 #include <cstdlib>
 #include <string>
 
@@ -26,6 +29,22 @@ int main(int argc, char** argv) {
   printf("mem before: %s\n", m0.str().c_str());
   if (m0.available < (6ull << 30) + (8ull << 30)) { printf("not enough free memory for a full load; abort\n"); return 2; }
   Gguf g(Gguf::default_model_path());
+  {   // page-cache residency of the bytes we are about to read (F_NOCACHE preads are served from cached pages)
+    uint64_t tot = 0, res = 0;
+    std::vector<char*> maps;
+    for (int sp = 0; sp < g.n_splits(); sp++) maps.push_back((char*)mmap(nullptr, g.file_size(sp), PROT_READ, MAP_SHARED, g.fd(sp), 0));
+    for (auto& t : g.tensors()) {
+      if (Weights::is_streamed(t.name) || (!o.token_embd_resident && t.name == "token_embd.weight")) continue;
+      uint64_t a = t.offset / 16384 * 16384, b = (t.offset + t.nbytes + 16383) / 16384 * 16384;
+      std::vector<char> v((b - a) / 16384);
+      if (maps[t.split] != MAP_FAILED) mincore(maps[t.split] + a, b - a, v.data());
+      for (char c : v) res += c & 1;
+      tot += v.size();
+    }
+    for (int sp = 0; sp < g.n_splits(); sp++) if (maps[sp] != MAP_FAILED) munmap(maps[sp], g.file_size(sp));
+    printf("page-cache resident before load: %.1f%% of the weight pages (%s)\n", 100.0 * res / tot,
+           res * 10 > tot ? "WARM: GB/s is not an SSD number" : "cold");
+  }
   Weights w(g, o);
   MemStatus m1 = mem_status();
   printf("resident weights: %zu tensors, %.3f GiB (%.3f GB read incl. 16K rounding) in %.0f ms = %.2f GB/s; %zu MTLBuffers; "

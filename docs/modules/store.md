@@ -165,17 +165,22 @@ after a run.
 
 All runs held the model lock (exclusive SSD) unless noted. Raw logs: `logs/bench_*.txt` in the worktree (not committed).
 
-**Resident weights (`bench_weights_load`, 921 tensors, 6.154 GiB, 6.609 GB read incl. 16 KiB rounding):**
+**Resident weights (`bench_weights_load`, 921 tensors, 6.154 GiB, 6.609 GB read incl. 16 KiB rounding).**
+Caveat: every run happened right after llama.cpp oracle/baseline runs that mmap the model. A mincore check showed
+**100% of the weight pages in the page cache**, and F_NOCACHE preads are served from cached pages. So these are *warm*
+numbers (memory copy + VM cost), not SSD numbers. They are still valid for comparing the variants:
 
-| config | load | GB/s | after load |
+| config (warm page cache) | load | GB/s | after load |
 |---|---|---|---|
 | 8 thr x 8 MiB, no mlock | 986 ms | 6.70 | rss 1.39 GiB / footprint 6.18: **~4.8 GB compressed by macOS within 1 s** |
 | 16 thr x 16 MiB, mlock after read | 1201 ms + 1179 ms mlock | 5.50 | rss 6.16 = footprint 6.18 (wired) |
 | 8 thr x 8 MiB, prefault (touch) first | 2383 ms | 2.77 | rss 0.63: idle zero pages compressed, then refaulted |
-| 8 thr x 8 MiB, mlock BEFORE read (new default) | WEIGHTS_MLOCK_FIRST |
+| **8 thr x 8 MiB, mlock BEFORE read (default)** | **614 ms** (372 mlock + 242 read) | 10.8 | rss 6.18 = footprint 6.18, nothing compressed |
 
-Hence `mlock` (wire before reading) is the default (`MACSEEK_WEIGHTS_MLOCK=0` to disable). Prefault without wiring
-is off.
+So wiring before the reads is both the fastest and the only variant that stays uncompressed. It is the default
+(`MACSEEK_WEIGHTS_MLOCK=0` to disable). A cold start should be ~6.6 GB / ~11.5 GB/s sequential ≈ 0.6 s + 0.37 s mlock
+≈ **1 s**, but that was not measured: the model lock was busy. `bench_weights_load` now prints the page-cache
+residency first, so a cold run qualifies itself.
 
 **Expert misses (`bench_experts_io lat`): 6 cold misses in one random layer, ensure() -> lease.wait() (12-20 iters per
 config, 41-55 MB per call):**
