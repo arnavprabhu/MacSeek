@@ -382,3 +382,193 @@ kernel void attn_topk_finalize(device const int* Ri [[buffer(0)]], device const 
       mask[(size_t)q * a.mask_words + i] = atomic_load_explicit(&bits[i], memory_order_relaxed);
   }
 }
+
+// ------------------------------------------------------------------------------------------------------------------
+// Decode fast path: tensor-op scoring (M = 32 heads, N = 64 keys, K = 128) + 4096-bin histogram of the top 12 key bits,
+// then a grid-wide compaction and a small final select (attn_topk_compact / attn_topk_final).
+struct AttnIdxDec2Args {
+  int pos, len, nvirt, actq, tiles_per_tg, cand_src, krows;
+};
+// grid (ceil(ceil(nvirt/64)/tiles_per_tg)), 128 threads. hist/bhist: device uint[4096] (zeroed by attn_topk_final).
+kernel void attn_idx_score_dec2(device const float* qraw [[buffer(0)]], device const float* wraw [[buffer(1)]],
+                                device const float2* tab [[buffer(2)]], device half* ikey [[buffer(3)]],
+                                device float* scores [[buffer(4)]], device float* bscores [[buffer(5)]],
+                                device atomic_uint* hist [[buffer(6)]], device atomic_uint* bhist [[buffer(7)]],
+                                constant AttnIdxDec2Args& a [[buffer(8)]], uint tg [[threadgroup_position_in_grid]],
+                                ushort t [[thread_index_in_threadgroup]]) {
+  threadgroup half Qs[ATTN_IH * ATTN_ID];
+  threadgroup float T[ATTN_IH * 64];
+  threadgroup atomic_uint lh[4096];
+  {
+    float v[32];
+    attn_idx_prep_thread(qraw, tab, a.pos, a.actq, t, v);
+    threadgroup half* d = Qs + (t >> 2) * ATTN_ID + (t & 3) * 32;
+    for (int i = 0; i < 32; i++) d[i] = half(v[i]);
+    for (int b = t; b < 4096; b += 128) atomic_store_explicit(&lh[b], 0u, memory_order_relaxed);
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  auto tA = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Qs, dextents<int32_t, 2>(ATTN_ID, ATTN_IH));
+  auto tB = tensor<device half, dextents<int32_t, 2>, tensor_inline>(ikey, dextents<int32_t, 2>(ATTN_ID, a.krows));
+  constexpr auto desc = matmul2d_descriptor(ATTN_IH, 64, ATTN_ID, false, true, false);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  const int nblocks = (a.len + 7) / 8;
+  for (int tt = 0; tt < a.tiles_per_tg; tt++) {
+    const int k0 = (int(tg) * a.tiles_per_tg + tt) * 64;
+    if (k0 >= a.nvirt) break;
+    auto mB = tB.template slice<ATTN_ID, 64>(0, k0);
+    auto cT = op.template get_destination_cooperative_tensor<decltype(tA), decltype(mB), float>();
+    for (uint16_t i = 0; i < cT.get_capacity(); ++i) if (cT.is_valid_element(i)) cT[i] = 0;
+    op.run(tA, mB, cT);
+    for (uint16_t i = 0; i < cT.get_capacity(); ++i) {
+      if (cT.is_valid_element(i)) {
+        auto id = cT.get_multidimensional_index(i);
+        T[id[1] * 64 + id[0]] = max(cT[i], 0.0f) * (wraw[id[1]] * (1.0f / 64.0f));
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (t < 64) {
+      float s = 0;
+      for (int h = 0; h < ATTN_IH; h++) s += T[h * 64 + t];
+      const int key = k0 + t;
+      const bool valid = key < a.len;
+      float sc = valid ? s : -INFINITY;
+      if (key < a.nvirt) scores[key] = sc;
+      if (valid) atomic_fetch_add_explicit(&lh[attn_fkey(sc) >> 20], 1u, memory_order_relaxed);
+      if (a.cand_src) {
+        float bm = sc;
+        bm = max(bm, simd_shuffle_xor(bm, 1)); bm = max(bm, simd_shuffle_xor(bm, 2)); bm = max(bm, simd_shuffle_xor(bm, 4));
+        int b = key >> 3;
+        if (b == (a.len - 1) / 8) bm = INFINITY;
+        if ((t & 7) == 0 && b < nblocks) {
+          bscores[b] = bm;
+          atomic_fetch_add_explicit(&bhist[attn_fkey(bm) >> 20], 1u, memory_order_relaxed);
+        }
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  for (int b = t; b < 4096; b += 128) {
+    uint v = atomic_load_explicit(&lh[b], memory_order_relaxed);
+    if (v) atomic_fetch_add_explicit(&hist[b], v, memory_order_relaxed);
+  }
+}
+
+// threshold bin from a 4096-bin histogram (descending): largest b0 with count(bins >= b0) >= k (or 0 if total <= k).
+// 256 threads, 16 bins each. Returns b0 and count of elements in bins > b0 via tmp.
+inline void attn_hist_threshold(device const uint* hist, int k, threadgroup uint* tmp, ushort t, ushort sg, ushort ln,
+                                thread uint& b0, thread uint& above_b0, thread uint& total) {
+  uint c[16], s = 0;
+  for (int j = 0; j < 16; j++) { c[j] = hist[4095 - (t * 16 + j)]; s += c[j]; }
+  uint above = attn_scan_excl(s, tmp, sg, ln, 8, total);
+  if (total <= uint(k)) { b0 = 0; above_b0 = 0; return; }
+  if (above < uint(k) && uint(k) <= above + s) {
+    uint acc = above;
+    for (int j = 0; j < 16; j++) {
+      if (acc + c[j] >= uint(k)) { tmp[34] = 4095 - (t * 16 + j); tmp[35] = acc; break; }
+      acc += c[j];
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  b0 = tmp[34]; above_b0 = tmp[35];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+}
+
+// ctl layout (device uint): [0] count of definite picks (bins > b0) in sel, [1] count of candidates (bin == b0) in cand,
+// [2] overflow flag. sel: int[k]; cand: uint2 (key, idx) [cap].
+struct AttnCompactArgs { int n; int k; int cap; int per_tg; };
+// grid (ceil(n/per_tg)), 256 threads
+kernel void attn_topk_compact(device const float* scores [[buffer(0)]], device const uint* hist [[buffer(1)]],
+                              device atomic_uint* ctl [[buffer(2)]], device int* sel [[buffer(3)]],
+                              device uint2* cand [[buffer(4)]], constant AttnCompactArgs& a [[buffer(5)]],
+                              uint tg [[threadgroup_position_in_grid]], ushort t [[thread_index_in_threadgroup]],
+                              ushort sg [[simdgroup_index_in_threadgroup]], ushort ln [[thread_index_in_simdgroup]]) {
+  threadgroup uint tmp[40];
+  uint b0, above, total;
+  attn_hist_threshold(hist, a.k, tmp, t, sg, ln, b0, above, total);
+  const int i0 = int(tg) * a.per_tg, i1 = min(a.n, i0 + a.per_tg);
+  for (int i = i0 + t; i < i1; i += 256) {
+    uint kk = attn_fkey(scores[i]);
+    if (kk == 0u) continue;
+    uint bin = kk >> 20;
+    if (bin > b0) {
+      uint sl = atomic_fetch_add_explicit(&ctl[0], 1u, memory_order_relaxed);
+      sel[sl] = i;
+    } else if (bin == b0) {
+      uint sl = atomic_fetch_add_explicit(&ctl[1], 1u, memory_order_relaxed);
+      if (sl < uint(a.cap)) cand[sl] = uint2(kk, uint(i)); else atomic_store_explicit(&ctl[2], 1u, memory_order_relaxed);
+    }
+  }
+}
+
+struct AttnSrcCand {
+  device const uint2* c;
+  uint key(int i) const { return c[i].x; }
+  int idx(int i) const { return int(c[i].y); }
+};
+struct AttnFinalArgs { int n; int k; int list_mode; };
+// One threadgroup (1024): picks = sel[0..ctl0) + top (k - ctl0) of cand; sorted ascending; -1 padded; maps list mode;
+// resets hist/ctl for the next use. Falls back to a full exact select over scores on candidate overflow or a
+// partially-taken tie (keeps results deterministic).
+kernel void attn_topk_final(device const float* scores [[buffer(0)]], device uint* hist [[buffer(1)]],
+                            device uint* ctl [[buffer(2)]], device const int* sel [[buffer(3)]],
+                            device const uint2* cand [[buffer(4)]], device const int* blist [[buffer(5)]],
+                            device int* out [[buffer(6)]], constant AttnFinalArgs& a [[buffer(7)]],
+                            ushort tid [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
+                            ushort ln [[thread_index_in_simdgroup]]) {
+  threadgroup uint lhist[2048];
+  threadgroup uint tmp[40];
+  threadgroup uint okey[2048];
+  threadgroup int oidx[2048];
+  threadgroup atomic_int ocnt;
+  threadgroup int flag;
+  const int nsel = int(ctl[0]), ncand = int(ctl[1]);
+  const bool overflow = ctl[2] != 0u;
+  int m = 0;
+  if (tid == 0) flag = 0;
+  if (!overflow) {
+    for (int i = tid; i < nsel; i += 1024) oidx[i] = sel[i];
+    const int need = min(a.k, nsel + ncand) - nsel;
+    AttnSrcCand src{cand};
+    // select `need` of the candidates into okey/oidx after the definite picks (reuse lhist as histogram)
+    threadgroup uint* ok2 = okey;
+    threadgroup int* oi2 = oidx + nsel;
+    if (need > 0) {
+      attn_select(src, ncand, need, lhist, tmp, ok2, oi2, &ocnt, tid, sg, ln);
+      // detect a partially taken tie at the threshold: if any unselected candidate equals the minimum selected key
+      // we cannot know the lowest-index rule was respected (candidate order is arbitrary) -> full fallback.
+      if (need < ncand) {
+        if (tid == 0) { tmp[37] = 0xFFFFFFFFu; tmp[38] = 0u; }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        uint mn = 0xFFFFFFFFu;
+        for (int i = tid; i < need; i += 1024) mn = min(mn, ok2[i]);
+        mn = simd_min(mn);
+        if (ln == 0) atomic_fetch_min_explicit((threadgroup atomic_uint*)&tmp[37], mn, memory_order_relaxed);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        const uint T = tmp[37];
+        uint unsel = 0;  // candidates equal to T minus selected equal to T (>= 0)
+        for (int i = tid; i < ncand; i += 1024) unsel += cand[i].x == T ? 1u : 0u;
+        for (int i = tid; i < need; i += 1024) unsel -= ok2[i] == T ? 1u : 0u;
+        unsel = simd_sum(unsel);
+        if (ln == 0) atomic_fetch_add_explicit((threadgroup atomic_uint*)&tmp[38], unsel, memory_order_relaxed);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (tid == 0 && tmp[38] != 0u) flag = 1;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+      }
+    }
+    m = nsel + max(need, 0);
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (overflow || flag) {
+    AttnSrcScores src{scores};
+    attn_select(src, a.n, a.k, lhist, tmp, okey, oidx, &ocnt, tid, sg, ln);
+    m = atomic_load_explicit(&ocnt, memory_order_relaxed);
+  }
+  attn_sort_int(oidx, m, 2048, tid);
+  for (int i = tid; i < a.k; i += 1024) {
+    int v = i < m ? oidx[i] : -1;
+    if (v >= 0 && a.list_mode) v = blist[v >> 3] * 8 + (v & 7);
+    out[i] = v;
+  }
+  for (int b = tid; b < 4096; b += 1024) hist[b] = 0;
+  if (tid < 4) ctl[tid] = 0;
+}

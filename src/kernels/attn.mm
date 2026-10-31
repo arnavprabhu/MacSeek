@@ -17,6 +17,9 @@ struct CommitArgs { int start, first; };
 struct QuantArgs { uint32_t n; int mode; };
 struct IdxDecArgs { int pos, len, nvirt, list_mode, actq, tiles_per_tg, cand_src; };
 struct TopkArgs { int n, k, list_mode; };
+struct IdxDec2Args { int pos, len, nvirt, actq, tiles_per_tg, cand_src, krows; };
+struct CompactArgs { int n, k, cap, per_tg; };
+struct FinalArgs { int n, k, list_mode; };
 struct IdxQArgs { int start, n, actq; };
 struct IdxPfArgs { int start, n, ratio, kc0, kc, ld_s, use_mask, mask_words, cand_src, krows, qrows; };
 struct MergeArgs { int n, k, cnt, ld_s, base, first; };
@@ -30,6 +33,9 @@ Options Options::from_env() {
   o.max_pos = (int)env_int("MACSEEK_MAX_POS", o.max_pos);
   o.key_chunk = (int)env_int("MACSEEK_ATTN_KCHUNK", o.key_chunk);
   o.dec_rows_split = (int)env_int("MACSEEK_ATTN_DEC_SPLIT", o.dec_rows_split);
+  o.dec_heads_tg = (int)env_int("MACSEEK_ATTN_DEC_HEADS", o.dec_heads_tg);
+  o.pf_heads_tg = (int)env_int("MACSEEK_ATTN_PF_HEADS", o.pf_heads_tg);
+  o.dec_fast_index = env_int("MACSEEK_ATTN_DEC_FAST", 1) != 0;
   return o;
 }
 
@@ -88,6 +94,10 @@ void init(State& s, const Options& o) {
   s.dec_scores = d.alloc((size_t)(o.max_pos + kRowPad) * 4, "attn.dec_scores");
   s.dec_bscores = d.alloc((size_t)(max_blocks + kRowPad) * 4, "attn.dec_bscores");
   s.topk = d.alloc((size_t)nmax * kTopk * 4, "attn.topk");
+  s.dec_hist = d.alloc(2 * 4096 * 4, "attn.dec_hist");
+  s.dec_ctl = d.alloc(2 * 4 * 4, "attn.dec_ctl");
+  s.dec_sel = d.alloc(2 * 2048 * 4, "attn.dec_sel");
+  s.dec_cand = d.alloc((size_t)2 * o.dec_cand_cap * 8, "attn.dec_cand");
   s.cand_list = d.alloc((size_t)kCandBlocks * 4, "attn.cand_list");
   s.cand_mask = d.alloc((size_t)nmax * s.mask_words * 4, "attn.cand_mask");
   s.Qi = d.alloc((size_t)nq2 * kIH * kID * 2, "attn.Qi");
@@ -157,8 +167,43 @@ void encode_index_decode(Enc& e, State& s, int L, const Buffer& iq, const Buffer
   const bool lm = uses_cand(L), cs = is_cand_source(L);
   const int nblocks = (len + kCandBS - 1) / kCandBS;
   const int nvirt = lm ? std::min(nblocks, kCandBlocks) * kCandBS : len;
+  if (s.opt.dec_fast_index && !lm && nvirt > 0) {
+    const int tpt = 16, tiles = (nvirt + 63) / 64;
+    IdxDec2Args a{pos, len, nvirt, s.opt.actq ? 1 : 0, tpt, cs ? 1 : 0, s.cap[sl] + kRowPad};
+    e.set_pipeline("attn_idx_score_dec2");
+    e.set_buffer(0, iq); e.set_buffer(1, iw); e.set_buffer(2, tab_of(s, L)); e.set_buffer(3, s.ikey[sl]);
+    e.set_buffer(4, s.dec_scores); e.set_buffer(5, s.dec_bscores); e.set_buffer(6, s.dec_hist.sub(0, 4096 * 4));
+    e.set_buffer(7, s.dec_hist.sub(4096 * 4, 4096 * 4)); e.set_value(8, a);
+    e.dispatch_groups((tiles + tpt - 1) / tpt, 1, 1, 128);
+    e.barrier();
+    const int per_tg = 4096;
+    auto compact = [&](int p, const Buffer& sc, int n, int k) {
+      CompactArgs c{n, k, s.opt.dec_cand_cap, per_tg};
+      e.set_pipeline("attn_topk_compact");
+      e.set_buffer(0, sc); e.set_buffer(1, s.dec_hist.sub((size_t)p * 4096 * 4, 4096 * 4));
+      e.set_buffer(2, s.dec_ctl.sub((size_t)p * 16, 16)); e.set_buffer(3, s.dec_sel.sub((size_t)p * 2048 * 4, 2048 * 4));
+      e.set_buffer(4, s.dec_cand.sub((size_t)p * s.opt.dec_cand_cap * 8, (size_t)s.opt.dec_cand_cap * 8)); e.set_value(5, c);
+      e.dispatch_groups((n + per_tg - 1) / per_tg, 1, 1, 256);
+    };
+    auto fin = [&](int p, const Buffer& sc, int n, int k, const Buffer& out) {
+      FinalArgs f{n, k, 0};
+      e.set_pipeline("attn_topk_final");
+      e.set_buffer(0, sc); e.set_buffer(1, s.dec_hist.sub((size_t)p * 4096 * 4, 4096 * 4));
+      e.set_buffer(2, s.dec_ctl.sub((size_t)p * 16, 16)); e.set_buffer(3, s.dec_sel.sub((size_t)p * 2048 * 4, 2048 * 4));
+      e.set_buffer(4, s.dec_cand.sub((size_t)p * s.opt.dec_cand_cap * 8, (size_t)s.opt.dec_cand_cap * 8));
+      e.set_buffer(5, s.cand_list); e.set_buffer(6, out); e.set_value(7, f);
+      e.dispatch_groups(1, 1, 1, 1024);
+    };
+    compact(0, s.dec_scores, nvirt, kTopk);
+    if (cs) compact(1, s.dec_bscores, nblocks, kCandBlocks);
+    e.barrier();
+    fin(0, s.dec_scores, nvirt, kTopk, s.topk);
+    if (cs) fin(1, s.dec_bscores, nblocks, kCandBlocks, s.cand_list);
+    e.barrier();
+    return;
+  }
   if (nvirt > 0) {
-    const int tpt = 4;
+    const int tpt = 16;
     IdxDecArgs a{pos, len, nvirt, lm ? 1 : 0, s.opt.actq ? 1 : 0, tpt, cs ? 1 : 0};
     int tiles = (nvirt + 63) / 64;
     e.set_pipeline("attn_idx_score_dec");
@@ -242,11 +287,12 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     const int rps = std::max(16, s.opt.dec_rows_split / 16 * 16);
     const int splits = (R + rps - 1) / rps;
     SparseArgs a{start, 1, start + 1, ntop, splits, rps, 1.0f / std::sqrt((float)kD)};
-    e.set_pipeline("attn_sparse");
+    const int hg = s.opt.dec_heads_tg == 16 ? 16 : 8;
+    e.set_pipeline(hg == 16 ? "attn_sparse_h16" : "attn_sparse_h8");
     e.set_buffer(0, q); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.win[L]); e.set_buffer(3, ckv);
     e.set_buffer(4, s.topk); e.set_buffer(5, sinks); e.set_buffer(6, tab_of(s, L)); e.set_buffer(7, out);
     e.set_buffer(8, s.part); e.set_buffer(9, s.ml); e.set_value(10, a);
-    e.dispatch_groups(4, splits, 1, 128);
+    e.dispatch_groups(kH / hg, splits, 1, 128);
     e.barrier();
     CombArgs c{start, splits};
     e.set_pipeline("attn_sparse_combine");
@@ -255,11 +301,12 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     e.dispatch_groups(kH, 1, 1, 128);
   } else {
     SparseArgs a{start, n, start, ntop, 1, R, 1.0f / std::sqrt((float)kD)};
-    e.set_pipeline("attn_sparse");
+    const int hg = s.opt.pf_heads_tg == 16 ? 16 : 8;
+    e.set_pipeline(hg == 16 ? "attn_sparse_h16" : "attn_sparse_h8");
     e.set_buffer(0, q); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
     e.set_buffer(4, s.topk); e.set_buffer(5, sinks); e.set_buffer(6, tab_of(s, L)); e.set_buffer(7, out);
     e.set_buffer(8, s.part); e.set_buffer(9, s.ml); e.set_value(10, a);
-    e.dispatch_groups(4, 1, n, 128);
+    e.dispatch_groups(kH / hg, 1, n, 128);
   }
   e.barrier();
 }

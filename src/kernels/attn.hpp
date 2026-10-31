@@ -27,6 +27,11 @@ struct Options {
   int max_chunk = 2048;    // max prefill chunk (n)
   int key_chunk = 16384;   // prefill indexer key chunk (multiple of 64). env MACSEEK_ATTN_KCHUNK
   int dec_rows_split = 64; // decode split-K rows per threadgroup (multiple of 16). env MACSEEK_ATTN_DEC_SPLIT
+  int dec_heads_tg = 8;    // heads per sparse-attention threadgroup, decode (8|16). env MACSEEK_ATTN_DEC_HEADS
+  bool dec_fast_index = true;  // tensor-op decode scorer + histogram/compaction top-k (0: simdgroup scorer +
+                               // single-threadgroup radix select). env MACSEEK_ATTN_DEC_FAST
+  int dec_cand_cap = 32768;    // candidate capacity of the decode compaction (overflow -> exact fallback)
+  int pf_heads_tg = 8;     // heads per sparse-attention threadgroup, prefill (8|16; 16 spills registers). env MACSEEK_ATTN_PF_HEADS
   static Options from_env();
 };
 
@@ -48,6 +53,7 @@ struct State {
   Buffer chunk_kv;             // half [max_chunk][512]
   Buffer part, ml;             // f32 [splits][64][512], float2 [splits][64]
   Buffer dec_scores, dec_bscores;
+  Buffer dec_hist, dec_ctl, dec_sel, dec_cand;  // [2] problems (positions, blocks): uint[4096], uint[4], int[2048], uint2[cap]
   Buffer topk;                 // int [max_chunk][512]: current shared top-k (row q = query q); decode uses row 0
   Buffer cand_list;            // int [2048]: decode candidate blocks from layer 20 (sorted, -1 pad)
   Buffer cand_mask;            // uint [max_chunk][mask_words]: prefill candidate block bitmap from layer 20

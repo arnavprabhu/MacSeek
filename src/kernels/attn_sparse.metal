@@ -14,26 +14,25 @@ struct AttnSparseArgs {
 
 constant constexpr int ATTN_LDK = 520;  // padded row stride (halves) of the staged rows
 
-// grid (4 head groups of 16, splits, nq), 128 threads (4 simdgroups; simdgroup s owns latent dims 128s..128s+127).
-kernel void attn_sparse(device const float* q [[buffer(0)]], device const half* ring [[buffer(1)]],
-                        device const half* chunk [[buffer(2)]], device const half* ckv [[buffer(3)]],
-                        device const int* topk [[buffer(4)]], device const float* sinks [[buffer(5)]],
-                        device const float2* tab [[buffer(6)]], device float* out [[buffer(7)]],
-                        device float* part [[buffer(8)]], device float2* ml [[buffer(9)]],
-                        constant AttnSparseArgs& a [[buffer(10)]], uint3 tg [[threadgroup_position_in_grid]],
-                        ushort t [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
-                        ushort ln [[thread_index_in_simdgroup]]) {
-  threadgroup half Ks[16 * ATTN_LDK];
-  threadgroup float Sp[4 * 256];
-  threadgroup half Ps[256];
-  threadgroup float As[16];
-  threadgroup int vflag[16];
-  const int h0 = int(tg.x) * 16, split = int(tg.y), qi = int(tg.z);
+// grid (64/(8*HT) head groups, splits, nq), 128 threads (4 simdgroups; simdgroup s owns latent dims 128s..128s+127).
+// HT = head tiles of 8 per threadgroup (1: 8 heads, 2: 16 heads). Each 16-row chunk: S = Q K^T (dims split over the
+// 4 simdgroups, partials reduced through threadgroup memory), online softmax, O += P V.
+template <int HT>
+inline void attn_sparse_impl(device const float* q, device const half* ring, device const half* chunk,
+                             device const half* ckv, device const int* topk, device const float* sinks,
+                             device const float2* tab, device float* out, device float* part, device float2* ml,
+                             constant AttnSparseArgs& a, uint3 tg, ushort t, ushort sg, ushort ln,
+                             threadgroup half* Ks, threadgroup float* Sp, threadgroup half* Ps, threadgroup float* As,
+                             threadgroup int* vflag, threadgroup float* Ms, threadgroup float* Ls) {
+  constexpr int HG = 8 * HT;           // heads per threadgroup
+  constexpr int LPH = 128 / HG;        // softmax lanes per head (8 or 16)
+  constexpr int RPL = 16 / LPH;        // rows per lane (2 or 1)
+  const int h0 = int(tg.x) * HG, split = int(tg.y), qi = int(tg.z);
   const int p = a.start + qi;
   // ---- stage Q (16 heads x 512, rope on dims 448..511) as half, keep in registers as 8x8 fragments ----
   {
     device const float4* qs = (device const float4*)(q + ((size_t)qi * ATTN_H + h0) * ATTN_D);
-    for (int i = t; i < 16 * 128; i += 128) {
+    for (int i = t; i < HG * 128; i += 128) {
       int hh = i >> 7, c4 = i & 127;
       float4 x = qs[i];
       if (c4 >= 112) {
@@ -45,15 +44,15 @@ kernel void attn_sparse(device const float* q [[buffer(0)]], device const half* 
     }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  simdgroup_half8x8 qa[2][16];
-  for (int ht = 0; ht < 2; ht++)
+  simdgroup_half8x8 qa[HT][16];
+  for (int ht = 0; ht < HT; ht++)
     for (int kk = 0; kk < 16; kk++) simdgroup_load(qa[ht][kk], Ks + ht * 8 * ATTN_LDK + sg * 128 + kk * 8, ATTN_LDK);
   threadgroup_barrier(mem_flags::mem_threadgroup);
 
-  simdgroup_float8x8 o[2][16];
-  for (int ht = 0; ht < 2; ht++) for (int dt = 0; dt < 16; dt++) o[ht][dt] = simdgroup_float8x8(0);
+  simdgroup_float8x8 o[HT][16];
+  for (int ht = 0; ht < HT; ht++) for (int dt = 0; dt < 16; dt++) o[ht][dt] = simdgroup_float8x8(0);
   const ushort fm = attn_frag_row(ln), fn = attn_frag_col(ln);
-  const int hh = t >> 3, c = (t & 7) * 2;  // softmax ownership: head hh, rows c, c+1 of each 16-row chunk
+  const int hh = t / LPH, c = (t % LPH) * RPL;  // softmax ownership: head hh, rows c..c+RPL-1 of each 16-row chunk
   float m_run = -INFINITY, l_run = 0;
   const int R = ATTN_W + a.ntop;
   const int r_begin = split * a.rows_per_split, r_end = min(R, r_begin + a.rows_per_split);
@@ -83,56 +82,62 @@ kernel void attn_sparse(device const float* q [[buffer(0)]], device const half* 
     int any = 0;
     for (int i = 0; i < 16; i++) any |= vflag[i];
     if (any) {
-      simdgroup_float8x8 sacc[2][2];
-      for (int ht = 0; ht < 2; ht++) for (int rt = 0; rt < 2; rt++) sacc[ht][rt] = simdgroup_float8x8(0);
+      simdgroup_float8x8 sacc[HT][2];
+      for (int ht = 0; ht < HT; ht++) for (int rt = 0; rt < 2; rt++) sacc[ht][rt] = simdgroup_float8x8(0);
       for (int kk = 0; kk < 16; kk++)
         for (int rt = 0; rt < 2; rt++) {
           simdgroup_half8x8 kb;
           simdgroup_load(kb, Ks + rt * 8 * ATTN_LDK + sg * 128 + kk * 8, ATTN_LDK, ulong2(0, 0), true);
-          for (int ht = 0; ht < 2; ht++) simdgroup_multiply_accumulate(sacc[ht][rt], qa[ht][kk], kb, sacc[ht][rt]);
+          for (int ht = 0; ht < HT; ht++) simdgroup_multiply_accumulate(sacc[ht][rt], qa[ht][kk], kb, sacc[ht][rt]);
         }
-      for (int ht = 0; ht < 2; ht++)
+      for (int ht = 0; ht < HT; ht++)
         for (int rt = 0; rt < 2; rt++) simdgroup_store(sacc[ht][rt], Sp + sg * 256 + ht * 8 * 16 + rt * 8, 16);
       threadgroup_barrier(mem_flags::mem_threadgroup);
-      float s0 = 0, s1 = 0;
-      for (int g = 0; g < 4; g++) { s0 += Sp[g * 256 + hh * 16 + c]; s1 += Sp[g * 256 + hh * 16 + c + 1]; }
-      s0 = vflag[c] ? s0 * a.scale : -INFINITY;
-      s1 = vflag[c + 1] ? s1 * a.scale : -INFINITY;
-      float mx = max(s0, s1);
-      mx = max(mx, simd_shuffle_xor(mx, 1)); mx = max(mx, simd_shuffle_xor(mx, 2)); mx = max(mx, simd_shuffle_xor(mx, 4));
+      float sv[RPL];
+      float mx = -INFINITY;
+      for (int j = 0; j < RPL; j++) {
+        float x = 0;
+        for (int g = 0; g < 4; g++) x += Sp[g * 256 + hh * 16 + c + j];
+        sv[j] = vflag[c + j] ? x * a.scale : -INFINITY;
+        mx = max(mx, sv[j]);
+      }
+      for (int sh = 1; sh < LPH; sh <<= 1) mx = max(mx, simd_shuffle_xor(mx, sh));
       float m_new = max(m_run, mx);
-      float alpha = 1, p0 = 0, p1 = 0;
-      if (m_new != -INFINITY) { alpha = exp(m_run - m_new); p0 = exp(s0 - m_new); p1 = exp(s1 - m_new); }
-      float ps = p0 + p1;
-      ps += simd_shuffle_xor(ps, 1); ps += simd_shuffle_xor(ps, 2); ps += simd_shuffle_xor(ps, 4);
+      float alpha = 1, ps = 0;
+      float pv[RPL];
+      for (int j = 0; j < RPL; j++) pv[j] = 0;
+      if (m_new != -INFINITY) {
+        alpha = exp(m_run - m_new);
+        for (int j = 0; j < RPL; j++) { pv[j] = exp(sv[j] - m_new); ps += pv[j]; }
+      }
+      for (int sh = 1; sh < LPH; sh <<= 1) ps += simd_shuffle_xor(ps, sh);
       l_run = l_run * alpha + ps;
       m_run = m_new;
-      Ps[hh * 16 + c] = half(p0);
-      Ps[hh * 16 + c + 1] = half(p1);
-      if ((t & 7) == 0) As[hh] = alpha;
+      for (int j = 0; j < RPL; j++) Ps[hh * 16 + c + j] = half(pv[j]);
+      if ((t % LPH) == 0) As[hh] = alpha;
       threadgroup_barrier(mem_flags::mem_threadgroup);
-      float al[2] = {As[fm], As[8 + fm]};
-      simdgroup_half8x8 pa[2][2];
-      for (int ht = 0; ht < 2; ht++)
+      float al[HT];
+      for (int ht = 0; ht < HT; ht++) al[ht] = As[ht * 8 + fm];
+      simdgroup_half8x8 pa[HT][2];
+      for (int ht = 0; ht < HT; ht++)
         for (int rt = 0; rt < 2; rt++) simdgroup_load(pa[ht][rt], Ps + ht * 8 * 16 + rt * 8, 16);
       for (int dt = 0; dt < 16; dt++) {
-        for (int ht = 0; ht < 2; ht++) {
+        for (int ht = 0; ht < HT; ht++) {
           o[ht][dt].thread_elements()[0] *= al[ht];
           o[ht][dt].thread_elements()[1] *= al[ht];
         }
         for (int rt = 0; rt < 2; rt++) {
           simdgroup_half8x8 vb;
           simdgroup_load(vb, Ks + rt * 8 * ATTN_LDK + sg * 128 + dt * 8, ATTN_LDK);
-          for (int ht = 0; ht < 2; ht++) simdgroup_multiply_accumulate(o[ht][dt], pa[ht][rt], vb, o[ht][dt]);
+          for (int ht = 0; ht < HT; ht++) simdgroup_multiply_accumulate(o[ht][dt], pa[ht][rt], vb, o[ht][dt]);
         }
       }
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
   }
-  threadgroup float Ms[16], Ls[16];
-  if ((t & 7) == 0) { Ms[hh] = m_run; Ls[hh] = l_run; }
+  if ((t % LPH) == 0) { Ms[hh] = m_run; Ls[hh] = l_run; }
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  for (int ht = 0; ht < 2; ht++) {
+  for (int ht = 0; ht < HT; ht++) {
     const int head = ht * 8 + fm, hgl = h0 + head;
     float mh = Ms[head], lh = Ls[head];
     if (a.splits == 1) {
@@ -159,6 +164,26 @@ kernel void attn_sparse(device const float* q [[buffer(0)]], device const half* 
     }
   }
 }
+
+#define ATTN_SPARSE_KERNEL(NAME, HT)                                                                              \
+  kernel void NAME(device const float* q [[buffer(0)]], device const half* ring [[buffer(1)]],                     \
+                   device const half* chunk [[buffer(2)]], device const half* ckv [[buffer(3)]],                   \
+                   device const int* topk [[buffer(4)]], device const float* sinks [[buffer(5)]],                  \
+                   device const float2* tab [[buffer(6)]], device float* out [[buffer(7)]],                        \
+                   device float* part [[buffer(8)]], device float2* ml [[buffer(9)]],                              \
+                   constant AttnSparseArgs& a [[buffer(10)]], uint3 tg [[threadgroup_position_in_grid]],           \
+                   ushort t [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],         \
+                   ushort ln [[thread_index_in_simdgroup]]) {                                                      \
+    threadgroup half Ks[16 * ATTN_LDK];                                                                            \
+    threadgroup float Sp[4 * 256];                                                                                 \
+    threadgroup half Ps[256];                                                                                      \
+    threadgroup float As[16], Ms[16], Ls[16];                                                                      \
+    threadgroup int vflag[16];                                                                                     \
+    attn_sparse_impl<HT>(q, ring, chunk, ckv, topk, sinks, tab, out, part, ml, a, tg, t, sg, ln, Ks, Sp, Ps, As,   \
+                         vflag, Ms, Ls);                                                                           \
+  }
+ATTN_SPARSE_KERNEL(attn_sparse_h8, 1)
+ATTN_SPARSE_KERNEL(attn_sparse_h16, 2)
 
 struct AttnCombArgs { int pos; int splits; };
 // grid (64 heads), 128 threads x 4 dims: merge split partials, sink, normalize, inverse rope -> out [64][512]
