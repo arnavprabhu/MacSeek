@@ -56,8 +56,6 @@ build CMakeFiles/metalc.dir/tools/metalc/metalc.mm.o: OBJCXX_COMPILER__metalc_un
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/metalc.dir
   OBJECT_FILE_DIR = CMakeFiles/metalc.dir/tools/metalc
-  TARGET_COMPILE_PDB = CMakeFiles/metalc.dir/
-  TARGET_PDB = metalc.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/metalc.dir
 
 
@@ -76,9 +74,8 @@ build metalc: OBJCXX_EXECUTABLE_LINKER__metalc_Release CMakeFiles/metalc.dir/too
   OBJECT_DIR = CMakeFiles/metalc.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/metalc.dir/
   TARGET_FILE = metalc
-  TARGET_PDB = metalc.pdb
+  TARGET_PDB = metalc.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/metalc.dir
 
 
@@ -105,8 +102,6 @@ build CMakeFiles/macseek_lib.dir/src/core/metal.mm.o: OBJCXX_COMPILER__macseek_l
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/core
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/gguf/gguf.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/gguf/gguf.cpp || cmake_object_order_depends_target_macseek_lib
@@ -118,8 +113,6 @@ build CMakeFiles/macseek_lib.dir/src/gguf/gguf.cpp.o: CXX_COMPILER__macseek_lib_
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/gguf
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/kernels/arch.mm.o: OBJCXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch.mm || cmake_object_order_depends_target_macseek_lib
@@ -131,8 +124,6 @@ build CMakeFiles/macseek_lib.dir/src/kernels/arch.mm.o: OBJCXX_COMPILER__macseek
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/kernels
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/kernels/attn.mm.o: OBJCXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn.mm || cmake_object_order_depends_target_macseek_lib
@@ -144,8 +135,6 @@ build CMakeFiles/macseek_lib.dir/src/kernels/attn.mm.o: OBJCXX_COMPILER__macseek
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/kernels
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/kernels/quant.mm.o: OBJCXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant.mm || cmake_object_order_depends_target_macseek_lib
@@ -157,8 +146,6 @@ build CMakeFiles/macseek_lib.dir/src/kernels/quant.mm.o: OBJCXX_COMPILER__macsee
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/kernels
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o: OBJCXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/model/ds41.mm || cmake_object_order_depends_target_macseek_lib
@@ -170,8 +157,6 @@ build CMakeFiles/macseek_lib.dir/src/model/ds41.mm.o: OBJCXX_COMPILER__macseek_l
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/model
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/model/engram_hash.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/model/engram_hash.cpp || cmake_object_order_depends_target_macseek_lib
@@ -183,8 +168,6 @@ build CMakeFiles/macseek_lib.dir/src/model/engram_hash.cpp.o: CXX_COMPILER__macs
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/model
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/server/http.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/server/http.cpp || cmake_object_order_depends_target_macseek_lib
@@ -196,8 +179,6 @@ build CMakeFiles/macseek_lib.dir/src/server/http.cpp.o: CXX_COMPILER__macseek_li
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/server
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/store/engram.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/store/engram.cpp || cmake_object_order_depends_target_macseek_lib
@@ -209,8 +190,6 @@ build CMakeFiles/macseek_lib.dir/src/store/engram.cpp.o: CXX_COMPILER__macseek_l
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/store
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/store/experts.mm.o: OBJCXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/store/experts.mm || cmake_object_order_depends_target_macseek_lib
@@ -222,8 +201,6 @@ build CMakeFiles/macseek_lib.dir/src/store/experts.mm.o: OBJCXX_COMPILER__macsee
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/store
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/store/io_pool.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/store/io_pool.cpp || cmake_object_order_depends_target_macseek_lib
@@ -235,8 +212,6 @@ build CMakeFiles/macseek_lib.dir/src/store/io_pool.cpp.o: CXX_COMPILER__macseek_
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/store
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/store/memguard.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/store/memguard.cpp || cmake_object_order_depends_target_macseek_lib
@@ -248,8 +223,6 @@ build CMakeFiles/macseek_lib.dir/src/store/memguard.cpp.o: CXX_COMPILER__macseek
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/store
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/store/policy.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/store/policy.cpp || cmake_object_order_depends_target_macseek_lib
@@ -261,8 +234,6 @@ build CMakeFiles/macseek_lib.dir/src/store/policy.cpp.o: CXX_COMPILER__macseek_l
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/store
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/store/weights.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/store/weights.cpp || cmake_object_order_depends_target_macseek_lib
@@ -274,8 +245,6 @@ build CMakeFiles/macseek_lib.dir/src/store/weights.cpp.o: CXX_COMPILER__macseek_
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/store
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/tok/chat.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/tok/chat.cpp || cmake_object_order_depends_target_macseek_lib
@@ -287,8 +256,6 @@ build CMakeFiles/macseek_lib.dir/src/tok/chat.cpp.o: CXX_COMPILER__macseek_lib_u
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/tok
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/tok/json.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/tok/json.cpp || cmake_object_order_depends_target_macseek_lib
@@ -300,8 +267,6 @@ build CMakeFiles/macseek_lib.dir/src/tok/json.cpp.o: CXX_COMPILER__macseek_lib_u
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/tok
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 build CMakeFiles/macseek_lib.dir/src/tok/tokenizer.cpp.o: CXX_COMPILER__macseek_lib_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/tok/tokenizer.cpp || cmake_object_order_depends_target_macseek_lib
@@ -313,8 +278,6 @@ build CMakeFiles/macseek_lib.dir/src/tok/tokenizer.cpp.o: CXX_COMPILER__macseek_
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_lib.dir/src/tok
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
-  TARGET_PDB = libmacseek_lib.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 
@@ -332,9 +295,8 @@ build libmacseek_lib.a: CXX_STATIC_LIBRARY_LINKER__macseek_lib_Release CMakeFile
   OBJECT_DIR = CMakeFiles/macseek_lib.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_lib.dir/macseek_lib.pdb
   TARGET_FILE = libmacseek_lib.a
-  TARGET_PDB = libmacseek_lib.pdb
+  TARGET_PDB = macseek_lib.a.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_lib.dir
 
 # =============================================================================
@@ -355,8 +317,6 @@ build CMakeFiles/macseek.dir/src/app/main.cpp.o: CXX_COMPILER__macseek_unscanned
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek.dir/src/app
-  TARGET_COMPILE_PDB = CMakeFiles/macseek.dir/
-  TARGET_PDB = macseek.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek.dir
 
 build CMakeFiles/macseek.dir/src/app/model_cmds.mm.o: OBJCXX_COMPILER__macseek_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/src/app/model_cmds.mm || cmake_object_order_depends_target_macseek
@@ -368,8 +328,6 @@ build CMakeFiles/macseek.dir/src/app/model_cmds.mm.o: OBJCXX_COMPILER__macseek_u
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek.dir/src/app
-  TARGET_COMPILE_PDB = CMakeFiles/macseek.dir/
-  TARGET_PDB = macseek.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek.dir
 
 
@@ -388,9 +346,8 @@ build macseek: CXX_EXECUTABLE_LINKER__macseek_Release CMakeFiles/macseek.dir/src
   OBJECT_DIR = CMakeFiles/macseek.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/macseek.dir/
   TARGET_FILE = macseek
-  TARGET_PDB = macseek.pdb
+  TARGET_PDB = macseek.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/macseek.dir
 
 # =============================================================================
@@ -410,8 +367,6 @@ build CMakeFiles/macseek_ref.dir/tests/ref/arch_ref.cpp.o: CXX_COMPILER__macseek
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_ref.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_ref.dir/tests/ref
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_ref.dir/macseek_ref.pdb
-  TARGET_PDB = libmacseek_ref.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_ref.dir
 
 build CMakeFiles/macseek_ref.dir/tests/ref/arch_testutil.cpp.o: CXX_COMPILER__macseek_ref_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/tests/ref/arch_testutil.cpp || cmake_object_order_depends_target_macseek_ref
@@ -422,8 +377,6 @@ build CMakeFiles/macseek_ref.dir/tests/ref/arch_testutil.cpp.o: CXX_COMPILER__ma
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_ref.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_ref.dir/tests/ref
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_ref.dir/macseek_ref.pdb
-  TARGET_PDB = libmacseek_ref.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_ref.dir
 
 build CMakeFiles/macseek_ref.dir/tests/ref/attn_ref.cpp.o: CXX_COMPILER__macseek_ref_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/tests/ref/attn_ref.cpp || cmake_object_order_depends_target_macseek_ref
@@ -434,8 +387,6 @@ build CMakeFiles/macseek_ref.dir/tests/ref/attn_ref.cpp.o: CXX_COMPILER__macseek
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_ref.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_ref.dir/tests/ref
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_ref.dir/macseek_ref.pdb
-  TARGET_PDB = libmacseek_ref.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_ref.dir
 
 build CMakeFiles/macseek_ref.dir/tests/ref/dequant.cpp.o: CXX_COMPILER__macseek_ref_unscanned_Release /Users/arnav/Desktop/Projects/MacSeek/tests/ref/dequant.cpp || cmake_object_order_depends_target_macseek_ref
@@ -446,8 +397,6 @@ build CMakeFiles/macseek_ref.dir/tests/ref/dequant.cpp.o: CXX_COMPILER__macseek_
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/macseek_ref.dir
   OBJECT_FILE_DIR = CMakeFiles/macseek_ref.dir/tests/ref
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_ref.dir/macseek_ref.pdb
-  TARGET_PDB = libmacseek_ref.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_ref.dir
 
 
@@ -465,9 +414,8 @@ build libmacseek_ref.a: CXX_STATIC_LIBRARY_LINKER__macseek_ref_Release CMakeFile
   OBJECT_DIR = CMakeFiles/macseek_ref.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/macseek_ref.dir/macseek_ref.pdb
   TARGET_FILE = libmacseek_ref.a
-  TARGET_PDB = libmacseek_ref.pdb
+  TARGET_PDB = macseek_ref.a.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/macseek_ref.dir
 
 # =============================================================================
@@ -488,8 +436,6 @@ build CMakeFiles/test_arch_engram.dir/tests/test_arch_engram.mm.o: OBJCXX_COMPIL
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_arch_engram.dir
   OBJECT_FILE_DIR = CMakeFiles/test_arch_engram.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_engram.dir/
-  TARGET_PDB = test_arch_engram.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_engram.dir
 
 
@@ -508,9 +454,8 @@ build test_arch_engram: CXX_EXECUTABLE_LINKER__test_arch_engram_Release CMakeFil
   OBJECT_DIR = CMakeFiles/test_arch_engram.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_engram.dir/
   TARGET_FILE = test_arch_engram
-  TARGET_PDB = test_arch_engram.pdb
+  TARGET_PDB = test_arch_engram.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_engram.dir
 
 # =============================================================================
@@ -531,8 +476,6 @@ build CMakeFiles/test_arch_engram_hash.dir/tests/test_arch_engram_hash.cpp.o: CX
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_arch_engram_hash.dir
   OBJECT_FILE_DIR = CMakeFiles/test_arch_engram_hash.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_engram_hash.dir/
-  TARGET_PDB = test_arch_engram_hash.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_engram_hash.dir
 
 
@@ -551,9 +494,8 @@ build test_arch_engram_hash: CXX_EXECUTABLE_LINKER__test_arch_engram_hash_Releas
   OBJECT_DIR = CMakeFiles/test_arch_engram_hash.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_engram_hash.dir/
   TARGET_FILE = test_arch_engram_hash
-  TARGET_PDB = test_arch_engram_hash.pdb
+  TARGET_PDB = test_arch_engram_hash.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_engram_hash.dir
 
 # =============================================================================
@@ -574,8 +516,6 @@ build CMakeFiles/test_arch_hc.dir/tests/test_arch_hc.mm.o: OBJCXX_COMPILER__test
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_arch_hc.dir
   OBJECT_FILE_DIR = CMakeFiles/test_arch_hc.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_hc.dir/
-  TARGET_PDB = test_arch_hc.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_hc.dir
 
 
@@ -594,9 +534,8 @@ build test_arch_hc: CXX_EXECUTABLE_LINKER__test_arch_hc_Release CMakeFiles/test_
   OBJECT_DIR = CMakeFiles/test_arch_hc.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_hc.dir/
   TARGET_FILE = test_arch_hc
-  TARGET_PDB = test_arch_hc.pdb
+  TARGET_PDB = test_arch_hc.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_hc.dir
 
 # =============================================================================
@@ -617,8 +556,6 @@ build CMakeFiles/test_arch_router.dir/tests/test_arch_router.mm.o: OBJCXX_COMPIL
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_arch_router.dir
   OBJECT_FILE_DIR = CMakeFiles/test_arch_router.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_router.dir/
-  TARGET_PDB = test_arch_router.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_router.dir
 
 
@@ -637,9 +574,8 @@ build test_arch_router: CXX_EXECUTABLE_LINKER__test_arch_router_Release CMakeFil
   OBJECT_DIR = CMakeFiles/test_arch_router.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_router.dir/
   TARGET_FILE = test_arch_router
-  TARGET_PDB = test_arch_router.pdb
+  TARGET_PDB = test_arch_router.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_router.dir
 
 # =============================================================================
@@ -660,8 +596,6 @@ build CMakeFiles/test_arch_sample.dir/tests/test_arch_sample.mm.o: OBJCXX_COMPIL
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_arch_sample.dir
   OBJECT_FILE_DIR = CMakeFiles/test_arch_sample.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_sample.dir/
-  TARGET_PDB = test_arch_sample.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_sample.dir
 
 
@@ -680,9 +614,8 @@ build test_arch_sample: CXX_EXECUTABLE_LINKER__test_arch_sample_Release CMakeFil
   OBJECT_DIR = CMakeFiles/test_arch_sample.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_arch_sample.dir/
   TARGET_FILE = test_arch_sample
-  TARGET_PDB = test_arch_sample.pdb
+  TARGET_PDB = test_arch_sample.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_arch_sample.dir
 
 # =============================================================================
@@ -703,8 +636,6 @@ build CMakeFiles/test_attn_200k.dir/tests/test_attn_200k.mm.o: OBJCXX_COMPILER__
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_attn_200k.dir
   OBJECT_FILE_DIR = CMakeFiles/test_attn_200k.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_attn_200k.dir/
-  TARGET_PDB = test_attn_200k.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_attn_200k.dir
 
 
@@ -723,9 +654,8 @@ build test_attn_200k: CXX_EXECUTABLE_LINKER__test_attn_200k_Release CMakeFiles/t
   OBJECT_DIR = CMakeFiles/test_attn_200k.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_attn_200k.dir/
   TARGET_FILE = test_attn_200k
-  TARGET_PDB = test_attn_200k.pdb
+  TARGET_PDB = test_attn_200k.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_attn_200k.dir
 
 # =============================================================================
@@ -746,8 +676,6 @@ build CMakeFiles/test_attn_stack.dir/tests/test_attn_stack.mm.o: OBJCXX_COMPILER
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_attn_stack.dir
   OBJECT_FILE_DIR = CMakeFiles/test_attn_stack.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_attn_stack.dir/
-  TARGET_PDB = test_attn_stack.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_attn_stack.dir
 
 
@@ -766,9 +694,8 @@ build test_attn_stack: CXX_EXECUTABLE_LINKER__test_attn_stack_Release CMakeFiles
   OBJECT_DIR = CMakeFiles/test_attn_stack.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_attn_stack.dir/
   TARGET_FILE = test_attn_stack
-  TARGET_PDB = test_attn_stack.pdb
+  TARGET_PDB = test_attn_stack.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_attn_stack.dir
 
 # =============================================================================
@@ -789,8 +716,6 @@ build CMakeFiles/test_attn_units.dir/tests/test_attn_units.mm.o: OBJCXX_COMPILER
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_attn_units.dir
   OBJECT_FILE_DIR = CMakeFiles/test_attn_units.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_attn_units.dir/
-  TARGET_PDB = test_attn_units.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_attn_units.dir
 
 
@@ -809,9 +734,8 @@ build test_attn_units: CXX_EXECUTABLE_LINKER__test_attn_units_Release CMakeFiles
   OBJECT_DIR = CMakeFiles/test_attn_units.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_attn_units.dir/
   TARGET_FILE = test_attn_units
-  TARGET_PDB = test_attn_units.pdb
+  TARGET_PDB = test_attn_units.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_attn_units.dir
 
 # =============================================================================
@@ -832,8 +756,6 @@ build CMakeFiles/test_dec_sync.dir/tests/test_dec_sync.mm.o: OBJCXX_COMPILER__te
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_dec_sync.dir
   OBJECT_FILE_DIR = CMakeFiles/test_dec_sync.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_dec_sync.dir/
-  TARGET_PDB = test_dec_sync.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_dec_sync.dir
 
 
@@ -852,9 +774,8 @@ build test_dec_sync: CXX_EXECUTABLE_LINKER__test_dec_sync_Release CMakeFiles/tes
   OBJECT_DIR = CMakeFiles/test_dec_sync.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_dec_sync.dir/
   TARGET_FILE = test_dec_sync
-  TARGET_PDB = test_dec_sync.pdb
+  TARGET_PDB = test_dec_sync.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_dec_sync.dir
 
 # =============================================================================
@@ -875,8 +796,6 @@ build CMakeFiles/test_gguf.dir/tests/test_gguf.cpp.o: CXX_COMPILER__test_gguf_un
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_gguf.dir
   OBJECT_FILE_DIR = CMakeFiles/test_gguf.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_gguf.dir/
-  TARGET_PDB = test_gguf.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_gguf.dir
 
 
@@ -895,9 +814,8 @@ build test_gguf: CXX_EXECUTABLE_LINKER__test_gguf_Release CMakeFiles/test_gguf.d
   OBJECT_DIR = CMakeFiles/test_gguf.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_gguf.dir/
   TARGET_FILE = test_gguf
-  TARGET_PDB = test_gguf.pdb
+  TARGET_PDB = test_gguf.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_gguf.dir
 
 # =============================================================================
@@ -918,8 +836,6 @@ build CMakeFiles/test_quant_matmul.dir/tests/test_quant_matmul.mm.o: OBJCXX_COMP
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_quant_matmul.dir
   OBJECT_FILE_DIR = CMakeFiles/test_quant_matmul.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_matmul.dir/
-  TARGET_PDB = test_quant_matmul.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_matmul.dir
 
 
@@ -938,9 +854,8 @@ build test_quant_matmul: CXX_EXECUTABLE_LINKER__test_quant_matmul_Release CMakeF
   OBJECT_DIR = CMakeFiles/test_quant_matmul.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_matmul.dir/
   TARGET_FILE = test_quant_matmul
-  TARGET_PDB = test_quant_matmul.pdb
+  TARGET_PDB = test_quant_matmul.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_matmul.dir
 
 # =============================================================================
@@ -961,8 +876,6 @@ build CMakeFiles/test_quant_matvec.dir/tests/test_quant_matvec.mm.o: OBJCXX_COMP
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_quant_matvec.dir
   OBJECT_FILE_DIR = CMakeFiles/test_quant_matvec.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_matvec.dir/
-  TARGET_PDB = test_quant_matvec.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_matvec.dir
 
 
@@ -981,9 +894,8 @@ build test_quant_matvec: CXX_EXECUTABLE_LINKER__test_quant_matvec_Release CMakeF
   OBJECT_DIR = CMakeFiles/test_quant_matvec.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_matvec.dir/
   TARGET_FILE = test_quant_matvec
-  TARGET_PDB = test_quant_matvec.pdb
+  TARGET_PDB = test_quant_matvec.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_matvec.dir
 
 # =============================================================================
@@ -1004,8 +916,6 @@ build CMakeFiles/test_quant_matvec_n.dir/tests/test_quant_matvec_n.mm.o: OBJCXX_
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_quant_matvec_n.dir
   OBJECT_FILE_DIR = CMakeFiles/test_quant_matvec_n.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_matvec_n.dir/
-  TARGET_PDB = test_quant_matvec_n.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_matvec_n.dir
 
 
@@ -1024,9 +934,8 @@ build test_quant_matvec_n: CXX_EXECUTABLE_LINKER__test_quant_matvec_n_Release CM
   OBJECT_DIR = CMakeFiles/test_quant_matvec_n.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_matvec_n.dir/
   TARGET_FILE = test_quant_matvec_n
-  TARGET_PDB = test_quant_matvec_n.pdb
+  TARGET_PDB = test_quant_matvec_n.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_matvec_n.dir
 
 # =============================================================================
@@ -1047,8 +956,6 @@ build CMakeFiles/test_quant_moe.dir/tests/test_quant_moe.mm.o: OBJCXX_COMPILER__
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_quant_moe.dir
   OBJECT_FILE_DIR = CMakeFiles/test_quant_moe.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_moe.dir/
-  TARGET_PDB = test_quant_moe.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_moe.dir
 
 
@@ -1067,9 +974,8 @@ build test_quant_moe: CXX_EXECUTABLE_LINKER__test_quant_moe_Release CMakeFiles/t
   OBJECT_DIR = CMakeFiles/test_quant_moe.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_moe.dir/
   TARGET_FILE = test_quant_moe
-  TARGET_PDB = test_quant_moe.pdb
+  TARGET_PDB = test_quant_moe.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_moe.dir
 
 # =============================================================================
@@ -1090,8 +996,6 @@ build CMakeFiles/test_quant_moe_prefill.dir/tests/test_quant_moe_prefill.mm.o: O
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_quant_moe_prefill.dir
   OBJECT_FILE_DIR = CMakeFiles/test_quant_moe_prefill.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_moe_prefill.dir/
-  TARGET_PDB = test_quant_moe_prefill.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_moe_prefill.dir
 
 
@@ -1110,9 +1014,8 @@ build test_quant_moe_prefill: CXX_EXECUTABLE_LINKER__test_quant_moe_prefill_Rele
   OBJECT_DIR = CMakeFiles/test_quant_moe_prefill.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_moe_prefill.dir/
   TARGET_FILE = test_quant_moe_prefill
-  TARGET_PDB = test_quant_moe_prefill.pdb
+  TARGET_PDB = test_quant_moe_prefill.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_moe_prefill.dir
 
 # =============================================================================
@@ -1133,8 +1036,6 @@ build CMakeFiles/test_quant_ref.dir/tests/test_quant_ref.mm.o: OBJCXX_COMPILER__
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_quant_ref.dir
   OBJECT_FILE_DIR = CMakeFiles/test_quant_ref.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_ref.dir/
-  TARGET_PDB = test_quant_ref.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_ref.dir
 
 
@@ -1153,9 +1054,8 @@ build test_quant_ref: CXX_EXECUTABLE_LINKER__test_quant_ref_Release CMakeFiles/t
   OBJECT_DIR = CMakeFiles/test_quant_ref.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_quant_ref.dir/
   TARGET_FILE = test_quant_ref
-  TARGET_PDB = test_quant_ref.pdb
+  TARGET_PDB = test_quant_ref.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_quant_ref.dir
 
 # =============================================================================
@@ -1176,8 +1076,6 @@ build CMakeFiles/test_smoke.dir/tests/test_smoke.mm.o: OBJCXX_COMPILER__test_smo
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_smoke.dir
   OBJECT_FILE_DIR = CMakeFiles/test_smoke.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_smoke.dir/
-  TARGET_PDB = test_smoke.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_smoke.dir
 
 
@@ -1196,9 +1094,8 @@ build test_smoke: CXX_EXECUTABLE_LINKER__test_smoke_Release CMakeFiles/test_smok
   OBJECT_DIR = CMakeFiles/test_smoke.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_smoke.dir/
   TARGET_FILE = test_smoke
-  TARGET_PDB = test_smoke.pdb
+  TARGET_PDB = test_smoke.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_smoke.dir
 
 # =============================================================================
@@ -1219,8 +1116,6 @@ build CMakeFiles/test_store_engram.dir/tests/test_store_engram.mm.o: OBJCXX_COMP
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_store_engram.dir
   OBJECT_FILE_DIR = CMakeFiles/test_store_engram.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_store_engram.dir/
-  TARGET_PDB = test_store_engram.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_store_engram.dir
 
 
@@ -1239,9 +1134,8 @@ build test_store_engram: CXX_EXECUTABLE_LINKER__test_store_engram_Release CMakeF
   OBJECT_DIR = CMakeFiles/test_store_engram.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_store_engram.dir/
   TARGET_FILE = test_store_engram
-  TARGET_PDB = test_store_engram.pdb
+  TARGET_PDB = test_store_engram.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_store_engram.dir
 
 # =============================================================================
@@ -1262,8 +1156,6 @@ build CMakeFiles/test_store_experts.dir/tests/test_store_experts.mm.o: OBJCXX_CO
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_store_experts.dir
   OBJECT_FILE_DIR = CMakeFiles/test_store_experts.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_store_experts.dir/
-  TARGET_PDB = test_store_experts.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_store_experts.dir
 
 
@@ -1282,9 +1174,8 @@ build test_store_experts: CXX_EXECUTABLE_LINKER__test_store_experts_Release CMak
   OBJECT_DIR = CMakeFiles/test_store_experts.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_store_experts.dir/
   TARGET_FILE = test_store_experts
-  TARGET_PDB = test_store_experts.pdb
+  TARGET_PDB = test_store_experts.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_store_experts.dir
 
 # =============================================================================
@@ -1305,8 +1196,6 @@ build CMakeFiles/test_store_weights.dir/tests/test_store_weights.mm.o: OBJCXX_CO
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_store_weights.dir
   OBJECT_FILE_DIR = CMakeFiles/test_store_weights.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_store_weights.dir/
-  TARGET_PDB = test_store_weights.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_store_weights.dir
 
 
@@ -1325,9 +1214,8 @@ build test_store_weights: CXX_EXECUTABLE_LINKER__test_store_weights_Release CMak
   OBJECT_DIR = CMakeFiles/test_store_weights.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_store_weights.dir/
   TARGET_FILE = test_store_weights
-  TARGET_PDB = test_store_weights.pdb
+  TARGET_PDB = test_store_weights.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_store_weights.dir
 
 # =============================================================================
@@ -1348,8 +1236,6 @@ build CMakeFiles/test_tok.dir/tests/test_tok.cpp.o: CXX_COMPILER__test_tok_unsca
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/test_tok.dir
   OBJECT_FILE_DIR = CMakeFiles/test_tok.dir/tests
-  TARGET_COMPILE_PDB = CMakeFiles/test_tok.dir/
-  TARGET_PDB = test_tok.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/test_tok.dir
 
 
@@ -1368,9 +1254,8 @@ build test_tok: CXX_EXECUTABLE_LINKER__test_tok_Release CMakeFiles/test_tok.dir/
   OBJECT_DIR = CMakeFiles/test_tok.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/test_tok.dir/
   TARGET_FILE = test_tok
-  TARGET_PDB = test_tok.pdb
+  TARGET_PDB = test_tok.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/test_tok.dir
 
 # =============================================================================
@@ -1391,8 +1276,6 @@ build CMakeFiles/bench_arch.dir/bench/arch.mm.o: OBJCXX_COMPILER__bench_arch_uns
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_arch.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_arch.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_arch.dir/
-  TARGET_PDB = bench_arch.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_arch.dir
 
 
@@ -1411,9 +1294,8 @@ build bench_arch: CXX_EXECUTABLE_LINKER__bench_arch_Release CMakeFiles/bench_arc
   OBJECT_DIR = CMakeFiles/bench_arch.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_arch.dir/
   TARGET_FILE = bench_arch
-  TARGET_PDB = bench_arch.pdb
+  TARGET_PDB = bench_arch.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_arch.dir
 
 # =============================================================================
@@ -1434,8 +1316,6 @@ build CMakeFiles/bench_attn200k.dir/bench/attn200k.mm.o: OBJCXX_COMPILER__bench_
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_attn200k.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_attn200k.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn200k.dir/
-  TARGET_PDB = bench_attn200k.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn200k.dir
 
 
@@ -1454,9 +1334,8 @@ build bench_attn200k: CXX_EXECUTABLE_LINKER__bench_attn200k_Release CMakeFiles/b
   OBJECT_DIR = CMakeFiles/bench_attn200k.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn200k.dir/
   TARGET_FILE = bench_attn200k
-  TARGET_PDB = bench_attn200k.pdb
+  TARGET_PDB = bench_attn200k.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn200k.dir
 
 # =============================================================================
@@ -1477,8 +1356,6 @@ build CMakeFiles/bench_attn_dispatch_probe.dir/bench/attn_dispatch_probe.mm.o: O
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_attn_dispatch_probe.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_attn_dispatch_probe.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_dispatch_probe.dir/
-  TARGET_PDB = bench_attn_dispatch_probe.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_dispatch_probe.dir
 
 
@@ -1497,9 +1374,8 @@ build bench_attn_dispatch_probe: CXX_EXECUTABLE_LINKER__bench_attn_dispatch_prob
   OBJECT_DIR = CMakeFiles/bench_attn_dispatch_probe.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_dispatch_probe.dir/
   TARGET_FILE = bench_attn_dispatch_probe
-  TARGET_PDB = bench_attn_dispatch_probe.pdb
+  TARGET_PDB = bench_attn_dispatch_probe.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_dispatch_probe.dir
 
 # =============================================================================
@@ -1520,8 +1396,6 @@ build CMakeFiles/bench_attn_layout_probe.dir/bench/attn_layout_probe.mm.o: OBJCX
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_attn_layout_probe.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_attn_layout_probe.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_layout_probe.dir/
-  TARGET_PDB = bench_attn_layout_probe.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_layout_probe.dir
 
 
@@ -1540,9 +1414,8 @@ build bench_attn_layout_probe: CXX_EXECUTABLE_LINKER__bench_attn_layout_probe_Re
   OBJECT_DIR = CMakeFiles/bench_attn_layout_probe.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_layout_probe.dir/
   TARGET_FILE = bench_attn_layout_probe
-  TARGET_PDB = bench_attn_layout_probe.pdb
+  TARGET_PDB = bench_attn_layout_probe.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_layout_probe.dir
 
 # =============================================================================
@@ -1563,8 +1436,6 @@ build CMakeFiles/bench_attn_mmprobe.dir/bench/attn_mmprobe.mm.o: OBJCXX_COMPILER
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_attn_mmprobe.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_attn_mmprobe.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_mmprobe.dir/
-  TARGET_PDB = bench_attn_mmprobe.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_mmprobe.dir
 
 
@@ -1583,9 +1454,8 @@ build bench_attn_mmprobe: CXX_EXECUTABLE_LINKER__bench_attn_mmprobe_Release CMak
   OBJECT_DIR = CMakeFiles/bench_attn_mmprobe.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_mmprobe.dir/
   TARGET_FILE = bench_attn_mmprobe
-  TARGET_PDB = bench_attn_mmprobe.pdb
+  TARGET_PDB = bench_attn_mmprobe.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_mmprobe.dir
 
 # =============================================================================
@@ -1606,8 +1476,6 @@ build CMakeFiles/bench_attn_pfprof.dir/bench/attn_pfprof.mm.o: OBJCXX_COMPILER__
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_attn_pfprof.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_attn_pfprof.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_pfprof.dir/
-  TARGET_PDB = bench_attn_pfprof.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_pfprof.dir
 
 
@@ -1626,9 +1494,8 @@ build bench_attn_pfprof: CXX_EXECUTABLE_LINKER__bench_attn_pfprof_Release CMakeF
   OBJECT_DIR = CMakeFiles/bench_attn_pfprof.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_pfprof.dir/
   TARGET_FILE = bench_attn_pfprof
-  TARGET_PDB = bench_attn_pfprof.pdb
+  TARGET_PDB = bench_attn_pfprof.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_pfprof.dir
 
 # =============================================================================
@@ -1649,8 +1516,6 @@ build CMakeFiles/bench_attn_prof.dir/bench/attn_prof.mm.o: OBJCXX_COMPILER__benc
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_attn_prof.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_attn_prof.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_prof.dir/
-  TARGET_PDB = bench_attn_prof.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_prof.dir
 
 
@@ -1669,9 +1534,8 @@ build bench_attn_prof: CXX_EXECUTABLE_LINKER__bench_attn_prof_Release CMakeFiles
   OBJECT_DIR = CMakeFiles/bench_attn_prof.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_attn_prof.dir/
   TARGET_FILE = bench_attn_prof
-  TARGET_PDB = bench_attn_prof.pdb
+  TARGET_PDB = bench_attn_prof.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_attn_prof.dir
 
 # =============================================================================
@@ -1692,8 +1556,6 @@ build CMakeFiles/bench_engram_io.dir/bench/engram_io.mm.o: OBJCXX_COMPILER__benc
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_engram_io.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_engram_io.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_engram_io.dir/
-  TARGET_PDB = bench_engram_io.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_engram_io.dir
 
 
@@ -1712,9 +1574,8 @@ build bench_engram_io: CXX_EXECUTABLE_LINKER__bench_engram_io_Release CMakeFiles
   OBJECT_DIR = CMakeFiles/bench_engram_io.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_engram_io.dir/
   TARGET_FILE = bench_engram_io
-  TARGET_PDB = bench_engram_io.pdb
+  TARGET_PDB = bench_engram_io.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_engram_io.dir
 
 # =============================================================================
@@ -1735,8 +1596,6 @@ build CMakeFiles/bench_experts_io.dir/bench/experts_io.mm.o: OBJCXX_COMPILER__be
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_experts_io.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_experts_io.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_experts_io.dir/
-  TARGET_PDB = bench_experts_io.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_experts_io.dir
 
 
@@ -1755,9 +1614,8 @@ build bench_experts_io: CXX_EXECUTABLE_LINKER__bench_experts_io_Release CMakeFil
   OBJECT_DIR = CMakeFiles/bench_experts_io.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_experts_io.dir/
   TARGET_FILE = bench_experts_io
-  TARGET_PDB = bench_experts_io.pdb
+  TARGET_PDB = bench_experts_io.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_experts_io.dir
 
 # =============================================================================
@@ -1778,8 +1636,6 @@ build CMakeFiles/bench_membw.dir/bench/membw.mm.o: OBJCXX_COMPILER__bench_membw_
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_membw.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_membw.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_membw.dir/
-  TARGET_PDB = bench_membw.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_membw.dir
 
 
@@ -1798,9 +1654,8 @@ build bench_membw: CXX_EXECUTABLE_LINKER__bench_membw_Release CMakeFiles/bench_m
   OBJECT_DIR = CMakeFiles/bench_membw.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_membw.dir/
   TARGET_FILE = bench_membw
-  TARGET_PDB = bench_membw.pdb
+  TARGET_PDB = bench_membw.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_membw.dir
 
 # =============================================================================
@@ -1821,8 +1676,6 @@ build CMakeFiles/bench_qmatmul.dir/bench/qmatmul.mm.o: OBJCXX_COMPILER__bench_qm
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_qmatmul.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_qmatmul.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_qmatmul.dir/
-  TARGET_PDB = bench_qmatmul.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_qmatmul.dir
 
 
@@ -1841,9 +1694,8 @@ build bench_qmatmul: CXX_EXECUTABLE_LINKER__bench_qmatmul_Release CMakeFiles/ben
   OBJECT_DIR = CMakeFiles/bench_qmatmul.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_qmatmul.dir/
   TARGET_FILE = bench_qmatmul
-  TARGET_PDB = bench_qmatmul.pdb
+  TARGET_PDB = bench_qmatmul.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_qmatmul.dir
 
 # =============================================================================
@@ -1864,8 +1716,6 @@ build CMakeFiles/bench_qmatvec.dir/bench/qmatvec.mm.o: OBJCXX_COMPILER__bench_qm
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_qmatvec.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_qmatvec.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_qmatvec.dir/
-  TARGET_PDB = bench_qmatvec.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_qmatvec.dir
 
 
@@ -1884,9 +1734,8 @@ build bench_qmatvec: CXX_EXECUTABLE_LINKER__bench_qmatvec_Release CMakeFiles/ben
   OBJECT_DIR = CMakeFiles/bench_qmatvec.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_qmatvec.dir/
   TARGET_FILE = bench_qmatvec
-  TARGET_PDB = bench_qmatvec.pdb
+  TARGET_PDB = bench_qmatvec.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_qmatvec.dir
 
 # =============================================================================
@@ -1907,8 +1756,6 @@ build CMakeFiles/bench_sync_probe.dir/bench/sync_probe.mm.o: OBJCXX_COMPILER__be
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_sync_probe.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_sync_probe.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_sync_probe.dir/
-  TARGET_PDB = bench_sync_probe.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_sync_probe.dir
 
 
@@ -1927,9 +1774,8 @@ build bench_sync_probe: CXX_EXECUTABLE_LINKER__bench_sync_probe_Release CMakeFil
   OBJECT_DIR = CMakeFiles/bench_sync_probe.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_sync_probe.dir/
   TARGET_FILE = bench_sync_probe
-  TARGET_PDB = bench_sync_probe.pdb
+  TARGET_PDB = bench_sync_probe.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_sync_probe.dir
 
 # =============================================================================
@@ -1950,8 +1796,6 @@ build CMakeFiles/bench_weights_load.dir/bench/weights_load.mm.o: OBJCXX_COMPILER
   LAUNCHER = /opt/homebrew/bin/ccache 
   OBJECT_DIR = CMakeFiles/bench_weights_load.dir
   OBJECT_FILE_DIR = CMakeFiles/bench_weights_load.dir/bench
-  TARGET_COMPILE_PDB = CMakeFiles/bench_weights_load.dir/
-  TARGET_PDB = bench_weights_load.pdb
   TARGET_SUPPORT_DIR = CMakeFiles/bench_weights_load.dir
 
 
@@ -1970,9 +1814,8 @@ build bench_weights_load: CXX_EXECUTABLE_LINKER__bench_weights_load_Release CMak
   OBJECT_DIR = CMakeFiles/bench_weights_load.dir
   POST_BUILD = :
   PRE_LINK = :
-  TARGET_COMPILE_PDB = CMakeFiles/bench_weights_load.dir/
   TARGET_FILE = bench_weights_load
-  TARGET_PDB = bench_weights_load.pdb
+  TARGET_PDB = bench_weights_load.dbg
   TARGET_SUPPORT_DIR = CMakeFiles/bench_weights_load.dir
 
 
@@ -2021,8 +1864,8 @@ build CMakeFiles/metallib | ${cmake_ninja_workdir}CMakeFiles/metallib: phony mac
 #############################################
 # Custom command for macseek.metal
 
-build macseek.metal | ${cmake_ninja_workdir}macseek.metal: CUSTOM_COMMAND metalc /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_engram.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_hc.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_router.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_sample.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_index.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_kv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe_prefill.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/smoke.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/sync.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_blocks.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_grids.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_tile.h || metalc
-  COMMAND = cd /Users/arnav/Desktop/Projects/MacSeek/build5 && /Users/arnav/Desktop/Projects/MacSeek/build5/metalc /Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_engram.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_hc.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_router.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_sample.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_index.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_kv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe_prefill.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/smoke.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/sync.metal
+build macseek.metal | ${cmake_ninja_workdir}macseek.metal: CUSTOM_COMMAND metalc /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_engram.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_hc.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_router.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_sample.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_index.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_kv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe_prefill.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/smoke.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/sync.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_blocks.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_common.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_grids.h /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_tile.h || metalc
+  COMMAND = cd /Users/arnav/Desktop/Projects/MacSeek/build5 && /Users/arnav/Desktop/Projects/MacSeek/build5/metalc /Users/arnav/Desktop/Projects/MacSeek/build5/macseek.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_engram.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_hc.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_router.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/arch_sample.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_index.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_kv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_moe_prefill.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mv.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/smoke.metal /Users/arnav/Desktop/Projects/MacSeek/src/kernels/sync.metal
   DESC = Generating macseek.metal
   restat = 1
 
@@ -2064,14 +1907,14 @@ build /Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/cmake.verify_globs
 #############################################
 # Re-run CMake if any of its inputs changed.
 
-build build.ninja /Users/arnav/Desktop/Projects/MacSeek/build5/cmake_install.cmake /Users/arnav/Desktop/Projects/MacSeek/build5/CTestTestfile.cmake: RERUN_CMAKE /Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/cmake.verify_globs | /Users/arnav/Desktop/Projects/MacSeek/CMakeLists.txt /Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/VerifyGlobs.cmake /opt/homebrew/share/cmake/Modules/CMakeCCompiler.cmake.in /opt/homebrew/share/cmake/Modules/CMakeCCompilerABI.c /opt/homebrew/share/cmake/Modules/CMakeCInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeCXXCompiler.cmake.in /opt/homebrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp /opt/homebrew/share/cmake/Modules/CMakeCXXInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeCommonLanguageInclude.cmake /opt/homebrew/share/cmake/Modules/CMakeCompilerIdDetection.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCompilerABI.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineOBJCXXCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineSystem.cmake /opt/homebrew/share/cmake/Modules/CMakeFindBinUtils.cmake /opt/homebrew/share/cmake/Modules/CMakeGenericSystem.cmake /opt/homebrew/share/cmake/Modules/CMakeInitializeConfigs.cmake /opt/homebrew/share/cmake/Modules/CMakeLanguageInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeNinjaFindMake.cmake /opt/homebrew/share/cmake/Modules/CMakeOBJCXXCompiler.cmake.in /opt/homebrew/share/cmake/Modules/CMakeOBJCXXCompilerABI.mm /opt/homebrew/share/cmake/Modules/CMakeOBJCXXInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake /opt/homebrew/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake /opt/homebrew/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake /opt/homebrew/share/cmake/Modules/CMakeSystem.cmake.in /opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake /opt/homebrew/share/cmake/Modules/CMakeTestCCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeTestCXXCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeTestCompilerCommon.cmake /opt/homebrew/share/cmake/Modules/CMakeTestOBJCXXCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Bruce-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang.cmake /opt/homebrew/share/cmake/Modules/Compiler/Compaq-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/GNU-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/GNU.cmake /opt/homebrew/share/cmake/Modules/Compiler/HP-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/IBMCPP-C-DetermineVersionInternal.cmake /opt/homebrew/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake /opt/homebrew/share/cmake/Modules/Compiler/IBMClang-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/LCC-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/PellesC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/SDCC-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/SunPro-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/TinyCC-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/VisualAge-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/XL-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/XLClang-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/zOS-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeInspectCLinker.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeInspectOBJCXXLinker.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeOBJCXXLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/FeatureTesting.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin-Determine-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin-Initialize.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang.cmake /opt/homebrew/share/cmake/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/4.4.5/CMakeCCompiler.cmake CMakeFiles/4.4.5/CMakeCXXCompiler.cmake CMakeFiles/4.4.5/CMakeOBJCXXCompiler.cmake CMakeFiles/4.4.5/CMakeSystem.cmake
+build build.ninja /Users/arnav/Desktop/Projects/MacSeek/build5/cmake_install.cmake /Users/arnav/Desktop/Projects/MacSeek/build5/CTestTestfile.cmake: RERUN_CMAKE /Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/cmake.verify_globs | /Users/arnav/Desktop/Projects/MacSeek/CMakeLists.txt /Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/VerifyGlobs.cmake /opt/homebrew/share/cmake/Modules/CMakeCInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeCXXInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeCommonLanguageInclude.cmake /opt/homebrew/share/cmake/Modules/CMakeGenericSystem.cmake /opt/homebrew/share/cmake/Modules/CMakeInitializeConfigs.cmake /opt/homebrew/share/cmake/Modules/CMakeLanguageInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeOBJCXXInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang.cmake /opt/homebrew/share/cmake/Modules/Compiler/GNU.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeOBJCXXLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin-Initialize.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang.cmake /opt/homebrew/share/cmake/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/4.4.5/CMakeCCompiler.cmake CMakeFiles/4.4.5/CMakeCXXCompiler.cmake CMakeFiles/4.4.5/CMakeOBJCXXCompiler.cmake CMakeFiles/4.4.5/CMakeSystem.cmake
   pool = console
 
 
 #############################################
 # A missing CMake input file is not an error.
 
-build /Users/arnav/Desktop/Projects/MacSeek/CMakeLists.txt /Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/VerifyGlobs.cmake /opt/homebrew/share/cmake/Modules/CMakeCCompiler.cmake.in /opt/homebrew/share/cmake/Modules/CMakeCCompilerABI.c /opt/homebrew/share/cmake/Modules/CMakeCInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeCXXCompiler.cmake.in /opt/homebrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp /opt/homebrew/share/cmake/Modules/CMakeCXXInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeCommonLanguageInclude.cmake /opt/homebrew/share/cmake/Modules/CMakeCompilerIdDetection.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCompilerABI.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineOBJCXXCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeDetermineSystem.cmake /opt/homebrew/share/cmake/Modules/CMakeFindBinUtils.cmake /opt/homebrew/share/cmake/Modules/CMakeGenericSystem.cmake /opt/homebrew/share/cmake/Modules/CMakeInitializeConfigs.cmake /opt/homebrew/share/cmake/Modules/CMakeLanguageInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeNinjaFindMake.cmake /opt/homebrew/share/cmake/Modules/CMakeOBJCXXCompiler.cmake.in /opt/homebrew/share/cmake/Modules/CMakeOBJCXXCompilerABI.mm /opt/homebrew/share/cmake/Modules/CMakeOBJCXXInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake /opt/homebrew/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake /opt/homebrew/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake /opt/homebrew/share/cmake/Modules/CMakeSystem.cmake.in /opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake /opt/homebrew/share/cmake/Modules/CMakeTestCCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeTestCXXCompiler.cmake /opt/homebrew/share/cmake/Modules/CMakeTestCompilerCommon.cmake /opt/homebrew/share/cmake/Modules/CMakeTestOBJCXXCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Bruce-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang.cmake /opt/homebrew/share/cmake/Modules/Compiler/Compaq-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/GNU-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/GNU.cmake /opt/homebrew/share/cmake/Modules/Compiler/HP-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/IBMCPP-C-DetermineVersionInternal.cmake /opt/homebrew/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake /opt/homebrew/share/cmake/Modules/Compiler/IBMClang-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/LCC-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/PellesC-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/SDCC-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/SunPro-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/TinyCC-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/VisualAge-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/XL-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/XLClang-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/zOS-C-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeInspectCLinker.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeInspectOBJCXXLinker.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeOBJCXXLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/FeatureTesting.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin-Determine-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin-Initialize.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang.cmake /opt/homebrew/share/cmake/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/4.4.5/CMakeCCompiler.cmake CMakeFiles/4.4.5/CMakeCXXCompiler.cmake CMakeFiles/4.4.5/CMakeOBJCXXCompiler.cmake CMakeFiles/4.4.5/CMakeSystem.cmake: phony
+build /Users/arnav/Desktop/Projects/MacSeek/CMakeLists.txt /Users/arnav/Desktop/Projects/MacSeek/build5/CMakeFiles/VerifyGlobs.cmake /opt/homebrew/share/cmake/Modules/CMakeCInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeCXXInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeCommonLanguageInclude.cmake /opt/homebrew/share/cmake/Modules/CMakeGenericSystem.cmake /opt/homebrew/share/cmake/Modules/CMakeInitializeConfigs.cmake /opt/homebrew/share/cmake/Modules/CMakeLanguageInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeOBJCXXInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInformation.cmake /opt/homebrew/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/AppleClang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Compiler/Clang.cmake /opt/homebrew/share/cmake/Modules/Compiler/GNU.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Internal/CMakeOBJCXXLinkerInformation.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Linker/AppleClang.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-AppleClang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang-OBJCXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Apple-Clang.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin-Initialize.cmake /opt/homebrew/share/cmake/Modules/Platform/Darwin.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang-C.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang-CXX.cmake /opt/homebrew/share/cmake/Modules/Platform/Linker/Apple-AppleClang.cmake /opt/homebrew/share/cmake/Modules/Platform/UnixPaths.cmake CMakeCache.txt CMakeFiles/4.4.5/CMakeCCompiler.cmake CMakeFiles/4.4.5/CMakeCXXCompiler.cmake CMakeFiles/4.4.5/CMakeOBJCXXCompiler.cmake CMakeFiles/4.4.5/CMakeSystem.cmake: phony
 
 
 #############################################

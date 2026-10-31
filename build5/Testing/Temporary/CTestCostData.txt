@@ -2,4 +2,9 @@ test_dec_sync 1 2.94361
 test_quant_moe 1 2.2023
 test_quant_moe_prefill 1 13.3686
 test_smoke 1 0.0870707
+test_arch_engram 1 0.101354
+test_arch_engram_hash 1 0.0684354
+test_arch_hc 1 0.512115
+test_arch_router 1 0.372019
+test_arch_sample 1 0.701341
 ---

@@ -21,6 +21,7 @@ class LruPolicy : public EvictionPolicy {
     head_.assign(n_classes, -1); tail_.assign(n_classes, -1);
   }
   void on_insert(int s, uint32_t) override { touch(s); }
+  void on_insert_cold(int s, uint32_t) override { append_tail(s); }
   void on_access(int s, uint32_t) override { touch(s); }
   void on_evict(int s, uint32_t) override { unlink(s); }
   int victim(int c, bool (*ok)(const void*, int), const void* ctx) override {
@@ -34,6 +35,13 @@ class LruPolicy : public EvictionPolicy {
     if (prev_[s] >= 0) next_[prev_[s]] = next_[s]; else head_[c] = next_[s];
     if (next_[s] >= 0) prev_[next_[s]] = prev_[s]; else tail_[c] = prev_[s];
     prev_[s] = next_[s] = -1; in_[s] = 0;
+  }
+  void append_tail(int s) {   // LRU end: first eviction candidate
+    unlink(s);
+    int c = cls_[s];
+    prev_[s] = tail_[c]; next_[s] = -1;
+    if (tail_[c] >= 0) next_[tail_[c]] = s; else head_[c] = s;
+    tail_[c] = s; in_[s] = 1;
   }
   void touch(int s) {   // move to MRU (head)
     unlink(s);

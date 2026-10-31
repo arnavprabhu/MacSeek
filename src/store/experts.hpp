@@ -52,6 +52,8 @@ class EvictionPolicy {
   virtual void init(const std::vector<int>& slot_class, int n_classes, int n_keys) = 0;
   virtual void on_insert(int slot, uint32_t key) = 0;   // slot now holds key (demand load or prefetch)
   virtual void on_access(int slot, uint32_t key) = 0;   // demand access (hit or miss)
+  // prefetched (speculative) insert: policies may place it where it is evicted first until a demand access uses it
+  virtual void on_insert_cold(int slot, uint32_t key) { on_insert(slot, key); }
   virtual void on_evict(int slot, uint32_t key) = 0;
   // pick a victim of class cls with evictable(slot) == true; -1 if none
   virtual int victim(int cls, bool (*evictable)(const void* ctx, int slot), const void* ctx) = 0;

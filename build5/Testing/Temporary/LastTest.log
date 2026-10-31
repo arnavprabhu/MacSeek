@@ -1,99 +1,265 @@
-Start testing: Oct 31 05:11 CDT
+Start testing: Oct 31 06:31 CDT
 ----------------------------------------------------------
-9/21 Testing: test_dec_sync
-9/21 Test: test_dec_sync
-Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_dec_sync"
+1/21 Testing: test_arch_engram
+1/21 Test: test_arch_engram
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_engram"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_dec_sync" start time: Oct 31 05:11 CDT
+"test_arch_engram" start time: Oct 31 06:31 CDT
 Output:
 ----------------------------------------------------------
-A) split table MoE equivalence
-  split gu=IQ1_S   down=IQ1_S   shared=Q6_K : sgu bit-identical yes | shared max|dy| 4.88e-04 | table vs slot kernel 0.00e+00 (|y| 4.44e+03)
-  split gu=IQ1_S   down=IQ2_XXS shared=Q8_0 : sgu bit-identical yes | shared max|dy| 9.16e-05 | table vs slot kernel 0.00e+00 (|y| 6.39e+02)
-  split gu=IQ2_XXS down=IQ2_XXS shared=Q6_K : sgu bit-identical yes | shared max|dy| 7.32e-04 | table vs slot kernel 0.00e+00 (|y| 5.59e+03)
-B) emulated decode loop
-  loop: 40 layers x 48 experts, arena 640 slots (33% of experts), ExpertCache: arena 0.03 GiB, 640 slots, policy lru, 4 io threads, chunk 16 KiB, align 16384, ring 0
-  class 0: slot 49152 B (regions 16384/16384/16384, types IQ1_S/IQ1_S/IQ1_S), 40 layers, 640 slots (16.0/layer, 33.3% of experts)
-
-  loop[misses]: 24 tokens/mode, demand hit rate 0.53, layers with a miss 98%, evictions 7510, prefetch issued 2741
-  loop: ms/token event min 22.71 med 25.79 | overlap min 21.99 med 23.82 | saved per handshake: min 18.1 us, med 49.2 us
-  loop: stale/evicted expert reads 0, gap-ordering violations 0, chain mismatches 0, CPU id mismatches 0
-  loop: 40 layers x 48 experts, arena 1920 slots (100% of experts), ExpertCache: arena 0.09 GiB, 1920 slots, policy lru, 4 io threads, chunk 16 KiB, align 16384, ring 0
-  class 0: slot 49152 B (regions 16384/16384/16384, types IQ1_S/IQ1_S/IQ1_S), 40 layers, 1920 slots (48.0/layer, 100.0% of experts)
-
-  loop[all-hit]: 24 tokens/mode, demand hit rate 1.00, layers with a miss 0%, evictions 0, prefetch issued 0
-  loop: ms/token event min 20.55 med 20.97 | overlap min 13.85 med 13.87 | saved per handshake: min 167.6 us, med 177.7 us
-  loop: stale/evicted expert reads 0, gap-ordering violations 0, chain mismatches 0, CPU id mismatches 0
-all OK
+real blk.1.engram_gate [4][5120]: min -0.3906 max 43.89 mean 0.008199
+engram_gate n=1 (real weights), gates[0..3] = 0.6913 0.3975 0.2672 0.7421
+  gate                                         ok    worst 0.000708 of tol at [3] got 0.74206883 ref 0.74206889
+  h                                            ok    worst 0.00792 of tol at [7306] got -2.0111606 ref -2.0111609
+engram_gate n=3 (real weights), gates[0..3] = 0.6790 0.4101 0.4053 0.6674
+  gate                                         ok    worst 0.000864 of tol at [9] got 0.59003967 ref 0.59003961
+  h                                            ok    worst 0.00996 of tol at [4207] got 0.0053563984 ref 0.0053564985
+engram_gate n=33 (real weights), gates[0..3] = 0.6678 0.4011 0.3893 0.6590
+  gate                                         ok    worst 0.00119 of tol at [94] got 0.15147319 ref 0.15147316
+  h                                            ok    worst 0.0105 of tol at [126004] got 0.060517352 ref 0.060517464
+iq4nl_rows synthetic
+  rows                                         ok   bit-exact (0 / 30720 differ)
+iq4nl_rows real per_layer_token_embd rows (read ok), row0[0..3] = -0.275131 0.740738 -0.80423 -0.0211639
+  real rows                                    ok   bit-exact (0 / 1536 differ)
+embed_q6k (real token_embd rows 0..2 + synthetic)
+  h (4 copies)                                 ok   bit-exact (0 / 102400 differ)
+  x (1 copy)                                   ok   bit-exact (0 / 25600 differ)
+test_arch_engram: ALL OK
 <end of output>
-Test time =   2.94 sec
+Test time =   0.10 sec
 ----------------------------------------------------------
 Test Passed.
-"test_dec_sync" end time: Oct 31 05:11 CDT
-"test_dec_sync" time elapsed: 00:00:02
+"test_arch_engram" end time: Oct 31 06:31 CDT
+"test_arch_engram" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-14/21 Testing: test_quant_moe
-14/21 Test: test_quant_moe
-Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_moe"
+2/21 Testing: test_arch_engram_hash
+2/21 Test: test_arch_engram_hash
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_engram_hash"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_quant_moe" start time: Oct 31 05:11 CDT
+"test_arch_engram_hash" start time: Oct 31 06:31 CDT
 Output:
 ----------------------------------------------------------
-  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=6  clamped= 2756  h_err 5.20e-09  y_err 3.63e-08  ok
-  gu=IQ1_S   down=IQ2_XXS shared=Q8_0 routed=6  clamped=  841  h_err 5.20e-09  y_err 2.35e-08  ok
-  gu=IQ1_S   down=IQ2_XXS shared=Q6_K routed=6  clamped= 2756  h_err 5.20e-09  y_err 3.33e-08  ok
-  gu=IQ2_XXS down=IQ2_XXS shared=Q6_K routed=6  clamped=13927  h_err 4.79e-09  y_err 2.27e-08  ok
-  gu=IQ2_XXS down=IQ2_XXS shared=-    routed=3  clamped= 5985  h_err 4.79e-09  y_err 3.09e-08  ok
-  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=0  clamped= 1867  h_err 4.04e-09  y_err 4.21e-08  ok
-  gu=IQ1_S   down=IQ1_S   shared=Q6_K routed=6  clamped=15817  h_err 4.12e-09  y_err 1.13e-07  ok
-all OK
+synthetic: streaming/chunked/masked/state round-trips vs whole-sequence ref: ok (0 bad)
+real metadata (token_map, pad, multipliers, primes, offsets): ok
+golden hashes (engram.py port, tools/engram_hash_check.py): ok
+test_arch_engram_hash: ALL OK
 <end of output>
-Test time =   2.20 sec
+Test time =   0.07 sec
 ----------------------------------------------------------
 Test Passed.
-"test_quant_moe" end time: Oct 31 05:11 CDT
-"test_quant_moe" time elapsed: 00:00:02
+"test_arch_engram_hash" end time: Oct 31 06:31 CDT
+"test_arch_engram_hash" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-15/21 Testing: test_quant_moe_prefill
-15/21 Test: test_quant_moe_prefill
-Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_quant_moe_prefill"
+3/21 Testing: test_arch_hc
+3/21 Test: test_arch_hc
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_hc"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_quant_moe_prefill" start time: Oct 31 05:11 CDT
+"test_arch_hc" start time: Oct 31 06:31 CDT
 Output:
 ----------------------------------------------------------
-  gu=IQ1_S   down=IQ1_S   shared=Q6_K path=-1 shdense=-1 popular n=80 k=2 experts=5 entries=160 (m 18..80) checked=80  err(half-emul) 7.97e-06  err(vs F32) 1.85e-04  repeat bit-identical  ok
-  gu=IQ2_XXS down=IQ2_XXS shared=Q8_0 path=-1 shdense=-1 popular n=70 k=2 experts=4 entries=140 (m 21..70) checked=70  err(half-emul) 6.13e-06  err(vs F32) 1.27e-04  repeat bit-identical  ok
-  gu=IQ1_S   down=IQ2_XXS shared=-    path=-1 shdense=-1 popular n=40 k=3 experts=4 entries=120 (m 21..40) checked=40  err(half-emul) 1.39e-05  err(vs F32) 9.75e-05  repeat bit-identical  ok
-  gu=IQ1_S   down=IQ1_S   shared=Q6_K path=-1 shdense=-1 sizes   n=600 k=6 experts=20 entries=1813 (m 1..600) checked=55  err(half-emul) 7.93e-06  err(vs F32) 1.73e-04  repeat bit-identical  ok
-  gu=IQ2_XXS down=IQ1_S   shared=Q8_0 path=-1 shdense= 0 sizes   n=600 k=6 experts=20 entries=1813 (m 1..600) checked=55  err(half-emul) 3.53e-06  err(vs F32) 1.05e-04  repeat bit-identical  ok
-  gu=IQ1_S   down=IQ2_XXS shared=Q6_K path=-1 shdense=-1 zipf    n=256 k=6 experts=64 entries=1536 (m 4..171) checked=49  err(half-emul) 6.20e-06  err(vs F32) 1.34e-04  repeat bit-identical  ok
-  gu=IQ1_S   down=IQ1_S   shared=Q6_K path= 0 shdense= 0 popular n=80 k=2 experts=5 entries=160 (m 18..80) checked=80  err(half-emul) 7.97e-06  err(vs F32) 1.85e-04  repeat bit-identical  ok
-  gu=IQ1_S   down=IQ2_XXS shared=Q8_0 path= 0 shdense= 1 zipf    n=256 k=6 experts=64 entries=1536 (m 4..171) checked=49  err(half-emul) 9.92e-06  err(vs F32) 6.28e-05  repeat bit-identical  ok
-all OK
+decode fused T=128 (n=1 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.00947 of tol at [19654] got -4.0354643 ref -4.0354638
+  mix_out                                      ok    worst 0.00157 of tol at [19] got 0.11415179 ref 0.11415186
+  x_out                                        ok    worst 0.00215 of tol at [3607] got 2.0139575 ref 2.013957
+decode fused T=256 (n=1 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.00911 of tol at [16314] got 0.1445924 ref 0.1445923
+  mix_out                                      ok    worst 0.00198 of tol at [14] got 0.16308737 ref 0.16308747
+  x_out                                        ok    worst 0.00255 of tol at [902] got 1.6677294 ref 1.6677299
+decode fused T=512 (n=1 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.00943 of tol at [8921] got -0.26438582 ref -0.26438594
+  mix_out                                      ok    worst 0.00152 of tol at [11] got 0.07161241 ref 0.071612462
+  x_out                                        ok    worst 0.00248 of tol at [95] got -1.2449039 ref -1.2449043
+decode fused T=1024 (n=1 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.00918 of tol at [224] got 4.1943526 ref 4.1943521
+  mix_out                                      ok    worst 0.00148 of tol at [21] got 0.15097795 ref 0.15097803
+  x_out                                        ok    worst 0.00219 of tol at [914] got -1.4346957 ref -1.4346961
+decode fused (n=1 post=0 mixes=1 pre=1)
+  mix_out                                      ok    worst 0.00109 of tol at [7] got 0.24037579 ref 0.24037571
+  x_out                                        ok    worst 0.00412 of tol at [5078] got -0.00054314424 ref -0.00054306153
+decode fused (n=1 post=1 mixes=0 pre=1)
+  h_out                                        ok    worst 0.00927 of tol at [8396] got -4.1464686 ref -4.1464682
+  x_out                                        ok    worst 0.00498 of tol at [4124] got -0.03918381 ref -0.03918393
+decode fused (n=1 post=1 mixes=0 pre=0)
+  h_out                                        ok    worst 0.0114 of tol at [15388] got 1.0946096 ref 1.0946094
+  x_out untouched (no pre)                     ok
+decode split T=256 (n=1 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.00999 of tol at [9572] got -0.044002321 ref -0.044002425
+  mix_out                                      ok    worst 0.00145 of tol at [20] got 0.080336615 ref 0.080336668
+  x_out                                        ok    worst 0.00232 of tol at [1037] got 0.0024221514 ref 0.0024221984
+decode split (n=1 post=0 mixes=1 pre=1)
+  mix_out                                      ok    worst 0.00195 of tol at [21] got 0.12882303 ref 0.12882312
+  x_out                                        ok    worst 0.00418 of tol at [3725] got -0.027199823 ref -0.027199918
+decode split (n=1 post=1 mixes=0 pre=1)
+  h_out                                        ok    worst 0.00872 of tol at [2859] got 4.4694505 ref 4.46945
+  x_out                                        ok    worst 0.002 of tol at [3818] got -2.1880627 ref -2.1880622
+decode split (n=1 post=1 mixes=0 pre=0)
+  h_out                                        ok    worst 0.0109 of tol at [18002] got -0.64515388 ref -0.6451537
+  x_out untouched (no pre)                     ok
+decode rows T=256 (n=1 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.00783 of tol at [19100] got 2.0463839 ref 2.0463836
+  mix_out                                      ok    worst 0.00162 of tol at [13] got 0.221964 ref 0.22196411
+  x_out                                        ok    worst 0.00201 of tol at [4894] got -2.1747389 ref -2.1747394
+decode rows (n=1 post=0 mixes=1 pre=1)
+  mix_out                                      ok    worst 0.0022 of tol at [8] got 0.035342157 ref 0.035342216
+  x_out                                        ok    worst 0.00419 of tol at [2602] got -0.017813407 ref -0.017813316
+decode rows (n=1 post=1 mixes=0 pre=1)
+  h_out                                        ok    worst 0.0104 of tol at [7818] got 0.15161769 ref 0.15161757
+  x_out                                        ok    worst 0.00197 of tol at [3389] got 2.2182734 ref 2.2182739
+decode rows (n=1 post=1 mixes=0 pre=0)
+  h_out                                        ok    worst 0.0114 of tol at [10314] got 0.11195838 ref 0.11195825
+  x_out untouched (no pre)                     ok
+  chain step 0 x_out                           ok    worst 0.000135 of tol at [2715] got 3.4288394 ref 3.4288399
+  chain step 1 x_out                           ok    worst 0.00114 of tol at [2353] got 0.002870026 ref 0.0028701432
+  chain step 2 x_out                           ok    worst 0.0021 of tol at [4075] got -0.017709514 ref -0.017709266
+  chain step 3 x_out                           ok    worst 0.00157 of tol at [2067] got 0.0025118138 ref 0.0025116527
+  chain step 4 x_out                           ok    worst 0.00162 of tol at [3854] got -0.058379505 ref -0.058379248
+  chain step 5 x_out                           ok    worst 0.00226 of tol at [2473] got 0.018466711 ref 0.018466443
+  chain step 6 x_out                           ok    worst 0.00137 of tol at [1953] got -0.0030630727 ref -0.0030629311
+  chain step 7 x_out                           ok    worst 0.00183 of tol at [3196] got 0.010773437 ref 0.01077364
+  chain step 8 x_out                           ok    worst 0.00156 of tol at [1824] got -0.076740511 ref -0.076740786
+  chain step 9 x_out                           ok    worst 0.00194 of tol at [4563] got -0.0012940605 ref -0.0012938639
+  chain step 10 x_out                          ok    worst 0.00215 of tol at [2819] got 0.012951775 ref 0.012952018
+  chain step 11 x_out                          ok    worst 0.00222 of tol at [312] got 0.0024994982 ref 0.0024992707
+  chain final h                                ok    worst 0.00954 of tol at [3372] got 0.0086303754 ref 0.0086293388
+  chain final mix                              ok    worst 0.000247 of tol at [13] got 0.20166507 ref 0.20166515
+stress: 300 fused steps in one command buffer bit-identical: ok (0 differ)
+stress: 300 fused steps in one command buffer bit-identical: ok (0 differ)
+stress: 300 fused steps in one command buffer bit-identical: ok (0 differ)
+prefill rows (auto) (n=2 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.0108 of tol at [2049] got -0.38283372 ref -0.38283357
+  mix_out                                      ok    worst 0.00308 of tol at [13] got 0.21438742 ref 0.21438761
+  x_out                                        ok    worst 0.00228 of tol at [7101] got 2.9395747 ref 2.9395754
+prefill rows (auto) (n=7 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.0124 of tol at [93697] got 0.052464675 ref 0.052464806
+  mix_out                                      ok    worst 0.00311 of tol at [40] got 0.13963126 ref 0.13963141
+  x_out                                        ok    worst 0.00231 of tol at [33860] got -0.1869611 ref -0.18696119
+prefill mma8 (auto) (n=8 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.0123 of tol at [54017] got -0.033199009 ref -0.033199135
+  mix_out                                      ok    worst 0.0118 of tol at [12] got 0.070918813 ref 0.070918411
+  x_out                                        ok    worst 0.00299 of tol at [5913] got -0.018326461 ref -0.018326527
+prefill mma8 (auto) (n=31 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.0153 of tol at [196183] got -0.022662256 ref -0.022662099
+  mix_out                                      ok    worst 0.0171 of tol at [501] got 0.11805105 ref 0.1180518
+  x_out                                        ok    worst 0.00742 of tol at [115961] got -0.061142325 ref -0.061142132
+prefill mma32 (n=32 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.0155 of tol at [142992] got -0.15131891 ref -0.15131909
+  mix_out                                      ok    worst 0.0157 of tol at [676] got 0.32829604 ref 0.32829469
+  x_out                                        ok    worst 0.00571 of tol at [7939] got -0.015446551 ref -0.015446674
+prefill mma32 (n=37 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.0139 of tol at [677282] got -0.017249856 ref -0.017249998
+  mix_out                                      ok    worst 0.011 of tol at [852] got 0.072740428 ref 0.072740808
+  x_out                                        ok    worst 0.00506 of tol at [120183] got -0.050206564 ref -0.050206438
+prefill mma32 (n=256 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.0165 of tol at [1769777] got 0.0088206027 ref 0.008820436
+  mix_out                                      ok    worst 0.0182 of tol at [1380] got 0.27673885 ref 0.27673748
+  x_out                                        ok    worst 0.0106 of tol at [1178563] got -0.050280184 ref -0.050279919
+prefill mma8 (forced) (n=37 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.0131 of tol at [500329] got 0.077793702 ref 0.077793844
+  mix_out                                      ok    worst 0.0252 of tol at [30] got 0.26666772 ref 0.26666957
+  x_out                                        ok    worst 0.0067 of tol at [478] got 0.0055870921 ref 0.00558723
+prefill mma no-post (n=64 post=0 mixes=1 pre=1)
+  mix_out                                      ok    worst 0.0163 of tol at [76] got 0.55645639 ref 0.55645853
+  x_out                                        ok    worst 0.00744 of tol at [127451] got -0.0051904679 ref -0.0051906207
+prefill post-only (n=19 post=1 mixes=0 pre=0)
+  h_out                                        ok    worst 0.0166 of tol at [308028] got 0.16679297 ref 0.16679317
+  x_out untouched (no pre)                     ok
+prefill rows (n=37 post=1 mixes=1 pre=1)
+  h_out                                        ok    worst 0.014 of tol at [229253] got -0.026114631 ref -0.026114775
+  mix_out                                      ok    worst 0.00363 of tol at [184] got 0.11544413 ref 0.11544429
+  x_out                                        ok    worst 0.00467 of tol at [19783] got -0.047196593 ref -0.047196478
+real blk.0 hc_attn: scale = 0.0634971 0.0118546 0.0618816, base[0..7] = 2.84 -3.34 -3.23 -2.22 -4.17 -3.95 -19.6 -1.42
+real decode fused (n=1 post=0 mixes=1 pre=1)
+  mix_out                                      ok    worst 0.000989 of tol at [12] got 0.12593094 ref 0.12593098
+  x_out                                        ok    worst 0.000546 of tol at [1054] got 0.072988078 ref 0.072988063
+real prefill mma8 (n=8 post=0 mixes=1 pre=1)
+  mix_out                                      ok    worst 0.00603 of tol at [72] got 0.072995089 ref 0.072995298
+  x_out                                        ok    worst 0.000697 of tol at [29357] got 0.12078854 ref 0.12078857
+real prefill mma32 (n=32 post=0 mixes=1 pre=1)
+  mix_out                                      ok    worst 0.00345 of tol at [144] got 0.2883864 ref 0.28838667
+  x_out                                        ok    worst 0.000811 of tol at [24237] got 0.16763607 ref 0.1676361
+test_arch_hc: ALL OK
 <end of output>
-Test time =  13.37 sec
+Test time =   0.51 sec
 ----------------------------------------------------------
 Test Passed.
-"test_quant_moe_prefill" end time: Oct 31 05:12 CDT
-"test_quant_moe_prefill" time elapsed: 00:00:13
+"test_arch_hc" end time: Oct 31 06:31 CDT
+"test_arch_hc" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-17/21 Testing: test_smoke
-17/21 Test: test_smoke
-Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_smoke"
+4/21 Testing: test_arch_router
+4/21 Test: test_arch_router
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_router"
 Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
-"test_smoke" start time: Oct 31 05:12 CDT
+"test_arch_router" start time: Oct 31 06:31 CDT
 Output:
 ----------------------------------------------------------
-smoke OK
+router_topk n=1: ok (near-ties 0)
+router_topk n=5: ok (near-ties 0)
+router_topk n=2048: ok (near-ties 0)
+route_lists n=2048: ok (bit-exact) (offsets[384]=12288)
+  fused logits                                 ok    worst 0.0288 of tol at [62] got -0.0033887625 ref -0.0033890607
+router_fused synthetic G=48: ok (near-ties 0)
+  fused logits                                 ok    worst 0.0238 of tol at [244] got -0.062967539 ref -0.062967151
+router_fused synthetic G=96: ok (near-ties 0)
+  fused logits                                 ok    worst 0.0219 of tol at [254] got -0.019806504 ref -0.019806242
+router_fused synthetic G=24: ok (near-ties 0)
+  fused logits                                 ok    worst 0.0464 of tol at [182] got 0.008879289 ref 0.0088787833
+router_fused synthetic G=384: ok (near-ties 0)
+router_fused 300-dispatch stress: ok (0 differ)
+  fused logits                                 ok    worst 0.0509 of tol at [112] got -0.01012516 ref -0.0101246
+router_fused real blk.0 G=48: ok (near-ties 0)
+  fused logits                                 ok    worst 0.0561 of tol at [286] got -0.040125906 ref -0.040126693
+router_fused real blk.0 G=96: ok (near-ties 0)
+  fused logits                                 ok    worst 0.0258 of tol at [108] got -0.13725173 ref -0.13725235
+router_fused real blk.0 G=24: ok (near-ties 0)
+  fused logits                                 ok    worst 0.0611 of tol at [246] got 0.00086808205 ref 0.00086746557
+router_fused real blk.0 G=384: ok (near-ties 0)
+router_fused 300-dispatch stress: ok (0 differ)
+test_arch_router: ALL OK
 <end of output>
-Test time =   0.09 sec
+Test time =   0.37 sec
 ----------------------------------------------------------
 Test Passed.
-"test_smoke" end time: Oct 31 05:12 CDT
-"test_smoke" time elapsed: 00:00:00
+"test_arch_router" end time: Oct 31 06:31 CDT
+"test_arch_router" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Oct 31 05:12 CDT
+5/21 Testing: test_arch_sample
+5/21 Test: test_arch_sample
+Command: "/Users/arnav/Desktop/Projects/MacSeek/build5/test_arch_sample"
+Directory: /Users/arnav/Desktop/Projects/MacSeek/build5
+"test_arch_sample" start time: Oct 31 06:31 CDT
+Output:
+----------------------------------------------------------
+argmax rows=6 x3 + 300-dispatch stress: ok
+gumbel sampling T=0.8, 20000 draws: p_emp vs p_ref: 0.072/0.073 0.251/0.253 0.037/0.039 0.478/0.473 0.005/0.006 0.135/0.136 0.021/0.021
+  chi2 = 4.11 (6 dof, limit 22.5): ok
+  lse row 0 T=1.0                              ok    worst 0 of tol at [0] got 16.315609 ref 16.315609
+  lse row 1 T=1.0                              ok    worst 0 of tol at [0] got 22.304783 ref 22.304783
+  lse row 2 T=1.0                              ok    worst 0 of tol at [0] got 16.177397 ref 16.177397
+topk k=64 T=1.0 rows=3: ok
+  lse row 0 T=0.7                              ok    worst 0 of tol at [0] got 20.863409 ref 20.863409
+  lse row 1 T=0.7                              ok    worst 0.00467 of tol at [0] got 30.874043 ref 30.874041
+  lse row 2 T=0.7                              ok    worst 0 of tol at [0] got 20.492775 ref 20.492775
+topk k=64 T=0.7 rows=3: ok
+sample_top_p (T=0.7, p=0.3, nucleus 2 tokens): ok
+log_softmax rows=2
+  out                                          ok    worst 0.00908 of tol at [8076] got -32.00032 ref -32.000324
+  in place                                     ok    worst 0.00908 of tol at [8076] got -32.00032 ref -32.000324
+  rmsnorm dim=128 rows=37 (strided)            ok    worst 0.0107 of tol at [3580] got -3.4646335 ref -3.464633
+  rmsnorm dim=512 rows=37 (strided)            ok    worst 0.0128 of tol at [14976] got -2.7138648 ref -2.7138643
+  rmsnorm dim=1280 rows=37 (strided)           ok    worst 0.0157 of tol at [3503] got 2.0334015 ref 2.033402
+  rmsnorm dim=5120 rows=37 (strided)           ok    worst 0.0133 of tol at [4784] got -2.574053 ref -2.5740535
+  rmsnorm dim=20480 rows=37 (strided)          ok    worst 0.0158 of tol at [16042] got -2.0205359 ref -2.0205364
+test_arch_sample: ALL OK
+<end of output>
+Test time =   0.70 sec
+----------------------------------------------------------
+Test Passed.
+"test_arch_sample" end time: Oct 31 06:31 CDT
+"test_arch_sample" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 31 06:31 CDT

@@ -65,6 +65,7 @@ struct Model::Impl {
   Buffer pids, pw;                   // (unused)
   Buffer plog;                       // decode: router logits of layers l+1..l+D applied to layer l's FFN input
   Buffer plog_n;
+  Buffer dbg, dbg2;                        // MACSEEK_DBG_DUMP: per-layer FFN input x (after attention) / layer output x
   Buffer erow_b[2]; int erow_cur = 0;   // engram row buffers: current chunk / next chunk prefetch
   struct EPend { bool active = false; const int32_t* toks = nullptr; int n = 0, pos = 0, b = 0; EngramFetcher::Ticket t0, t1; } epend;
   Buffer tbl;                        // decode table mode: [40][6][3] device addresses of the routed experts                     // prefill: router logits of layer l+1 on layer l's FFN input, [n][384]
@@ -174,10 +175,11 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.oa = A(n * 8192 * 4, "oa"); P.rlog = A(n * 384 * 4, "rlog"); P.rids = A(n * 6 * 4, "rids"); P.rw = A(n * 6 * 4, "rw");
   P.embrows = A(n * 4200 + 16384, "embrows"); P.erow = A(2 * n * 24 * 144 + 16384, "erow");
   P.erow_b[0] = P.erow; P.erow_b[1] = A(2 * n * 24 * 144 + 16384, "erow2");
+  P.dbg = A(80 * 5120 * 4 + 16384, "dbg"); P.dbg2 = A(3 * 8 * 32768 * 4 + 16384, "dbg2");
   P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(2 * n * 25600 * 4, "ekv");
   P.logits = A((size_t)std::max(o.max_logits_rows, 1) * cfg_.vocab * 4, "logits");
   P.amax_i = A(64, "amax_i"); P.amax_v = A(64, "amax_v");
-  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog"); P.plog_n = A(n * 384 * 4, "plog_n"); P.tbl = A(40 * 6 * 3 * 8, "tbl");
+  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog"); P.plog_n = A(n * 384 * 4, "plog_n"); P.tbl = A(40 * 4096, "tbl");
   P.asc2 = arch::Scratch::create(64, 1);
   P.moe_dec_scratch = A(q::moe_decode_scratch_bytes(), "moe_dec");
   const int total = (int)n * 6;
@@ -271,6 +273,15 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   P.erow = P.erow_b[P.erow_cur];
   te_->fetch(toks, n, P.embrows.cpu());
   tk0.wait(); tk1.wait();
+  if (const char* dp = getenv("MACSEEK_DBG_DUMP"); dp && n == 1 && getenv("MACSEEK_DBG_EROW")) {
+    FILE* f = fopen((std::string(dp) + ".erow").c_str(), "ab");
+    fwrite(toks, 4, 1, f);
+    std::vector<uint32_t> hs(48); EngramHasher::State st0 = hasher_->state();
+    fwrite(&st0, sizeof st0, 1, f);
+    fwrite(P.erow.cpu(), 1, 2 * 24 * 144, f);
+    fwrite(P.embrows.cpu(), 1, 4200, f);
+    fclose(f);
+  }
   if (engram_ahead && next_toks_ && next_n_ > 0) {
     EngramHasher::State st = hasher_->state();
     const int b = 1 - P.erow_cur;
@@ -336,10 +347,20 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   static std::vector<int> all_ids = [] { std::vector<int> v(384); for (int i = 0; i < 384; i++) v[i] = i; return v; }();
   // Attention side of layer l for this call: hc boundary (+engram), attention, hc boundary into the FFN, router,
   // and zeroing of `sub` (the MoE accumulates into it). Encodes into E; no commit.
+  static const bool dbg_on = getenv("MACSEEK_DBG_DUMP") != nullptr;
+  auto dbg_pt = [&](Enc& E, int l, int pt, Buffer src, uint32_t cnt) {   // diagnostics: checkpoint inside layers 0..2
+    if (!dbg_on || n != 1 || l > 2) return;
+    static void* pso_dbg = Device::get().pipeline("dbg_copy");
+    E.barrier();
+    E.set_pipeline(pso_dbg); E.set_buffer(0, src); E.set_buffer(1, P.dbg2.sub(((size_t)l * 8 + pt) * 32768 * 4, (size_t)cnt * 4));
+    E.set_value(2, cnt); E.dispatch_threads(cnt, 1, 1, 256); E.barrier();
+  };
   auto encode_attn_side = [&](Enc& E, int l) {
     LayerW& L = P.L[l];
     // ---- hyper-connection boundary into attention (+ engram) ----
     if (cfg_.is_engram(l)) {
+      { Buffer kvb0 = l == cfg_.engram_layers[0] ? ekv_l[0] : ekv_l[1];
+        dbg_pt(E, l, 3, kvb0, 25600); dbg_pt(E, l, 4, h, 20480); dbg_pt(E, l, 6, P.mixF, 24); }
       arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixF; a.n = n;
       arch::encode_hc_step(E, a, P.asc); E.barrier();
       Buffer kvb = l == cfg_.engram_layers[0] ? ekv_l[0] : ekv_l[1];
@@ -353,6 +374,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       a.norm_w = L.attn_norm.b; a.x_out = P.x; a.n = n;
       arch::encode_hc_step(E, a, P.asc); E.barrier();
     }
+    dbg_pt(E, l, 0, P.x, 5120);
     // ---- attention projections ----
     linear(E, L.q_a, P.x, P.qa, n);
     linear(E, L.kv, P.x, P.kv, n);
@@ -367,7 +389,11 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     attn::LayerIO io; io.layer = l; io.q = P.q; io.kv = P.kv; io.kv_norm = L.kv_norm.b; io.sinks = L.sinks.b; io.out = P.aout;
     if (kvsrc) { io.c_kv = P.ckv; io.c_gate = L.c_gate ? P.cgate : Buffer{}; io.c_norm = L.c_norm.b; io.idx_wk = L.idx_k.b; io.idx_knorm = L.idx_knorm.b; }
     if (idxsrc) { io.idx_q = P.iq; io.idx_w = P.iw; }
+    dbg_pt(E, l, 1, P.q, 32768); dbg_pt(E, l, 2, P.kv, 512);
+    if (idxsrc) { dbg_pt(E, l, 3, P.iq, 4096); dbg_pt(E, l, 4, P.iw, 32); }
     attn::encode_layer(E, P.ast, io, start, n);
+    dbg_pt(E, l, 5, P.aout, 32768);
+    if (idxsrc || cfg_.is_kv_source(l)) dbg_pt(E, l, 6, P.ast.topk, 512);
     if (o_.actq_out) { attn::encode_quant_sim(E, P.aout, (uint32_t)(n * 32768), 0); E.barrier(); }
     // wo_a (block-diagonal, 8 groups) then wo_b
     if (n <= 16) {
@@ -388,6 +414,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       E.barrier();
     }
     linear(E, L.o_b, P.oa, P.sub, n); E.barrier();
+    dbg_pt(E, l, 7, P.sub, 5120);
     // ---- hyper-connection boundary into the FFN ----
     {
       arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixA;
@@ -431,6 +458,10 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     }
   };  bool head_done = false;
   static const bool tbl_mode = env_int("MACSEEK_DEC_TABLE", 1) != 0;
+  // Each layer's expert-address table gets its own 1 KB (MACSEEK_TBL_STRIDE): with a packed table the GPU's read of
+  // layer l's entries can pull the head of layer l+1's entries (same cache line) into its caches BEFORE the CPU has
+  // written them -> stale expert addresses under timing pressure (observed: wrong output under GPU contention).
+  static const size_t tbl_stride = (size_t)env_int("MACSEEK_TBL_STRIDE", 1024);
   if (dec && tbl_mode && env_int("MACSEEK_PROF_FORCE", 0) != 2) {
     static const bool tforce = env_int("MACSEEK_PROF_FORCE", 0) == 1;   // PROFILING ONLY
     static const int tforced[6] = {0, 1, 2, 3, 4, 5};
@@ -464,16 +495,24 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     static id<MTLFence> f_gap = [dev newFence];
     auto ce_of = [](Enc& E) { return (__bridge id<MTLComputeCommandEncoder>)E.encoder(); };
     Timer tenc;
+    static const char* dbg_path = getenv("MACSEEK_DBG_DUMP");   // diagnostics: per-layer x checkpoints + routing
+    auto dbg_copy = [&](int slot, Buffer src) {
+      static void* pso_dbg = Device::get().pipeline("dbg_copy");
+      const uint32_t cnt = 5120;
+      e->set_pipeline(pso_dbg); e->set_buffer(0, src); e->set_buffer(1, P.dbg.sub((size_t)slot * 5120 * 4, 5120 * 4));
+      e->set_value(2, cnt); e->dispatch_threads(cnt, 1, 1, 256); e->barrier();
+    };
     for (int l = 0; l < cfg_.n_layers; l++) {
       LayerW& L = P.L[l];
       encode_attn_side(*e, l);
+      if (dbg_path) dbg_copy(2 * l, P.x);
       const auto& lay = cache_->layout().layers[l];
       q::MoeDecodeArgs m;
       m.t_gate_up = (QType)(int)lay.mat[0].type; m.t_down = (QType)(int)lay.mat[2].type;
       m.n_routed = 6; m.weights = P.rw; m.has_shared = true; m.t_shared = L.sh_gate.t;
       m.shared = q::ExpertSlot{L.sh_gate.b, L.sh_up.b, L.sh_down.b};
       m.x = P.x; m.y = P.sub; m.scratch = P.moe_dec_scratch;
-      const Buffer tl = P.tbl.sub((size_t)l * 6 * 3 * 8, 6 * 3 * 8);
+      const Buffer tl = P.tbl.sub((size_t)l * tbl_stride, 6 * 3 * 8);
       if (dsync == 0) {
         e->between([&](void* cb) {
           id<MTLCommandBuffer> c = (__bridge id<MTLCommandBuffer>)cb;
@@ -494,9 +533,11 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         q::encode_moe_decode_table_part(*e, m, tl, dsync == 1 ? q::MoePart::AfterSharedGu : q::MoePart::Routed);
       }
       e->barrier();
+      if (dbg_path) dbg_copy(2 * l + 1, P.sub);   // MoE output of layer l
     }
     encode_head(*e);
     head_done = true;
+    std::vector<int32_t> dbg_ids;
     prof_.encode_ms += tenc.ms();
     e->commit();
     std::vector<ExpertLease> leases;
@@ -507,8 +548,9 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       wait_ms += tw.ms();
       Timer tx;
       ExpertLease lease = cache_->ensure(l, tforce ? tforced : (const int*)P.rids.cpu(), 6);
+      if (dbg_path) for (int k = 0; k < 6; k++) dbg_ids.push_back(((const int*)P.rids.cpu())[k]);
       const bool pf = pred_on && !tforce;
-      uint64_t* t = (uint64_t*)P.tbl.cpu() + (size_t)l * 18;
+      uint64_t* t = (uint64_t*)((char*)P.tbl.cpu() + (size_t)l * tbl_stride);
       for (int k = 0; k < 6; k++) for (int j = 0; j < 3; j++) t[k * 3 + j] = lease.views[k].gpu[j];
       if (dsync != 0 && !lease.ticket) {
         // all hits: release the GPU first, then predict + prefetch the next layer
@@ -521,6 +563,15 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       }
       leases.push_back(std::move(lease));
       exp_ms += tx.ms();
+    }
+    if (dbg_path) {
+      e->wait();
+      FILE* f = fopen(dbg_path, "ab");
+      fwrite(dbg_ids.data(), 4, dbg_ids.size(), f);
+      fwrite(P.dbg.cpu(), 4, 80 * 5120, f);
+      fwrite(P.dbg2.cpu(), 4, 3 * 8 * 32768, f);
+      fwrite(P.rw.cpu(), 4, 6, f);   // last layer's routing weights
+      fclose(f);
     }
   } else
   if (pipe) {

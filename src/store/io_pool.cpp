@@ -65,6 +65,9 @@ void IoPool::run(int id) {
   size_t sb = (scratch_ + 16383) & ~(size_t)16383;
   char* scratch = (char*)mmap(nullptr, sb, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
   if (scratch == MAP_FAILED) { perror("io scratch"); abort(); }
+  // MACSEEK_IO_BOUNCE=1 (diagnostic): DMA into a private bounce buffer, then CPU-copy into the destination
+  static const bool bounce = getenv("MACSEEK_IO_BOUNCE") && atoi(getenv("MACSEEK_IO_BOUNCE")) != 0;
+  char* bb = nullptr; size_t bbn = 0;
   for (;;) {
     IoRequestPtr r; size_t idx; bool wake;
     {
@@ -83,7 +86,16 @@ void IoPool::run(int id) {
     const IoChunk& c = r->chunks[idx];
     char* dst = c.dst ? c.dst : scratch;
     if (!c.dst && c.len > sb) { fprintf(stderr, "io: chunk %u > scratch %zu\n", c.len, sb); abort(); }
-    long long got = pread_full(c.fd, dst, c.len, c.off);
+    long long got;
+    if (bounce && c.dst) {
+      if (c.len > bbn) {
+        if (bb) munmap(bb, bbn);
+        bbn = ((size_t)c.len + 16383) & ~(size_t)16383;
+        bb = (char*)mmap(nullptr, bbn, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+      }
+      got = pread_full(c.fd, bb, c.len, c.off);
+      if (got > 0) memcpy(dst, bb, (size_t)got);
+    } else got = pread_full(c.fd, dst, c.len, c.off);
     if (got < 0) { r->errors++; perror("io pread"); }
     else { r->bytes += (uint64_t)got; bytes_ += (uint64_t)got; }
     reads_++;

@@ -161,6 +161,7 @@ set(OLD_GLOB
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_probe.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/attn_sparse_pf.metal"
+  "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_bench.metal"
   "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/quant_mm.metal"

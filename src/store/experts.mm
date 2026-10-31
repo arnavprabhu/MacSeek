@@ -306,7 +306,8 @@ void ExpertCache::load_locked(int s, uint32_t k, int prio) {
   const ClassInfo& ci = classes_[x.cls];
   x.key = k; x.state = Loading; map_[k] = s;
   if (!p_->pinset.empty() && p_->pinset[k] && p_->pin_count[x.cls] < p_->pin_quota[x.cls]) { x.pinned = true; p_->pin_count[x.cls]++; }
-  if (!x.pinned) p_->policy->on_insert(s, k);   // pinned slots are not eviction candidates: keep them out of the policy
+  static const bool cold_pf = env_int("MACSEEK_PF_COLD", 0) != 0;   // prefetches enter at the eviction end
+  if (!x.pinned) { if (cold_pf && prio == 1) p_->policy->on_insert_cold(s, k); else p_->policy->on_insert(s, k); }
   inflight_++;
   auto req = std::make_shared<IoRequest>();
   uint64_t region = 0;

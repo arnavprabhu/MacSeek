@@ -316,13 +316,28 @@ kernel void arch_hc_step(device const float* h_in [[buffer(0)]],
       }
     }
     if (sg == 0) {
-      if (p.has_post)
-        for (uint i = 0; i < 4; i++) ((device float4*)h_out)[i * (ARCH_DIM / 4) + dv] = hn[i];
+      // h_out is NOT written here: h_out may alias h_in, and the other simdgroups of this group are still reading
+      // h_in for the same chunk (that race made the mixes depend on simdgroup scheduling). Written after the barrier.
       float4 xp = pre[0] * hn[0] + pre[1] * hn[1] + pre[2] * hn[2] + pre[3] * hn[3];
       if (p.has_pre) ((coherent(device) device float4*)x_out)[dv] = xp;
       ssh += dot(hn[0], hn[0]) + dot(hn[1], hn[1]) + dot(hn[2], hn[2]) + dot(hn[3], hn[3]);
       ssx += dot(xp, xp);
     }
+  }
+  if (p.has_post) {
+    threadgroup_barrier(mem_flags::mem_device);   // every simdgroup has finished reading this chunk of h_in
+    if (sg == 0)
+      for (uint c = lane; c < nv; c += 32) {
+        const uint dv = d0v + c;
+        float4 hn[4];
+        for (uint j = 0; j < 4; j++) hn[j] = h4[j * (ARCH_DIM / 4) + dv];
+        float4 xs = x4[dv];
+        for (uint i = 0; i < 4; i++) {
+          float4 a = post[i] * xs;
+          for (uint j = 0; j < 4; j++) a += comb[4 * j + i] * hn[j];
+          ((device float4*)h_out)[i * (ARCH_DIM / 4) + dv] = a;
+        }
+      }
   }
   if (p.has_mixes) {
     for (uint q = 0; q < MAXQ; q++) {
@@ -2426,6 +2441,15 @@ kernel void attn_pf_pv(device half* P [[buffer(0)]], device const half* ring [[b
     if (d >= ATTN_D - ATTN_RD) v = attn_rot_inv(v, tab[(size_t)p * 32 + (d - (ATTN_D - ATTN_RD)) / 2]);
     *(device float2*)(oq + (size_t)h * ATTN_D + d) = v;
   }
+}
+#line 1 "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal"
+// ---- /Users/arnav/Desktop/Projects/MacSeek/src/kernels/debug.metal
+#include <metal_stdlib>
+using namespace metal;
+// Diagnostics only: plain float copy (dst[i] = src[i]).
+kernel void dbg_copy(device const float* src [[buffer(0)]], device float* dst [[buffer(1)]],
+                     constant uint& n [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+  if (i < n) dst[i] = src[i];
 }
 #line 1 "/Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal"
 // ---- /Users/arnav/Desktop/Projects/MacSeek/src/kernels/model.metal
