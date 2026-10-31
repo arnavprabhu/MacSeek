@@ -111,6 +111,68 @@ void encode_matvec_n(Enc& e, QType t, const Buffer& W, int rows, int cols, const
   e.dispatch_groups((rows + rows_per_tg - 1) / rows_per_tg, 1, 1, 32 * a.rsg * a.ks);
 }
 
+// ---------------------------------------------------------------- prefill matmul
+namespace {
+struct QMmArgs { uint32_t n, rows, cols, row_bytes, x_stride, y_stride, accumulate; };
+struct MmTile { int tm, tn, nsg, nbuf; };
+MmTile mm_tile() {
+  static MmTile t = [] {
+    std::string s = env_str("MACSEEK_MM_TILE", "64x64_b2");
+    MmTile r{64, 64, 4, 2};
+    if (sscanf(s.c_str(), "%dx%d_b%d", &r.tm, &r.tn, &r.nbuf) != 3) r = {64, 64, 4, 2};
+    r.nsg = (r.tm == 128 && r.tn == 128) ? 8 : 4;
+    return r;
+  }();
+  return t;
+}
+Buffer& mm_scratch(size_t bytes) {
+  static Buffer b;
+  if (b.size < bytes) b = Device::get().alloc(std::max(bytes, (size_t)64 << 20), "quant.mm.x16");
+  return b;
+}
+}  // namespace
+
+void encode_f32_to_f16(Enc& e, const Buffer& X, const Buffer& X16, size_t count) {
+  uint32_t n4 = (uint32_t)(count / 4);
+  e.set_pipeline("q_f32_to_f16");
+  e.set_buffer(0, X); e.set_buffer(1, X16); e.set_value(2, n4);
+  e.dispatch_threads(n4, 1, 1, 256);
+}
+
+void encode_matmul_h(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& X16, const Buffer& Y, int n,
+                     bool accumulate, int x_stride) {
+  const char* kn = kname(t);
+  if (!kn || cols % 128 != 0 || n < 1) die("matmul", t, rows, cols);
+  QMmArgs args{(uint32_t)n, (uint32_t)rows, (uint32_t)cols, (uint32_t)row_bytes(t, cols),
+               (uint32_t)(x_stride ? x_stride : cols), (uint32_t)rows, accumulate ? 1u : 0u};
+  std::string fn;
+  int tm, tn, nsg;
+  if (block_elems(t) == 1) {  // dense: right operand straight from device memory
+    tm = 64; tn = 128; nsg = 4;
+    fn = std::string("q_mm_") + kn + "_64x128";
+    e.set_pipeline(fn.c_str());
+  } else {
+    MmTile mt = mm_tile();
+    tm = mt.tm; tn = mt.tn; nsg = mt.nsg;
+    fn = std::string("q_mm_") + kn + "_" + std::to_string(tm) + "x" + std::to_string(tn) + "_b" + std::to_string(mt.nbuf);
+    e.set_pipeline(fn.c_str());
+    e.set_threadgroup_memory(0, sizeof(uint16_t) * tn * 128 * mt.nbuf);
+  }
+  e.set_buffer(0, W); e.set_buffer(1, X16); e.set_buffer(2, Y);
+  e.set_value(3, args);
+  e.dispatch_groups((rows + tn - 1) / tn, (n + tm - 1) / tm, 1, 32 * nsg);
+}
+
+void encode_matmul(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& X, const Buffer& Y, int n,
+                   bool accumulate) {
+  if (cols % 4) die("matmul (cols % 4)", t, rows, cols);
+  Buffer& x16 = mm_scratch((size_t)n * cols * 2);
+  e.barrier();  // earlier users of the shared scratch must finish
+  encode_f32_to_f16(e, X, x16, (size_t)n * cols);
+  e.barrier();
+  encode_matmul_h(e, t, W, rows, cols, x16, Y, n, accumulate);
+}
+
 // ---------------------------------------------------------------- MoE decode
 namespace {
 struct QMoeArgs {  // must match quant_moe.metal

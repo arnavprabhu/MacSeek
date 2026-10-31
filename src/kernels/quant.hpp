@@ -23,10 +23,16 @@ void encode_matvec(Enc& e, QType t, const Buffer& W, int rows, int cols, const B
 void encode_matvec_n(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& X, const Buffer& Y, int n,
                      bool accumulate = false, int groups = 1);
 
-// Prefill: Y[n x rows] (+)= X[n x cols] . W^T for n >= 32 (any n works). Dequantized tiles + tensor-API / simdgroup
-// matrix multiply, F32 accumulate. X/Y F32 row-major.
+// Prefill: Y[n x rows] (+)= X[n x cols] . W^T for n >= 32 (any n works). Weight tiles are dequantized to half in
+// threadgroup memory and multiplied with the Metal 4 tensor API (MPP matmul2d, F32 accumulate). The tensor units need
+// half activations: encode_matmul converts X into an internal module-owned scratch (barrier before + after);
+// when one X feeds several matmuls, convert once with encode_f32_to_f16 and call encode_matmul_h.
 void encode_matmul(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& X, const Buffer& Y, int n,
                    bool accumulate = false);
+void encode_f32_to_f16(Enc& e, const Buffer& X, const Buffer& X16, size_t count);  // count % 4 == 0
+// X16: half[n x x_stride] (x_stride = cols if 0), Y: F32 [n x rows]
+void encode_matmul_h(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& X16, const Buffer& Y, int n,
+                     bool accumulate = false, int x_stride = 0);
 
 // ---- MoE ----
 constexpr int kExpertDim = 5120, kExpertInter = 2304, kMaxRouted = 6;
