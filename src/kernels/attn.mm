@@ -45,6 +45,10 @@ Options Options::from_env() {
   o.pf_mpp = env_int("MACSEEK_ATTN_PF_MPP", 1) != 0;
   o.dec_mpp = env_int("MACSEEK_ATTN_DEC_MPP", 0) != 0;
   o.pf_qblock = (int)env_int("MACSEEK_ATTN_PF_QBLOCK", o.pf_qblock);
+  o.pf_score_reg = env_int("MACSEEK_ATTN_PF_SCORE_REG", 1) != 0;
+  o.pf_fold_softmax = env_int("MACSEEK_ATTN_PF_FOLD", 1) != 0;
+  o.pf_pv128 = env_int("MACSEEK_ATTN_PF_PV128", 0) != 0;
+  o.pf_merge_filter = env_int("MACSEEK_ATTN_PF_MFILTER", 1) != 0;
   return o;
 }
 
@@ -119,11 +123,31 @@ void init(State& s, const Options& o) {
   s.Bk = d.alloc((size_t)nmax * kCandBlocks * 4, "attn.Bk");
   s.Bi = d.alloc((size_t)nmax * kCandBlocks * 4, "attn.Bi");
   s.Bc = d.alloc((size_t)nmax * 4, "attn.Bc");
+  if (o.pf_mpp && o.pf_fold_softmax && nmax > 1) {
+    Buffer r = d.alloc(128 * 4, "attn.chk");
+    { Enc e; e.set_pipeline("attn_pf2_layout_check"); e.set_buffer(0, r); e.dispatch_groups(1, 1, 1, 128); e.wait(); }
+    int bad = 0;
+    for (int i = 0; i < 128; i++) bad += ((const int*)r.cpu())[i];
+    s.pf_fold_ok = bad == 0;
+    if (bad) fprintf(stderr, "attn: pf2 cooperative-tensor layout differs from the assumed one (%d); using the 3-kernel path\n", bad);
+    d.release(r);
+  }
   if ((o.pf_mpp && nmax > 1) || o.dec_mpp) {
     const size_t qb = std::min(o.pf_qblock, nmax);
     s.pfQ = d.alloc(qb * kH * kD * 2, "attn.pfQ");
-    s.pfS = d.alloc(qb * kH * (kWin + kTopk) * 4, "attn.pfS");
+    if (!s.pf_fold_ok || o.dec_mpp) s.pfS = d.alloc(qb * kH * (kWin + kTopk) * 4, "attn.pfS");
     s.pfP = d.alloc(qb * kH * (kWin + kTopk) * 2, "attn.pfP");
+    if (s.pf_fold_ok) s.pfML = d.alloc(qb * ((kWin + kTopk) / 64) * kH * 8, "attn.pfML");
+  }
+  if (o.pf_score_reg) {  // verify the cooperative-tensor layout the register epilogue assumes
+    Buffer qa = d.alloc(64 * kID * 2, "attn.chk"), kb = d.alloc(128 * kID * 2, "attn.chk"), r = d.alloc(128 * 4, "attn.chk");
+    { Enc e; e.set_pipeline("attn_idx_layout_check"); e.set_buffer(0, qa); e.set_buffer(1, kb); e.set_buffer(2, r);
+      e.dispatch_groups(1, 1, 1, 128); e.wait(); }
+    int bad = 0;
+    for (int i = 0; i < 128; i++) bad += ((const int*)r.cpu())[i];
+    s.pf_score_reg_ok = bad == 0;
+    if (bad) fprintf(stderr, "attn: cooperative-tensor layout differs from the assumed one (%d); using the TG-memory scorer\n", bad);
+    d.release(qa); d.release(kb); d.release(r);
   }
   s.ulist = d.alloc((size_t)(nq2 / 2) * kUnionCap * 4, "attn.ulist");
   s.ucount = d.alloc((size_t)(nq2 / 2) * 4, "attn.ucount");
@@ -274,7 +298,7 @@ void encode_index_prefill(Enc& e, State& s, int L, const Buffer& iq, const Buffe
   }
   auto merge = [&](const Buffer& src, const Buffer& k_, const Buffer& i_, const Buffer& c_, int k, int cnt, int ld, int base, int first) {
     MergeArgs a{n, k, cnt, ld, base, first};
-    e.set_pipeline("attn_topk_merge");
+    e.set_pipeline(s.opt.pf_merge_filter && k <= 512 ? "attn_topk_merge_f" : "attn_topk_merge");
     e.set_buffer(0, src); e.set_buffer(1, k_); e.set_buffer(2, i_); e.set_buffer(3, c_); e.set_value(4, a);
     e.dispatch_groups(n, 1, 1, 1024);
   };
@@ -296,13 +320,13 @@ void encode_index_prefill(Enc& e, State& s, int L, const Buffer& iq, const Buffe
     for (int kc0 = 0; kc0 < nv_max; kc0 += KC) {
       const int c = std::min(KC, nv_max - kc0);
       IdxPfListArgs a{start, n, r, kc0, c, KC, s.mask_words, kUnionCap, ntiles * 64};
-      e.set_pipeline("attn_idx_score_pf_list");
+      e.set_pipeline(s.pf_score_reg_ok ? "attn_idx_score_pf_list2" : "attn_idx_score_pf_list");
       e.set_buffer(0, s.Qi); e.set_buffer(1, s.wq); e.set_buffer(2, s.ikey[sl]); e.set_buffer(3, s.S);
       e.set_buffer(4, s.cand_mask); e.set_buffer(5, s.ulist); e.set_buffer(6, s.ucount); e.set_value(7, a);
       e.dispatch_groups((c + 63) / 64, ntiles, 1, 128);
       e.barrier();
       MergeListArgs m{n, kTopk, c, KC, kc0, kc0 == 0, kUnionCap};
-      e.set_pipeline("attn_topk_merge_list");
+      e.set_pipeline(s.opt.pf_merge_filter ? "attn_topk_merge_list_f" : "attn_topk_merge_list");
       e.set_buffer(0, s.S); e.set_buffer(1, s.Rk); e.set_buffer(2, s.Ri); e.set_buffer(3, s.Rc);
       e.set_buffer(4, s.ulist); e.set_buffer(5, s.ucount); e.set_value(6, m);
       e.dispatch_groups(n, 1, 1, 1024);
@@ -312,7 +336,7 @@ void encode_index_prefill(Enc& e, State& s, int L, const Buffer& iq, const Buffe
   for (int kc0 = 0; kc0 < len_max && !(um && s.opt.pf_cand_union); kc0 += KC) {
     const int c = std::min(KC, len_max - kc0);
     IdxPfArgs a{start, n, r, kc0, c, KC, um ? 1 : 0, s.mask_words, cs ? 1 : 0, s.cap[sl] + kRowPad, (n + 1) / 2 * 64};
-    e.set_pipeline("attn_idx_score_pf");
+    e.set_pipeline(s.pf_score_reg_ok ? "attn_idx_score_pf2" : "attn_idx_score_pf");
     e.set_buffer(0, s.Qi); e.set_buffer(1, s.wq); e.set_buffer(2, s.ikey[sl]); e.set_buffer(3, s.S);
     e.set_buffer(4, s.cand_mask); e.set_buffer(5, s.BS); e.set_value(6, a);
     e.dispatch_groups((c + 127) / 128, (n + 1) / 2, 1, 128);
@@ -362,10 +386,26 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     for (int q0 = 0; q0 < n; q0 += QB) {
       const int nb = std::min(QB, n - q0);
       PfArgs a{start + q0, nb, q0, start, ntop, R, 1.0f / std::sqrt((float)kD)};
+      const bool fold = s.pf_fold_ok && n > 1;
       e.set_pipeline("attn_pf_qprep");
       e.set_buffer(0, q); e.set_buffer(1, tab_of(s, L)); e.set_buffer(2, s.pfQ); e.set_value(3, a);
       e.dispatch_groups(nb, 1, 1, 128);
       e.barrier();
+      if (fold) {
+        e.set_pipeline("attn_pf2_scores");
+        e.set_buffer(0, s.pfQ); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
+        e.set_buffer(4, s.topk); e.set_buffer(5, s.pfP); e.set_buffer(6, s.pfML); e.set_value(7, a);
+        e.dispatch_groups(R / 64, nb, 1, 128);
+        e.barrier();
+        const bool pv128 = s.opt.pf_pv128;
+        e.set_pipeline(pv128 ? "attn_pf2_pv128" : "attn_pf2_pv");
+        e.set_buffer(0, s.pfP); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
+        e.set_buffer(4, s.topk); e.set_buffer(5, tab_of(s, L)); e.set_buffer(6, out); e.set_buffer(7, s.pfML);
+        e.set_buffer(8, sinks); e.set_value(9, a);
+        e.dispatch_groups(kD / (pv128 ? 128 : 64), nb, 1, 128);
+        e.barrier();
+        continue;
+      }
       e.set_pipeline("attn_pf_scores");
       e.set_buffer(0, s.pfQ); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.chunk_kv); e.set_buffer(3, ckv);
       e.set_buffer(4, s.topk); e.set_buffer(5, s.pfS); e.set_value(6, a);

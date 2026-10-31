@@ -69,7 +69,17 @@ int main(int argc, char** argv) {
          cg = d.alloc((size_t)N * 512 * 4), iq = d.alloc((size_t)N * 32 * 128 * 4), iw = d.alloc((size_t)N * 32 * 4),
          out = d.alloc((size_t)N * 64 * 512 * 4), w512 = d.alloc(512 * 4), w128 = d.alloc(128 * 4), sinks = d.alloc(64 * 4),
          wk = d.alloc(128 * 512 * 2);
-  fill_f32(q, 0.2f); fill_f32(kv, 1); fill_f32(ckv, 1); fill_f32(cg, 2); fill_f32(iq, 1); fill_f32(iw, 1); fill_f32(sinks, 1);
+  fill_f32(q, 0.2f); fill_f32(kv, 1); fill_f32(ckv, 1); fill_f32(cg, 2); fill_f32(iq, 1); fill_f32(iw, 1);
+  {  // BENCH_QCORR = rho: consecutive tokens' indexer inputs follow an AR(1) process (real text: neighbouring queries pick
+     // mostly the same keys / candidate blocks). 0 = independent random rows (worst case for the candidate union).
+    const double rho = env_int("BENCH_QCORR_PCT", 0) / 100.0;
+    if (rho > 0) {
+      const double c = std::sqrt(1 - rho * rho);
+      float* a = (float*)iq.cpu(); float* b = (float*)iw.cpu();
+      for (size_t r = 1; r < iq.size / 4 / 4096; r++) for (int i = 0; i < 4096; i++) a[r * 4096 + i] = (float)(rho * a[(r - 1) * 4096 + i] + c * a[r * 4096 + i]);
+      for (size_t r = 1; r < iw.size / 4 / 32; r++) for (int i = 0; i < 32; i++) b[r * 32 + i] = (float)(rho * b[(r - 1) * 32 + i] + c * b[r * 32 + i]);
+    }
+  } fill_f32(sinks, 1);
   for (int i = 0; i < 512; i++) ((float*)w512.cpu())[i] = 1;
   for (int i = 0; i < 128; i++) ((float*)w128.cpu())[i] = 1;
   { uint16_t* p = (uint16_t*)wk.cpu(); for (int i = 0; i < 128 * 512; i++) p[i] = 0x3c00 ^ (xr() & 0x8000) ? 0x3c00 : 0xbc00; }
