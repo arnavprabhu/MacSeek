@@ -1,0 +1,65 @@
+{
+ "dir": "/Users/arnav/Desktop/Projects/MacSeek/logs/oracle/v0",
+ "files": {
+  "chat.logits": {
+   "sha256": "694eb571dfb015abbf7bf8b32340098f3e735d2fd6070ebca43eeabb20cd7a52",
+   "bytes": 74465888,
+   "n_tokens": 144,
+   "prefill_s": 50.209
+  },
+  "chat_think.logits": {
+   "sha256": "1a9daa9b83bf4fc309ef28c90708165da736e9e75df8967e712fd310389aa3cb",
+   "bytes": 89462484,
+   "n_tokens": 173,
+   "prefill_s": 51.235
+  },
+  "cjk.logits": {
+   "sha256": "c309d0d434a194b5d420ab02b418fef9f9f58d0854d3b3ec677663eb092e17d8",
+   "bytes": 143243380,
+   "n_tokens": 277,
+   "prefill_s": 51.098
+  },
+  "code_cpp.logits": {
+   "sha256": "ad22b2faabaae6920b054778d9da0ec6a64f9b5d7c095fe6db76758bc359882a",
+   "bytes": 232188708,
+   "n_tokens": 449,
+   "prefill_s": 61.122
+  },
+  "code_python.logits": {
+   "sha256": "b6ccd1be87f40a108a173b1faf1e5090a34c16ed55db0a586b7a044cfd8ebf8c",
+   "bytes": 214089368,
+   "n_tokens": 414,
+   "prefill_s": 65.99
+  },
+  "en_prose.logits": {
+   "sha256": "e461d3c9a1d59d262be6099b72242b31926aaf7138b25a3b9773704d8ff13814",
+   "bytes": 159274224,
+   "n_tokens": 308,
+   "prefill_s": 70.366
+  },
+  "json.logits": {
+   "sha256": "02ee5deebc5c79121d9eb2e60658c2bffe675523a48f62e1e05c4fc763306060",
+   "bytes": 248219552,
+   "n_tokens": 480,
+   "prefill_s": 74.642
+  },
+  "math.logits": {
+   "sha256": "a31207891d01007218e302f237cd2fd72dfc67f46439a2c76730381c97b435ab",
+   "bytes": 238911320,
+   "n_tokens": 462,
+   "prefill_s": 54.083
+  }
+ },
+ "config": {
+  "ngl": 99,
+  "cpu_moe": true,
+  "mmap": true,
+  "n_ctx": 496,
+  "n_batch": 2048,
+  "n_ubatch": 512,
+  "threads": 6,
+  "fa": "auto"
+ },
+ "llama_cpp": "Homebrew llama.cpp 0.8.0 build 11960 (commit 8642541b2), ggml 0.28.0",
+ "rerun_bit_exact": true
+}
