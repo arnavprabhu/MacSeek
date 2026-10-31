@@ -76,9 +76,10 @@ static void fill(Enc& e, const Buffer& y, size_t nfloats, float v = 0.f) {
 }
 
 // y[n][rows] = x[n][cols] . W^T  (picks decode / small-n / prefill kernel)
+static int mvn_max() { static const int v = (int)env_int("MACSEEK_MATVEC_N_MAX", 16); return v; }   // small-n path
 static void linear(Enc& e, const W& w, const Buffer& x, const Buffer& y, int n, bool acc = false) {
   if (n == 1) q::encode_matvec(e, w.t, w.b, w.rows, w.cols, x, y, acc);
-  else if (n <= 16) q::encode_matvec_n(e, w.t, w.b, w.rows, w.cols, x, y, n, acc);
+  else if (n <= mvn_max()) q::encode_matvec_n(e, w.t, w.b, w.rows, w.cols, x, y, n, acc);
   else q::encode_matmul(e, w.t, w.b, w.rows, w.cols, x, y, n, acc);
 }
 
@@ -273,6 +274,11 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   P.erow = P.erow_b[P.erow_cur];
   te_->fetch(toks, n, P.embrows.cpu());
   tk0.wait(); tk1.wait();
+  if (getenv("MACSEEK_DBG_HASH")) {
+    auto fnv = [](const void* p, size_t nb) { uint64_t h = 1469598103934665603ull; for (size_t i = 0; i < nb; i++) h = (h ^ ((const uint8_t*)p)[i]) * 1099511628211ull; return h; };
+    fprintf(stderr, "dbg-hash: n %d embrows %016llx erow %016llx toks %016llx\n", n, (unsigned long long)fnv(P.embrows.cpu(), (size_t)n * 4200),
+            (unsigned long long)fnv(P.erow.cpu(), (size_t)2 * n * 24 * 144), (unsigned long long)fnv(toks, (size_t)n * 4));
+  }
   if (const char* dp = getenv("MACSEEK_DBG_DUMP"); dp && n == 1 && getenv("MACSEEK_DBG_EROW")) {
     FILE* f = fopen((std::string(dp) + ".erow").c_str(), "ab");
     fwrite(toks, 4, 1, f);
@@ -298,6 +304,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
 
   auto e = std::make_unique<Enc>();
   arch::encode_embed_q6k(*e, P.embrows, 4200, h, n, 4);
+  e->barrier();   // the layer-0 hc step reads h (with lazy engram kv nothing else separates them)
   // layer-0 attention mix_prev = identity (pre = [1,0,0,0])
   {
     float* mf = (float*)P.mixF.cpu();
@@ -306,7 +313,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   // engram kv for both engram layers (depends only on token ids): ekv[s] = engram_kv(dequant(rows of layer s))
   Buffer ekv_l[2];
   static const bool scr_alias = env_int("MACSEEK_SCRATCH_ALIAS", 1) != 0;
-  const bool lazy_ekv = scr_alias && n > 1;   // prefill: each engram layer's kv computed right before that layer
+  static const bool lazy_on = env_int("MACSEEK_LAZY_EKV", 1) != 0;
+  const bool lazy_ekv = scr_alias && lazy_on && n > 1;   // prefill: each engram layer's kv computed right before that layer
   for (int s = 0; s < 2; s++)
     ekv_l[s] = !scr_alias ? P.ekv.sub((size_t)s * P.maxn * 25600 * 4, (size_t)n * 25600 * 4)
              : n == 1 ? P.ekv.sub((size_t)s * 25600 * 4, 25600 * 4) : P.ekv.sub(0, (size_t)n * 25600 * 4);
@@ -372,7 +380,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   // and zeroing of `sub` (the MoE accumulates into it). Encodes into E; no commit.
   static const bool dbg_on = getenv("MACSEEK_DBG_DUMP") != nullptr;
   auto dbg_pt = [&](Enc& E, int l, int pt, Buffer src, uint32_t cnt) {   // diagnostics: checkpoint inside layers 0..2
-    if (!dbg_on || n != 1 || l > 2) return;
+    static const bool dbg_pf_on = getenv("MACSEEK_DBG_PF") != nullptr;
+    if (!((dbg_on && n == 1) || (dbg_pf_on && n > 1)) || l > 2) return;
     static void* pso_dbg = Device::get().pipeline("dbg_copy");
     E.barrier();
     E.set_pipeline(pso_dbg); E.set_buffer(0, src); E.set_buffer(1, P.dbg2.sub(((size_t)l * 8 + pt) * 32768 * 4, (size_t)cnt * 4));
@@ -401,6 +410,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       c.base = L.hc_attn_base.b; c.mix_out = P.mixA; c.norm_w = L.attn_norm.b; c.x_out = P.x; c.n = n;
       arch::encode_hc_step(E, c, P.asc); E.barrier();
     } else {
+      if (l == 0) { dbg_pt(E, 0, 3, h, 20480); dbg_pt(E, 0, 4, P.mixF, 24); }
       arch::HcStep a; a.h_in = h; a.h_out = h; if (l > 0) a.x_sub = P.sub; a.mix_prev = P.mixF;
       a.fn = L.hc_attn_fn.b; a.scale = L.hc_attn_scale.b; a.base = L.hc_attn_base.b; a.mix_out = P.mixA;
       a.norm_w = L.attn_norm.b; a.x_out = P.x; a.n = n;
@@ -428,7 +438,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     if (idxsrc || cfg_.is_kv_source(l)) dbg_pt(E, l, 6, P.ast.topk, 512);
     if (o_.actq_out) { attn::encode_quant_sim(E, P.aout, (uint32_t)(n * 32768), 0); E.barrier(); }
     // wo_a (block-diagonal, 8 groups) then wo_b
-    if (n <= 16) {
+    if (n <= mvn_max()) {
       if (n == 1) q::encode_matvec(E, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, false, 8);
       else q::encode_matvec_n(E, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, n, false, 8);
       E.barrier();
@@ -692,7 +702,17 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       if (l == 0) cache_->prefetch(0, all_ids.data(), 384);
       if (!pf_pred && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, all_ids.data(), 384);
     }
+    static const bool dbg_pf = getenv("MACSEEK_DBG_PF") != nullptr;   // diagnostics: prefill per-layer row-0 checkpoints
+    auto dbg_pf_copy = [&](int slot, Buffer src) {
+      static void* pso_dbg = Device::get().pipeline("dbg_copy");
+      const uint32_t cnt = 5120;
+      e->barrier();
+      e->set_pipeline(pso_dbg); e->set_buffer(0, src); e->set_buffer(1, P.dbg.sub((size_t)slot * 5120 * 4, 5120 * 4));
+      e->set_value(2, cnt); e->dispatch_threads(cnt, 1, 1, 256); e->barrier();
+    };
+    if (dbg_pf && !dec && l > 0) dbg_pf_copy(2 * l - 1, P.sub);   // MoE output of layer l-1 (row 0)
     encode_attn_side(*e, l);
+    if (dbg_pf && !dec) dbg_pf_copy(2 * l, P.x);                   // FFN input of layer l (row 0)
     prof_.encode_ms += tenc.ms();
     static const int force_mode = (int)env_int("MACSEEK_PROF_FORCE", 0);
     if (dec && force_mode == 2) {
@@ -847,6 +867,12 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   wait_ms += tw.ms();
   gpu_ms += e->gpu_ms();
   next = *(const int32_t*)P.amax_i.cpu();
+  if (getenv("MACSEEK_DBG_PF") && !dec) {
+    FILE* f = fopen(getenv("MACSEEK_DBG_PF"), "ab");
+    fwrite(P.dbg.cpu(), 4, 80 * 5120, f);
+    fwrite(P.dbg2.cpu(), 4, 3 * 8 * 32768, f);
+    fclose(f);
+  }
   if (logits_all) memcpy(logits_all, P.logits.cpu(), (size_t)n * V * 4);
   if (logits_last) memcpy(logits_last, (const float*)P.logits.cpu() + (logits_all ? (size_t)(n - 1) * V : 0), (size_t)V * 4);
   pos_ += n;
