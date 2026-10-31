@@ -34,7 +34,7 @@ struct PfArgs { int start, nq, q0, chunk_start, ntop, R; float scale; };
 
 Options Options::from_env() {
   Options o;
-  o.actq = env_int("MACSEEK_ACTQ", 1) != 0;
+  o.actq = env_int("MACSEEK_ACTQ", 0) != 0;  // default 0: matches the llama.cpp oracle best (KL 0.003 vs 0.013)
   o.max_pos = (int)env_int("MACSEEK_MAX_POS", o.max_pos);
   o.key_chunk = (int)env_int("MACSEEK_ATTN_KCHUNK", o.key_chunk);
   o.dec_rows_split = (int)env_int("MACSEEK_ATTN_DEC_SPLIT", o.dec_rows_split);

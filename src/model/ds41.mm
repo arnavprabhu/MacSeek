@@ -30,7 +30,7 @@ ModelOptions ModelOptions::from_env() {
   o.model_path = env_str("MACSEEK_MODEL", "");
   o.arena_gb = env_f("MACSEEK_ARENA_GB", 0);
   o.max_chunk = (int)env_int("MACSEEK_CHUNK", 2048);
-  o.actq_out = env_int("MACSEEK_ACTQ_OUT", env_int("MACSEEK_ACTQ", 1)) != 0;
+  o.actq_out = env_int("MACSEEK_ACTQ_OUT", env_int("MACSEEK_ACTQ", 0)) != 0;
   o.moe_group = (int)env_int("MACSEEK_MOE_GROUP", 64);
   o.verbose = env_int("MACSEEK_VERBOSE", 1) != 0;
   return o;
@@ -456,6 +456,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       route_ms += troute.ms();
       experts_used += (long)used.size(); groups_run += ngroups;
       std::vector<ExpertLease> leases(ngroups);
+      static id<MTLEvent> pchain = [(__bridge id<MTLDevice>)Device::get().device() newEvent];
+      static uint64_t pval = 0;
       std::vector<std::unique_ptr<Enc>> encs(ngroups);
       auto group_ids = [&](int gi) { return std::vector<int>(used.begin() + gi * G, used.begin() + std::min((int)used.size(), (gi + 1) * G)); };
       if (ngroups > 0) leases[0] = cache_->ensure(l, group_ids(0));
@@ -484,7 +486,13 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         encs[gi] = std::make_unique<Enc>();
         Enc& eg = *encs[gi];
         if (cpu_wait_io) leases[gi].wait();
-        else eg.between([&](void* cb) { leases[gi].encode_wait(cb); });
+        // groups accumulate into the same Y (sub): order their command buffers on the GPU (they may otherwise
+        // overlap: untracked resources), while the CPU keeps encoding / loading ahead
+        eg.between([&](void* cb) {
+          id<MTLCommandBuffer> c = (__bridge id<MTLCommandBuffer>)cb;
+          if (gi > 0) [c encodeWaitForEvent:pchain value:pval];
+          if (!cpu_wait_io) leases[gi].encode_wait(cb);
+        });
         {  // grow this scratch if the group needs more (only after the CB that used it finished: waited above)
           size_t need = q::moe_prefill_scratch_bytes(total, n, (int)gids.size());
           if (need > P.moe_scr[sb].size) {
@@ -501,6 +509,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         m.has_shared = gi == 0; m.t_shared = L.sh_gate.t; m.shared = q::ExpertSlot{L.sh_gate.b, L.sh_up.b, L.sh_down.b};
         m.X = P.x; m.Y = P.sub; m.scratch = P.moe_scr[sb];
         q::encode_moe_prefill(eg, m);
+        eg.between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:pchain value:++pval]; });
         leases[gi].release_after(eg.cmdbuf());
         eg.commit();
         (void)total;
