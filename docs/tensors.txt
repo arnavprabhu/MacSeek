@@ -1,0 +1,1043 @@
+output.weight	Q6_K	[5120, 129280]	542976000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	28992
+output_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	543004992
+token_embd.weight	Q6_K	[5120, 129280]	542976000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	543025472
+blk.0.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1086001472
+blk.0.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1088151872
+blk.0.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1088153920
+blk.0.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1088174400
+blk.0.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1115699520
+blk.0.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1150105920
+blk.0.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1155481920
+blk.0.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1155487040
+blk.0.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1189893440
+blk.0.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1189893696
+blk.0.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1189895232
+blk.0.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	1189896768
+blk.0.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	2074632768
+blk.0.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	2084309568
+blk.0.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	2969045568
+blk.0.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	2976909888
+blk.0.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	2986586688
+blk.0.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	2986607168
+blk.0.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3871343168
+blk.0.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3881019968
+blk.0.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3881020064
+blk.0.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3882986144
+blk.0.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3882986176
+blk.0.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3882986272
+blk.0.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3884952352
+blk.1.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3884952384
+blk.1.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3887102784
+blk.1.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3887104832
+blk.1.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3887125312
+blk.1.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3914650432
+blk.1.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3949056832
+blk.1.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3954432832
+blk.1.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3954437952
+blk.1.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3988844352
+blk.1.engram_gate.weight	F32	[5120, 4]	81920	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3988844608
+blk.1.engram_kv.weight	Q6_K	[6144, 25600]	129024000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	3988926528
+blk.1.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	4117950528
+blk.1.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	4117952064
+blk.1.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	4117953600
+blk.1.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	5002689600
+blk.1.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	5012366400
+blk.1.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	5897102400
+blk.1.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	5904966720
+blk.1.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	5914643520
+blk.1.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	5914664000
+blk.1.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6799400000
+blk.1.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6809076800
+blk.1.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6809076896
+blk.1.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6811042976
+blk.1.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6811043008
+blk.1.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6811043104
+blk.1.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6813009184
+blk.2.attn_compressor_gate.weight	BF16	[5120, 512]	5242880	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6813009216
+blk.2.attn_compressor_kv.weight	BF16	[5120, 512]	5242880	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6818252096
+blk.2.attn_compressor_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6823494976
+blk.2.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6823497024
+blk.2.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6825647424
+blk.2.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6825649472
+blk.2.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6825669952
+blk.2.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6853195072
+blk.2.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6887601472
+blk.2.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6892977472
+blk.2.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6892982592
+blk.2.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6927388992
+blk.2.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6927389248
+blk.2.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6927390784
+blk.2.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	6927392320
+blk.2.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	7812128320
+blk.2.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	7821805120
+blk.2.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	8706541120
+blk.2.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	8714405440
+blk.2.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	8724082240
+blk.2.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	8724102720
+blk.2.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9608838720
+blk.2.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9618515520
+blk.2.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9618515616
+blk.2.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9620481696
+blk.2.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9620481728
+blk.2.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9620481824
+blk.2.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9622447904
+blk.2.indexer.attn_k.weight	BF16	[512, 128]	131072	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9622447936
+blk.2.indexer.attn_q_b.weight	BF16	[1280, 4096]	10485760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9622579008
+blk.2.indexer.k_norm.weight	F32	[128]	512	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9633064768
+blk.2.indexer.proj.weight	BF16	[5120, 32]	327680	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9633065280
+blk.3.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9633392960
+blk.3.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9635543360
+blk.3.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9635545408
+blk.3.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9635565888
+blk.3.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9663091008
+blk.3.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9697497408
+blk.3.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9702873408
+blk.3.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9702878528
+blk.3.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9737284928
+blk.3.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9737285184
+blk.3.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9737286720
+blk.3.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	9737288256
+blk.3.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	10622024256
+blk.3.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	10631701056
+blk.3.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	11516437056
+blk.3.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	11524301376
+blk.3.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	11533978176
+blk.3.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	11533998656
+blk.3.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12418734656
+blk.3.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12428411456
+blk.3.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12428411552
+blk.3.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12430377632
+blk.3.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12430377664
+blk.3.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12430377760
+blk.3.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12432343840
+blk.4.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12432343872
+blk.4.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12434494272
+blk.4.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12434496320
+blk.4.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12434516800
+blk.4.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12462041920
+blk.4.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12496448320
+blk.4.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12501824320
+blk.4.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12501829440
+blk.4.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12536235840
+blk.4.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12536236096
+blk.4.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12536237632
+blk.4.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	12536239168
+blk.4.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	13420975168
+blk.4.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	13430651968
+blk.4.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	14315387968
+blk.4.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	14323252288
+blk.4.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	14332929088
+blk.4.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	14332949568
+blk.4.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15217685568
+blk.4.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15227362368
+blk.4.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15227362464
+blk.4.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15229328544
+blk.4.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15229328576
+blk.4.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15229328672
+blk.4.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15231294752
+blk.5.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15231294784
+blk.5.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15233445184
+blk.5.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15233447232
+blk.5.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15233467712
+blk.5.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15260992832
+blk.5.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15295399232
+blk.5.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15300775232
+blk.5.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15300780352
+blk.5.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15335186752
+blk.5.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15335187008
+blk.5.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15335188544
+blk.5.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	15335190080
+blk.5.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	16219926080
+blk.5.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	16229602880
+blk.5.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	17114338880
+blk.5.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	17122203200
+blk.5.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	17131880000
+blk.5.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	17131900480
+blk.5.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18016636480
+blk.5.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18026313280
+blk.5.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18026313376
+blk.5.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18028279456
+blk.5.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18028279488
+blk.5.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18028279584
+blk.5.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18030245664
+blk.6.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18030245696
+blk.6.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18032396096
+blk.6.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18032398144
+blk.6.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18032418624
+blk.6.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18059943744
+blk.6.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18094350144
+blk.6.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18099726144
+blk.6.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18099731264
+blk.6.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18134137664
+blk.6.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18134137920
+blk.6.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18134139456
+blk.6.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	18134140992
+blk.6.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	19018876992
+blk.6.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	19028553792
+blk.6.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	19913289792
+blk.6.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	19921154112
+blk.6.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	19930830912
+blk.6.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	19930851392
+blk.6.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20815587392
+blk.6.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20825264192
+blk.6.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20825264288
+blk.6.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20827230368
+blk.6.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20827230400
+blk.6.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20827230496
+blk.6.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20829196576
+blk.7.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20829196608
+blk.7.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20831347008
+blk.7.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20831349056
+blk.7.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20831369536
+blk.7.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20858894656
+blk.7.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20893301056
+blk.7.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20898677056
+blk.7.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20898682176
+blk.7.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20933088576
+blk.7.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20933088832
+blk.7.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20933090368
+blk.7.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	20933091904
+blk.7.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	21817827904
+blk.7.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	21827504704
+blk.7.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	22712240704
+blk.7.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	22720105024
+blk.7.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	22729781824
+blk.7.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	22729802304
+blk.7.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23614538304
+blk.7.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23624215104
+blk.7.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23624215200
+blk.7.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23626181280
+blk.7.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23626181312
+blk.7.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23626181408
+blk.7.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23628147488
+blk.8.attn_compressor_gate.weight	BF16	[5120, 512]	5242880	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23628147520
+blk.8.attn_compressor_kv.weight	BF16	[5120, 512]	5242880	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23633390400
+blk.8.attn_compressor_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23638633280
+blk.8.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23638635328
+blk.8.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23640785728
+blk.8.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23640787776
+blk.8.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23640808256
+blk.8.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23668333376
+blk.8.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23702739776
+blk.8.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23708115776
+blk.8.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23708120896
+blk.8.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23742527296
+blk.8.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23742527552
+blk.8.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23742529088
+blk.8.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	23742530624
+blk.8.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	24627266624
+blk.8.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	24636943424
+blk.8.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	25521679424
+blk.8.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	25529543744
+blk.8.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	25539220544
+blk.8.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	25539241024
+blk.8.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26423977024
+blk.8.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26433653824
+blk.8.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26433653920
+blk.8.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26435620000
+blk.8.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26435620032
+blk.8.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26435620128
+blk.8.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26437586208
+blk.8.indexer.attn_k.weight	BF16	[512, 128]	131072	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26437586240
+blk.8.indexer.attn_q_b.weight	BF16	[1280, 4096]	10485760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26437717312
+blk.8.indexer.k_norm.weight	F32	[128]	512	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26448203072
+blk.8.indexer.proj.weight	BF16	[5120, 32]	327680	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26448203584
+blk.9.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26448531264
+blk.9.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26450681664
+blk.9.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26450683712
+blk.9.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26450704192
+blk.9.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26478229312
+blk.9.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26512635712
+blk.9.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26518011712
+blk.9.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26518016832
+blk.9.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26552423232
+blk.9.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26552423488
+blk.9.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26552425024
+blk.9.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	26552426560
+blk.9.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	27437162560
+blk.9.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	27446839360
+blk.9.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	28331575360
+blk.9.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	28339439680
+blk.9.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	28349116480
+blk.9.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	28349136960
+blk.9.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29233872960
+blk.9.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29243549760
+blk.9.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29243549856
+blk.9.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29245515936
+blk.9.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29245515968
+blk.9.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29245516064
+blk.9.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29247482144
+blk.10.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29247482176
+blk.10.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29249632576
+blk.10.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29249634624
+blk.10.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29249655104
+blk.10.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29277180224
+blk.10.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29311586624
+blk.10.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29316962624
+blk.10.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29316967744
+blk.10.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29351374144
+blk.10.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29351374400
+blk.10.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29351375936
+blk.10.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	29351377472
+blk.10.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	30236113472
+blk.10.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	30245790272
+blk.10.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	31130526272
+blk.10.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	31138390592
+blk.10.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	31148067392
+blk.10.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	31148087872
+blk.10.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32032823872
+blk.10.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32042500672
+blk.10.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32042500768
+blk.10.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32044466848
+blk.10.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32044466880
+blk.10.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32044466976
+blk.10.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32046433056
+blk.11.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32046433088
+blk.11.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32048583488
+blk.11.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32048585536
+blk.11.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32048606016
+blk.11.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32076131136
+blk.11.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32110537536
+blk.11.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32115913536
+blk.11.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32115918656
+blk.11.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32150325056
+blk.11.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32150325312
+blk.11.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32150326848
+blk.11.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	32150328384
+blk.11.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	33035064384
+blk.11.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	33044741184
+blk.11.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	33929477184
+blk.11.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	33937341504
+blk.11.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	33947018304
+blk.11.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	33947038784
+blk.11.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34831774784
+blk.11.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34841451584
+blk.11.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34841451680
+blk.11.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34843417760
+blk.11.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34843417792
+blk.11.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34843417888
+blk.11.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34845383968
+blk.12.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34845384000
+blk.12.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34847534400
+blk.12.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34847536448
+blk.12.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34847556928
+blk.12.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34875082048
+blk.12.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34909488448
+blk.12.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34914864448
+blk.12.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34914869568
+blk.12.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34949275968
+blk.12.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34949276224
+blk.12.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34949277760
+blk.12.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	34949279296
+blk.12.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	35834015296
+blk.12.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	35843692096
+blk.12.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	36728428096
+blk.12.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	36736292416
+blk.12.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	36745969216
+blk.12.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	36745989696
+blk.12.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37630725696
+blk.12.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37640402496
+blk.12.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37640402592
+blk.12.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37642368672
+blk.12.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37642368704
+blk.12.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37642368800
+blk.12.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37644334880
+blk.13.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37644334912
+blk.13.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37646485312
+blk.13.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37646487360
+blk.13.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37646507840
+blk.13.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37674032960
+blk.13.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37708439360
+blk.13.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37713815360
+blk.13.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37713820480
+blk.13.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37748226880
+blk.13.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37748227136
+blk.13.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37748228672
+blk.13.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	37748230208
+blk.13.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	38632966208
+blk.13.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	38642643008
+blk.13.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	39527379008
+blk.13.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	39535243328
+blk.13.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	39544920128
+blk.13.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	39544940608
+blk.13.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40429676608
+blk.13.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40439353408
+blk.13.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40439353504
+blk.13.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40441319584
+blk.13.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40441319616
+blk.13.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40441319712
+blk.13.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40443285792
+blk.14.attn_compressor_gate.weight	BF16	[5120, 512]	5242880	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40443285824
+blk.14.attn_compressor_kv.weight	BF16	[5120, 512]	5242880	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40448528704
+blk.14.attn_compressor_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40453771584
+blk.14.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40453773632
+blk.14.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40455924032
+blk.14.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40455926080
+blk.14.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40455946560
+blk.14.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40483471680
+blk.14.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40517878080
+blk.14.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40523254080
+blk.14.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40523259200
+blk.14.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40557665600
+blk.14.engram_gate.weight	F32	[5120, 4]	81920	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40557665856
+blk.14.engram_kv.weight	Q6_K	[6144, 25600]	129024000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40557747776
+blk.14.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40686771776
+blk.14.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40686773312
+blk.14.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	40686774848
+blk.14.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	41571510848
+blk.14.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	41584044608
+blk.14.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	42468780608
+blk.14.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	42476644928
+blk.14.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	42489178688
+blk.14.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	42489199168
+blk.14.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43373935168
+blk.14.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43386468928
+blk.14.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43386469024
+blk.14.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43388435104
+blk.14.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43388435136
+blk.14.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43388435232
+blk.14.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43390401312
+blk.14.indexer.attn_k.weight	BF16	[512, 128]	131072	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43390401344
+blk.14.indexer.attn_q_b.weight	BF16	[1280, 4096]	10485760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43390532416
+blk.14.indexer.k_norm.weight	F32	[128]	512	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43401018176
+blk.14.indexer.proj.weight	BF16	[5120, 32]	327680	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43401018688
+blk.15.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43401346368
+blk.15.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43403496768
+blk.15.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43403498816
+blk.15.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43403519296
+blk.15.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43431044416
+blk.15.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43465450816
+blk.15.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43470826816
+blk.15.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43470831936
+blk.15.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43505238336
+blk.15.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43505238592
+blk.15.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43505240128
+blk.15.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	43505241664
+blk.15.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	44389977664
+blk.15.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	44402511424
+blk.15.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	45287247424
+blk.15.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	45295111744
+blk.15.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	45307645504
+blk.15.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	45307665984
+blk.15.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46192401984
+blk.15.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46204935744
+blk.15.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46204935840
+blk.15.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46206901920
+blk.15.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46206901952
+blk.15.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46206902048
+blk.15.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46208868128
+blk.16.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46208868160
+blk.16.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46211018560
+blk.16.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46211020608
+blk.16.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46211041088
+blk.16.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46238566208
+blk.16.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46272972608
+blk.16.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46278348608
+blk.16.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46278353728
+blk.16.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46312760128
+blk.16.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46312760384
+blk.16.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46312761920
+blk.16.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	46312763456
+blk.16.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	47197499456
+blk.16.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	47210033216
+blk.16.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	48094769216
+blk.16.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	48102633536
+blk.16.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	48115167296
+blk.16.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	48115187776
+blk.16.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	48999923776
+blk.16.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49012457536
+blk.16.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49012457632
+blk.16.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49014423712
+blk.16.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49014423744
+blk.16.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49014423840
+blk.16.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49016389920
+blk.17.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49016389952
+blk.17.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49018540352
+blk.17.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49018542400
+blk.17.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49018562880
+blk.17.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49046088000
+blk.17.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49080494400
+blk.17.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49085870400
+blk.17.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49085875520
+blk.17.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49120281920
+blk.17.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49120282176
+blk.17.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00002-of-00005.gguf	49120283712
+blk.17.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	24704
+blk.17.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	884760704
+blk.17.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	897294464
+blk.17.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	1782030464
+blk.17.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	1789894784
+blk.17.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	1802428544
+blk.17.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	1802449024
+blk.17.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2687185024
+blk.17.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2699718784
+blk.17.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2699718880
+blk.17.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2701684960
+blk.17.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2701684992
+blk.17.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2701685088
+blk.17.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2703651168
+blk.18.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2703651200
+blk.18.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2705801600
+blk.18.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2705803648
+blk.18.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2705824128
+blk.18.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2733349248
+blk.18.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2767755648
+blk.18.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2773131648
+blk.18.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2773136768
+blk.18.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2807543168
+blk.18.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2807543424
+blk.18.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2807544960
+blk.18.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	2807546496
+blk.18.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	3692282496
+blk.18.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	3704816256
+blk.18.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	4589552256
+blk.18.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	4597416576
+blk.18.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	4609950336
+blk.18.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	4609970816
+blk.18.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5494706816
+blk.18.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5507240576
+blk.18.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5507240672
+blk.18.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5509206752
+blk.18.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5509206784
+blk.18.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5509206880
+blk.18.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5511172960
+blk.19.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5511172992
+blk.19.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5513323392
+blk.19.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5513325440
+blk.19.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5513345920
+blk.19.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5540871040
+blk.19.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5575277440
+blk.19.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5580653440
+blk.19.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5580658560
+blk.19.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5615064960
+blk.19.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5615065216
+blk.19.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5615066752
+blk.19.ffn_down_exps.weight	IQ1_S	[2304, 5120, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	5615068288
+blk.19.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	6499804288
+blk.19.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	6512338048
+blk.19.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	7397074048
+blk.19.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	7404938368
+blk.19.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	7417472128
+blk.19.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	7417492608
+blk.19.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8302228608
+blk.19.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8314762368
+blk.19.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8314762464
+blk.19.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8316728544
+blk.19.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8316728576
+blk.19.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8316728672
+blk.19.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8318694752
+blk.20.attn_compressor_kv.weight	BF16	[5120, 512]	5242880	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8318694784
+blk.20.attn_compressor_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8323937664
+blk.20.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8323939712
+blk.20.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8326090112
+blk.20.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8326092160
+blk.20.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8326112640
+blk.20.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8353637760
+blk.20.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8388044160
+blk.20.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8393420160
+blk.20.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8393425280
+blk.20.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8427831680
+blk.20.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8427831936
+blk.20.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8427833472
+blk.20.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	8427835008
+blk.20.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	9595686528
+blk.20.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	9608220288
+blk.20.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	10492956288
+blk.20.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	10500820608
+blk.20.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	10513354368
+blk.20.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	10513374848
+blk.20.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11398110848
+blk.20.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11410644608
+blk.20.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11410644704
+blk.20.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11412610784
+blk.20.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11412610816
+blk.20.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11412610912
+blk.20.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11414576992
+blk.20.indexer.attn_k.weight	BF16	[512, 128]	131072	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11414577024
+blk.20.indexer.attn_q_b.weight	BF16	[1280, 4096]	10485760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11414708096
+blk.20.indexer.k_norm.weight	F32	[128]	512	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11425193856
+blk.20.indexer.proj.weight	BF16	[5120, 32]	327680	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11425194368
+blk.21.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11425522048
+blk.21.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11427672448
+blk.21.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11427674496
+blk.21.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11427694976
+blk.21.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11455220096
+blk.21.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11489626496
+blk.21.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11495002496
+blk.21.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11495007616
+blk.21.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11529414016
+blk.21.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11529414272
+blk.21.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11529415808
+blk.21.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	11529417344
+blk.21.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	12697268864
+blk.21.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	12709802624
+blk.21.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	13594538624
+blk.21.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	13602402944
+blk.21.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	13614936704
+blk.21.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	13614957184
+blk.21.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14499693184
+blk.21.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14512226944
+blk.21.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14512227040
+blk.21.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14514193120
+blk.21.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14514193152
+blk.21.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14514193248
+blk.21.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14516159328
+blk.22.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14516159360
+blk.22.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14518309760
+blk.22.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14518311808
+blk.22.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14518332288
+blk.22.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14545857408
+blk.22.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14580263808
+blk.22.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14585639808
+blk.22.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14585644928
+blk.22.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14620051328
+blk.22.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14620051584
+blk.22.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14620053120
+blk.22.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	14620054656
+blk.22.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	15787906176
+blk.22.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	15800439936
+blk.22.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	16685175936
+blk.22.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	16693040256
+blk.22.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	16705574016
+blk.22.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	16705594496
+blk.22.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17590330496
+blk.22.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17602864256
+blk.22.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17602864352
+blk.22.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17604830432
+blk.22.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17604830464
+blk.22.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17604830560
+blk.22.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17606796640
+blk.23.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17606796672
+blk.23.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17608947072
+blk.23.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17608949120
+blk.23.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17608969600
+blk.23.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17636494720
+blk.23.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17670901120
+blk.23.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17676277120
+blk.23.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17676282240
+blk.23.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17710688640
+blk.23.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17710688896
+blk.23.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17710690432
+blk.23.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	17710691968
+blk.23.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	18878543488
+blk.23.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	18891077248
+blk.23.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	19775813248
+blk.23.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	19783677568
+blk.23.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	19796211328
+blk.23.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	19796231808
+blk.23.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20680967808
+blk.23.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20693501568
+blk.23.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20693501664
+blk.23.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20695467744
+blk.23.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20695467776
+blk.23.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20695467872
+blk.23.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20697433952
+blk.24.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20697433984
+blk.24.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20699584384
+blk.24.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20699586432
+blk.24.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20699606912
+blk.24.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20727132032
+blk.24.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20761538432
+blk.24.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20766914432
+blk.24.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20766919552
+blk.24.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20801325952
+blk.24.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20801326208
+blk.24.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20801327744
+blk.24.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	20801329280
+blk.24.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	21969180800
+blk.24.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	21981714560
+blk.24.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	22866450560
+blk.24.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	22874314880
+blk.24.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	22886848640
+blk.24.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	22886869120
+blk.24.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23771605120
+blk.24.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23784138880
+blk.24.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23784138976
+blk.24.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23786105056
+blk.24.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23786105088
+blk.24.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23786105184
+blk.24.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23788071264
+blk.24.indexer.attn_q_b.weight	BF16	[1280, 4096]	10485760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23788071296
+blk.24.indexer.proj.weight	BF16	[5120, 32]	327680	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23798557056
+blk.25.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23798884736
+blk.25.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23801035136
+blk.25.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23801037184
+blk.25.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23801057664
+blk.25.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23828582784
+blk.25.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23862989184
+blk.25.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23868365184
+blk.25.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23868370304
+blk.25.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23902776704
+blk.25.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23902776960
+blk.25.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23902778496
+blk.25.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	23902780032
+blk.25.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	25070631552
+blk.25.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	25083165312
+blk.25.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	25967901312
+blk.25.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	25975765632
+blk.25.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	25988299392
+blk.25.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	25988319872
+blk.25.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26873055872
+blk.25.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26885589632
+blk.25.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26885589728
+blk.25.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26887555808
+blk.25.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26887555840
+blk.25.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26887555936
+blk.25.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26889522016
+blk.26.attn_kv.weight	Q6_K	[5120, 512]	2150400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26889522048
+blk.26.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26891672448
+blk.26.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26891674496
+blk.26.attn_output_a.weight	Q6_K	[4096, 8192]	27525120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26891694976
+blk.26.attn_output_b.weight	Q6_K	[8192, 5120]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26919220096
+blk.26.attn_q_a.weight	Q6_K	[5120, 1280]	5376000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26953626496
+blk.26.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26959002496
+blk.26.attn_q_b.weight	Q6_K	[1280, 32768]	34406400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26959007616
+blk.26.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26993414016
+blk.26.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26993414272
+blk.26.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26993415808
+blk.26.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	26993417344
+blk.26.ffn_down_shexp.weight	Q8_0	[2304, 5120]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	28161268864
+blk.26.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	28173802624
+blk.26.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29058538624
+blk.26.ffn_gate_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29066402944
+blk.26.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29078936704
+blk.26.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29078957184
+blk.26.ffn_up_shexp.weight	Q8_0	[5120, 2304]	12533760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29963693184
+blk.26.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29976226944
+blk.26.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29976227040
+blk.26.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29978193120
+blk.26.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29978193152
+blk.26.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29978193248
+blk.26.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29980159328
+blk.27.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29980159360
+blk.27.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29981961600
+blk.27.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29981963648
+blk.27.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	29981984128
+blk.27.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	30005052800
+blk.27.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	30033888640
+blk.27.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	30038394240
+blk.27.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	30038399360
+blk.27.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	30067235200
+blk.27.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	30067235456
+blk.27.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	30067236992
+blk.27.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	30067238528
+blk.27.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	31235090048
+blk.27.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	31244766848
+blk.27.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	32129502848
+blk.27.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	32137367168
+blk.27.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	32147043968
+blk.27.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	32147064448
+blk.27.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33031800448
+blk.27.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33041477248
+blk.27.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33041477344
+blk.27.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33043443424
+blk.27.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33043443456
+blk.27.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33043443552
+blk.27.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33045409632
+blk.28.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33045409664
+blk.28.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33047211904
+blk.28.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33047213952
+blk.28.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33047234432
+blk.28.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33070303104
+blk.28.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33099138944
+blk.28.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33103644544
+blk.28.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33103649664
+blk.28.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33132485504
+blk.28.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33132485760
+blk.28.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33132487296
+blk.28.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	33132488832
+blk.28.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	34300340352
+blk.28.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	34310017152
+blk.28.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	35194753152
+blk.28.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	35202617472
+blk.28.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	35212294272
+blk.28.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	35212314752
+blk.28.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36097050752
+blk.28.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36106727552
+blk.28.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36106727648
+blk.28.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36108693728
+blk.28.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36108693760
+blk.28.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36108693856
+blk.28.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36110659936
+blk.28.indexer.attn_q_b.weight	BF16	[1280, 4096]	10485760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36110659968
+blk.28.indexer.proj.weight	BF16	[5120, 32]	327680	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36121145728
+blk.29.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36121473408
+blk.29.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36123275648
+blk.29.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36123277696
+blk.29.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36123298176
+blk.29.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36146366848
+blk.29.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36175202688
+blk.29.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36179708288
+blk.29.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36179713408
+blk.29.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36208549248
+blk.29.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36208549504
+blk.29.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36208551040
+blk.29.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	36208552576
+blk.29.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	37376404096
+blk.29.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	37386080896
+blk.29.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	38270816896
+blk.29.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	38278681216
+blk.29.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	38288358016
+blk.29.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	38288378496
+blk.29.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39173114496
+blk.29.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39182791296
+blk.29.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39182791392
+blk.29.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39184757472
+blk.29.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39184757504
+blk.29.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39184757600
+blk.29.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39186723680
+blk.30.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39186723712
+blk.30.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39188525952
+blk.30.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39188528000
+blk.30.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39188548480
+blk.30.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39211617152
+blk.30.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39240452992
+blk.30.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39244958592
+blk.30.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39244963712
+blk.30.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39273799552
+blk.30.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39273799808
+blk.30.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39273801344
+blk.30.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	39273802880
+blk.30.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	40441654400
+blk.30.ffn_gate_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	40451331200
+blk.30.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	41619182720
+blk.30.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	41627047040
+blk.30.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	41636723840
+blk.30.ffn_up_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	41636744320
+blk.30.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42804595840
+blk.30.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42814272640
+blk.30.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42814272736
+blk.30.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42816238816
+blk.30.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42816238848
+blk.30.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42816238944
+blk.30.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42818205024
+blk.31.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42818205056
+blk.31.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42820007296
+blk.31.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42820009344
+blk.31.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42820029824
+blk.31.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42843098496
+blk.31.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42871934336
+blk.31.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42876439936
+blk.31.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42876445056
+blk.31.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42905280896
+blk.31.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42905281152
+blk.31.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42905282688
+blk.31.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	42905284224
+blk.31.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	44073135744
+blk.31.ffn_gate_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	44082812544
+blk.31.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	45250664064
+blk.31.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	45258528384
+blk.31.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	45268205184
+blk.31.ffn_up_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	45268225664
+blk.31.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46436077184
+blk.31.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46445753984
+blk.31.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46445754080
+blk.31.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46447720160
+blk.31.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46447720192
+blk.31.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46447720288
+blk.31.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46449686368
+blk.32.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46449686400
+blk.32.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46451488640
+blk.32.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46451490688
+blk.32.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46451511168
+blk.32.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46474579840
+blk.32.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46503415680
+blk.32.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46507921280
+blk.32.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46507926400
+blk.32.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46536762240
+blk.32.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46536762496
+blk.32.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46536764032
+blk.32.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	46536765568
+blk.32.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	47704617088
+blk.32.ffn_gate_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	47714293888
+blk.32.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	48882145408
+blk.32.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	48890009728
+blk.32.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00003-of-00005.gguf	48899686528
+blk.32.ffn_up_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11840
+blk.32.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1167863360
+blk.32.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1177540160
+blk.32.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1177540256
+blk.32.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1179506336
+blk.32.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1179506368
+blk.32.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1179506464
+blk.32.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1181472544
+blk.32.indexer.attn_q_b.weight	BF16	[1280, 4096]	10485760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1181472576
+blk.32.indexer.proj.weight	BF16	[5120, 32]	327680	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1191958336
+blk.33.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1192286016
+blk.33.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1194088256
+blk.33.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1194090304
+blk.33.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1194110784
+blk.33.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1217179456
+blk.33.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1246015296
+blk.33.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1250520896
+blk.33.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1250526016
+blk.33.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1279361856
+blk.33.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1279362112
+blk.33.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1279363648
+blk.33.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	1279365184
+blk.33.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	2447216704
+blk.33.ffn_gate_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	2456893504
+blk.33.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	3624745024
+blk.33.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	3632609344
+blk.33.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	3642286144
+blk.33.ffn_up_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	3642306624
+blk.33.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4810158144
+blk.33.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4819834944
+blk.33.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4819835040
+blk.33.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4821801120
+blk.33.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4821801152
+blk.33.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4821801248
+blk.33.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4823767328
+blk.34.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4823767360
+blk.34.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4825569600
+blk.34.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4825571648
+blk.34.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4825592128
+blk.34.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4848660800
+blk.34.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4877496640
+blk.34.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4882002240
+blk.34.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4882007360
+blk.34.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4910843200
+blk.34.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4910843456
+blk.34.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4910844992
+blk.34.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	4910846528
+blk.34.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	6078698048
+blk.34.ffn_gate_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	6088374848
+blk.34.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	7256226368
+blk.34.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	7264090688
+blk.34.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	7273767488
+blk.34.ffn_up_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	7273787968
+blk.34.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8441639488
+blk.34.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8451316288
+blk.34.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8451316384
+blk.34.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8453282464
+blk.34.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8453282496
+blk.34.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8453282592
+blk.34.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8455248672
+blk.35.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8455248704
+blk.35.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8457050944
+blk.35.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8457052992
+blk.35.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8457073472
+blk.35.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8480142144
+blk.35.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8508977984
+blk.35.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8513483584
+blk.35.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8513488704
+blk.35.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8542324544
+blk.35.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8542324800
+blk.35.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8542326336
+blk.35.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	8542327872
+blk.35.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	9710179392
+blk.35.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	9719856192
+blk.35.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	10604592192
+blk.35.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	10612456512
+blk.35.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	10622133312
+blk.35.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	10622153792
+blk.35.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11506889792
+blk.35.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11516566592
+blk.35.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11516566688
+blk.35.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11518532768
+blk.35.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11518532800
+blk.35.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11518532896
+blk.35.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11520498976
+blk.36.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11520499008
+blk.36.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11522301248
+blk.36.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11522303296
+blk.36.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11522323776
+blk.36.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11545392448
+blk.36.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11574228288
+blk.36.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11578733888
+blk.36.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11578739008
+blk.36.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11607574848
+blk.36.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11607575104
+blk.36.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11607576640
+blk.36.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	11607578176
+blk.36.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	12775429696
+blk.36.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	12785106496
+blk.36.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	13669842496
+blk.36.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	13677706816
+blk.36.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	13687383616
+blk.36.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	13687404096
+blk.36.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14572140096
+blk.36.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14581816896
+blk.36.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14581816992
+blk.36.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14583783072
+blk.36.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14583783104
+blk.36.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14583783200
+blk.36.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14585749280
+blk.36.indexer.attn_q_b.weight	BF16	[1280, 4096]	10485760	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14585749312
+blk.36.indexer.proj.weight	BF16	[5120, 32]	327680	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14596235072
+blk.37.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14596562752
+blk.37.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14598364992
+blk.37.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14598367040
+blk.37.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14598387520
+blk.37.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14621456192
+blk.37.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14650292032
+blk.37.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14654797632
+blk.37.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14654802752
+blk.37.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14683638592
+blk.37.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14683638848
+blk.37.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14683640384
+blk.37.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	14683641920
+blk.37.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	15851493440
+blk.37.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	15861170240
+blk.37.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	16745906240
+blk.37.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	16753770560
+blk.37.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	16763447360
+blk.37.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	16763467840
+blk.37.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17648203840
+blk.37.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17657880640
+blk.37.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17657880736
+blk.37.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17659846816
+blk.37.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17659846848
+blk.37.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17659846944
+blk.37.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17661813024
+blk.38.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17661813056
+blk.38.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17663615296
+blk.38.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17663617344
+blk.38.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17663637824
+blk.38.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17686706496
+blk.38.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17715542336
+blk.38.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17720047936
+blk.38.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17720053056
+blk.38.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17748888896
+blk.38.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17748889152
+blk.38.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17748890688
+blk.38.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	17748892224
+blk.38.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	18916743744
+blk.38.ffn_gate_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	18926420544
+blk.38.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	19811156544
+blk.38.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	19819020864
+blk.38.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	19828697664
+blk.38.ffn_up_exps.weight	IQ1_S	[5120, 2304, 384]	884736000	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	19828718144
+blk.38.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20713454144
+blk.38.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20723130944
+blk.38.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20723131040
+blk.38.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20725097120
+blk.38.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20725097152
+blk.38.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20725097248
+blk.38.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20727063328
+blk.39.attn_kv.weight	Q5_K	[5120, 512]	1802240	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20727063360
+blk.39.attn_kv_a_norm.weight	F32	[512]	2048	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20728865600
+blk.39.attn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20728867648
+blk.39.attn_output_a.weight	Q5_K	[4096, 8192]	23068672	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20728888128
+blk.39.attn_output_b.weight	Q5_K	[8192, 5120]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20751956800
+blk.39.attn_q_a.weight	Q5_K	[5120, 1280]	4505600	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20780792640
+blk.39.attn_q_a_norm.weight	F32	[1280]	5120	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20785298240
+blk.39.attn_q_b.weight	Q5_K	[1280, 32768]	28835840	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20785303360
+blk.39.attn_sinks.weight	F32	[64]	256	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20814139200
+blk.39.exp_probs_b.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20814139456
+blk.39.exp_probs_b_vl.bias	F32	[384]	1536	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20814140992
+blk.39.ffn_down_exps.weight	IQ2_XXS	[2304, 5120, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	20814142528
+blk.39.ffn_down_shexp.weight	Q6_K	[2304, 5120]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	21981994048
+blk.39.ffn_gate_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	21991670848
+blk.39.ffn_gate_inp.weight	F32	[5120, 384]	7864320	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	23159522368
+blk.39.ffn_gate_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	23167386688
+blk.39.ffn_norm.weight	F32	[5120]	20480	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	23177063488
+blk.39.ffn_up_exps.weight	IQ2_XXS	[5120, 2304, 384]	1167851520	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	23177083968
+blk.39.ffn_up_shexp.weight	Q6_K	[5120, 2304]	9676800	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	24344935488
+blk.39.hc_attn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	24354612288
+blk.39.hc_attn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	24354612384
+blk.39.hc_attn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	24356578464
+blk.39.hc_ffn_base.weight	F32	[24]	96	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	24356578496
+blk.39.hc_ffn_fn.weight	F32	[20480, 24]	1966080	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	24356578592
+blk.39.hc_ffn_scale.weight	F32	[3]	12	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00004-of-00005.gguf	24358544672
+per_layer_token_embd.weight	IQ4_NL	[256, 768022850]	110595290400	DeepSeek-V4.1-Flash-1017-UD-IQ1_S-00005-of-00005.gguf	192
