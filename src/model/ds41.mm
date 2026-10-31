@@ -63,6 +63,7 @@ struct Model::Impl {
   Buffer moe_scr[2], route_dev[2];
   Buffer pids, pw;                   // (unused)
   Buffer plog;                       // decode: router logits of layers l+1..l+D applied to layer l's FFN input
+  Buffer plog_n;                     // prefill: router logits of layer l+1 on layer l's FFN input, [n][384]
   arch::Scratch asc2;                // second scratch for the predictor router (same kernel family)   // prefill MoE scratch + routing tables (double-buffered)
 };
 
@@ -150,7 +151,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(2 * n * 25600 * 4, "ekv");
   P.logits = A((size_t)std::max(o.max_logits_rows, 1) * cfg_.vocab * 4, "logits");
   P.amax_i = A(64, "amax_i"); P.amax_v = A(64, "amax_v");
-  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog");
+  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog"); P.plog_n = A(n * 384 * 4, "plog_n");
   P.asc2 = arch::Scratch::create(64, 1);
   P.moe_dec_scratch = A(q::moe_decode_scratch_bytes(), "moe_dec");
   const int total = (int)n * 6;
@@ -255,6 +256,10 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   // decode wait on the CPU (profiling: GPU times are only valid for command buffers without event waits).
   static const bool cpu_wait_io = env_int("MACSEEK_PF_GPU_WAIT", 0) == 0;
   static const bool dec_cpu_wait = env_int("MACSEEK_CPU_WAIT_IO", 0) != 0;
+  // prefill: prefetch only the union of each token's predicted top-k (layer l+1's router on layer l's FFN input)
+  // instead of all 384 experts of layer l+1. MACSEEK_PF_PRED=0: prefetch everything (previous behaviour).
+  static const bool pf_pred = env_int("MACSEEK_PF_PRED", 0) != 0;
+  static const int pf_pred_k = (int)env_int("MACSEEK_PF_PRED_K", 8);
   static const bool pred_on = env_int("MACSEEK_PRED", 1) != 0;   // decode next-layer expert prefetch (win: +9%)
   static const int pred_k = (int)env_int("MACSEEK_PRED_K", 6);      // experts prefetched per predicted layer
   static const int pred_depth = std::min(4, (int)env_int("MACSEEK_PRED_DEPTH", 1));
@@ -349,7 +354,9 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         }
     }
     else {
-      linear(E, L.gate_inp, P.x, P.rlog, n); E.barrier();
+      linear(E, L.gate_inp, P.x, P.rlog, n);
+      if (pf_pred && n >= pf_prefetch_min && l + 1 < cfg_.n_layers) linear(E, P.L[l + 1].gate_inp, P.x, P.plog_n, n);
+      E.barrier();
       arch::encode_router_topk(E, P.rlog, L.bias.b, P.rids, P.rw, n);
     }
     E.barrier();
@@ -435,7 +442,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     // load while attention runs) and the next layer's while this layer's MoE runs. MACSEEK_PF_PREFETCH=0 disables.
     if (!dec && n >= pf_prefetch_min) {
       if (l == 0) cache_->prefetch(0, all_ids.data(), 384);
-      if (l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, all_ids.data(), 384);
+      if (!pf_pred && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, all_ids.data(), 384);
     }
     encode_attn_side(*e, l);
     prof_.encode_ms += tenc.ms();
@@ -464,6 +471,22 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       e->barrier();
       lease.release_after(e->cmdbuf());
     } else {
+      if (pf_pred && n >= pf_prefetch_min && l + 1 < cfg_.n_layers) {
+        const float* lg = (const float*)P.plog_n.cpu();
+        const float* bias = (const float*)P.L[l + 1].bias.b.cpu();
+        std::vector<char> want(384, 0);
+        std::pair<float, int> sc[384];
+        const int k = std::min(pf_pred_k, 384);
+        for (int t = 0; t < n; t++) {
+          const float* r = lg + (size_t)t * 384;
+          for (int x = 0; x < 384; x++) { float v = r[x]; float sp = v > 20.f ? v : std::log1p(std::exp(v)); sc[x] = {std::sqrt(sp) + bias[x], x}; }
+          std::partial_sort(sc, sc + k, sc + 384, [](auto& a, auto& b) { return a.first > b.first; });
+          for (int i = 0; i < k; i++) want[sc[i].second] = 1;
+        }
+        std::vector<int> ids;
+        for (int x = 0; x < 384; x++) if (want[x]) ids.push_back(x);
+        cache_->prefetch(l + 1, ids.data(), (int)ids.size());
+      }
       // CPU routing tables, experts processed in groups that fit the cache
       Timer troute;
       const float* rw = (const float*)P.rw.cpu();
