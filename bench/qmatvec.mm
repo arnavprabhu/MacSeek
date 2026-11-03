@@ -1,6 +1,7 @@
 // bench_qmatvec: decode matvec (n=1) and matvec_n timing on the real shapes, as % of measured read bandwidth.
 // Weights are rotated over >= 512 MiB of copies so every call streams from DRAM (as in real decode).
-// Usage: bench_qmatvec [--sweep] [--n N] [filter-substring]
+// Usage: bench_qmatvec [--sweep] [--rules] [--reps R] [--n N] [filter-substring]
+//   --rules: launch rule v0 (generic) vs v1 (default, Q5_K rule) interleaved, best + median (q::matvec_cfg_rule)
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -101,10 +102,12 @@ static int bench_moe(double bw, int reps, const char* filt) {
 }
 
 int main(int argc, char** argv) {
-  bool sweep = false, moe = false; int n = 1; int reps = 7; const char* filt = nullptr;
+  bool sweep = false, moe = false, rules = false; int n = 1; int reps = 7; const char* filt = nullptr;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--sweep")) sweep = true;
     else if (!strcmp(argv[i], "--moe")) moe = true;
+    else if (!strcmp(argv[i], "--rules")) rules = true;
+    else if (!strcmp(argv[i], "--reps") && i + 1 < argc) reps = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--n") && i + 1 < argc) n = atoi(argv[++i]);
     else filt = argv[i];
   }
@@ -129,6 +132,10 @@ int main(int argc, char** argv) {
       {QType::IQ2_XS, 2304, 5120, 1, "exp gate/up"}, {QType::IQ2_XS, 5120, 2304, 1, "exp down"},
       {QType::IQ1_M, 32768, 5120, 1, "big synthetic"}, {QType::IQ2_XS, 32768, 5120, 1, "big synthetic"},
       {QType::Q5_K, 2304, 5120, 1, "shexp gate/up"}, {QType::Q5_K, 5120, 2304, 1, "shexp down"},
+      // GSQ-RCO Coder dense shapes
+      {QType::Q8_0, 1280, 5120, 1, "coder attn_q_a"}, {QType::Q8_0, 512, 5120, 1, "coder attn_kv"},
+      {QType::Q5_K, 8192, 4096, 8, "coder attn_output_a"}, {QType::Q5_K, 129280, 5120, 1, "coder output head"},
+      {QType::Q5_K, 25600, 6144, 1, "coder engram_kv"}, {QType::F32, 192, 5120, 1, "coder router"},
   };
   if (moe) return bench_moe(bw, reps, filt);
   printf("%-8s %-15s %-16s %9s %8s %7s  %s\n", "type", "tensor", "shape", "MB", "us", "GB/s", "%BW");
@@ -145,34 +152,51 @@ int main(int argc, char** argv) {
       // keep fp16 scales finite: zero-cost for timing, garbage values are fine otherwise
     }
     Buffer x = d.alloc((size_t)s.cols * s.groups * 4 * n), y = d.alloc((size_t)s.rows * 4 * n);
+    auto once = [&](q::MvCfg cfg) {
+      Enc e;
+      for (int i = 0; i < copies; i++) {
+        if (n == 1) q::encode_matvec(e, s.t, W[i], s.rows, s.cols, x, y, false, s.groups, cfg);
+        else q::encode_matvec_n(e, s.t, W[i], s.rows, s.cols, x, y, n, false, s.groups);
+        e.barrier();
+      }
+      e.wait();
+      return e.gpu_ms() * 1e3 / copies;
+    };
     auto run = [&](q::MvCfg cfg) {
       std::vector<double> t;
-      for (int rep = 0; rep < reps; rep++) {
-        Enc e;
-        for (int i = 0; i < copies; i++) {
-          if (n == 1) q::encode_matvec(e, s.t, W[i], s.rows, s.cols, x, y, false, s.groups, cfg);
-          else q::encode_matvec_n(e, s.t, W[i], s.rows, s.cols, x, y, n, false, s.groups);
-          e.barrier();
-        }
-        e.wait();
-        if (rep) t.push_back(e.gpu_ms() * 1e3 / copies);
-      }
+      for (int rep = 0; rep < reps; rep++) { double v = once(cfg); if (rep) t.push_back(v); }
       std::sort(t.begin(), t.end());
       return t[0];  // min: other GPU users only ever slow a run down
     };
-    double us = run({});
     char shape[32]; snprintf(shape, sizeof shape, "[%d->%d]%s", s.cols, s.rows, s.groups > 1 ? "g8" : "");
+    if (rules && n == 1) {   // launch rule v0 (generic) vs v1 (current default), interleaved per rep
+      const q::MvCfg c0 = q::matvec_cfg_rule(s.t, s.rows, s.cols, 0), c1 = q::matvec_cfg_rule(s.t, s.rows, s.cols, 1);
+      std::vector<double> t0, t1;
+      once(c0); once(c1);
+      for (int rep = 0; rep < reps; rep++) { t0.push_back(once(c0)); t1.push_back(once(c1)); }
+      std::sort(t0.begin(), t0.end()); std::sort(t1.begin(), t1.end());
+      auto pc = [&](double t) { return 100.0 * wbytes / t / 1e3 / bw; };
+      printf("%-8s %-19s %-16s %7.2f MB | v0 %d/%d/%d best %7.1f us %5.1f%% med %5.1f%% | v1 %d/%d/%d best %7.1f us %5.1f%% med %5.1f%%\n",
+             q::type_name(s.t), s.what, shape, wbytes / 1e6, c0.nr, c0.rsg, c0.ks, t0[0], pc(t0[0]), pc(t0[t0.size() / 2]),
+             c1.nr, c1.rsg, c1.ks, t1[0], pc(t1[0]), pc(t1[t1.size() / 2]));
+      for (auto& b : W) d.release(b);
+      d.release(x); d.release(y);
+      continue;
+    }
+    double us = run({});
     printf("%-8s %-15s %-16s %9.2f %8.1f %7.1f  %5.1f%%\n", q::type_name(s.t), s.what, shape, wbytes / 1e6, us,
            wbytes / us / 1e3, 100.0 * wbytes / us / 1e3 / bw);
-    if (sweep && n == 1) {
-      double best = 1e30; q::MvCfg bc;
+    if (sweep && n == 1) {   // every launch shape; the 6 fastest (min over reps)
+      std::vector<std::pair<double, q::MvCfg>> all;
       for (int nr : {1, 2, 4}) for (int rsg : {1, 2, 4, 8}) for (int ks : {1, 2, 4, 8, 16, 32}) {
         if (rsg * ks > 32 || rsg * ks < 1) continue;
-        double t = run({nr, rsg, ks});
-        if (t < best) { best = t; bc = {nr, rsg, ks}; }
+        all.push_back({run({nr, rsg, ks}), {nr, rsg, ks}});
       }
-      printf("    sweep best: nr=%d rsg=%d ks=%d  %.1f us  %.1f%%\n", bc.nr, bc.rsg, bc.ks, best,
-             100.0 * wbytes / best / 1e3 / bw);
+      std::sort(all.begin(), all.end(), [](auto& x, auto& y) { return x.first < y.first; });
+      printf("    sweep top (nr/rsg/ks):");
+      for (size_t i = 0; i < std::min<size_t>(6, all.size()); i++)
+        printf("  %d/%d/%d %.1f%%", all[i].second.nr, all[i].second.rsg, all[i].second.ks, 100.0 * wbytes / all[i].first / 1e3 / bw);
+      printf("\n");
     }
     for (auto& b : W) d.release(b);
     d.release(x); d.release(y);

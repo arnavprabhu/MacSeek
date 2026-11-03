@@ -17,6 +17,9 @@ bool matvec_supported(QType t);
 // Launch shape encode_matvec would use for this matrix (auto table + MACSEEK_MV_* overrides): splitting a matrix into
 // row chunks that all use this shape (chunk rows a multiple of nr*rsg) gives bit-identical rows.
 MvCfg matvec_cfg(QType t, int rows, int cols);
+// The auto launch rule without env overrides; version 0 = the generic rule, 1 = with the Q5_K rule (default,
+// MACSEEK_MV_CFG). Benchmarks compare versions in one process.
+MvCfg matvec_cfg_rule(QType t, int rows, int cols, int version);
 
 // Decode matvec with the input RMSNorm fused into the x loads: y = W . (x * rsqrt(mean(x^2) + eps) * norm_w), x has
 // `cols` elements. Bit-identical to arch::encode_rmsnorm(x, norm_w, tmp, 1, cols, eps) -> barrier -> encode_matvec(tmp)

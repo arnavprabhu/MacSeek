@@ -55,10 +55,21 @@ int gpu_epl(QType t) { return gpu_qk(t) / gpu_lpb(t); }
 // Launch heuristic (from bench_qmatvec --sweep on M5 Pro): split K until each simdgroup runs ~1-2 block iterations
 // (memory-level parallelism matters more than x reuse), 256-thread threadgroups, more rows per simdgroup only for
 // tall matrices.
-MvCfg auto_cfg(QType t, int rows, int cols) {
+MvCfg auto_cfg(QType t, int rows, int cols, int version) {
   MvCfg c;
   const int bpi = 32 / gpu_lpb(t);
   const int iters = (cols / gpu_qk(t) + bpi - 1) / bpi;
+  if (t == QType::Q5_K && version >= 1) {
+    // Q5_K (GSQ-RCO Coder attention / head / engram / shared expert), bench_qmatvec --sweep: one row per simdgroup and
+    // a K split leaving each simdgroup ~2-3 block iterations (2 blocks each), 1-simdgroup row tiles; short rows
+    // (attn_q_b, 5 blocks): 4 rows per simdgroup, no K split. 95-99% of BW vs 85-95% with the generic rule.
+    const int nb = cols / gpu_qk(t);
+    c.nr = nb <= 8 ? 4 : 1;
+    c.ks = 1;
+    while (c.ks < 16 && 8 * c.ks <= nb) c.ks *= 2;
+    c.rsg = c.ks == 1 ? 2 : 1;
+    return c;
+  }
   if (t == QType::IQ2_XS) {  // sweep: K split and 4 rows/simdgroup on short rows lose 10-20% (register pressure)
     c.nr = rows >= 1024 ? (cols >= 4096 ? 4 : 2) : 1; c.ks = 1; c.rsg = 2;
     return c;
@@ -74,7 +85,12 @@ MvCfg auto_cfg(QType t, int rows, int cols) {
   return c;
 }
 
+// launch-rule version: MACSEEK_MV_CFG (1 = current: Q5_K rule above; 0 = the generic rule for every type)
+int cfg_version() { static const int v = (int)env_int("MACSEEK_MV_CFG", 1); return v; }
+
 }  // namespace
+
+MvCfg matvec_cfg_rule(QType t, int rows, int cols, int version) { return auto_cfg(t, rows, cols, version); }
 
 bool matvec_supported(QType t) { return kname(t) != nullptr; }
 
@@ -82,7 +98,7 @@ void encode_matvec(Enc& e, QType t, const Buffer& W, int rows, int cols, const B
                    bool accumulate, int groups, MvCfg cfg) {
   const char* kn = kname(t);
   if (!kn || cols % gpu_qk(t) != 0 || groups < 1 || rows % groups != 0) die("matvec", t, rows, cols);
-  MvCfg a = auto_cfg(t, rows, cols);
+  MvCfg a = auto_cfg(t, rows, cols, cfg_version());
   if (cfg.nr) a.nr = cfg.nr;
   if (cfg.rsg) a.rsg = cfg.rsg;
   if (cfg.ks) a.ks = cfg.ks;
@@ -106,7 +122,7 @@ void encode_matvec(Enc& e, QType t, const Buffer& W, int rows, int cols, const B
 }
 
 MvCfg matvec_cfg(QType t, int rows, int cols) {
-  MvCfg a = auto_cfg(t, rows, cols);
+  MvCfg a = auto_cfg(t, rows, cols, cfg_version());
   static const long env_nr = env_int("MACSEEK_MV_NR", 0), env_rsg = env_int("MACSEEK_MV_RSG", 0),
                     env_ks = env_int("MACSEEK_MV_KS", 0);
   if (env_nr) a.nr = (int)env_nr;
