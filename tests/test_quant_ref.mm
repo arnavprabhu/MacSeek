@@ -92,13 +92,14 @@ int main() {
   int fails = 0;
   printf("random blocks:\n");
   const QType types[] = {QType::F32, QType::F16, QType::BF16, QType::Q8_0, QType::Q5_K, QType::Q6_K,
-                         QType::IQ1_S, QType::IQ2_XXS, QType::IQ4_NL, QType::MXFP4};
+                         QType::IQ1_S, QType::IQ2_XXS, QType::IQ1_M, QType::IQ2_XS, QType::IQ4_NL,
+                         QType::MXFP4};
   for (QType t : types) {
     const int64_t n = 256 * 4096;
     auto blocks = ref::random_blocks(t, n, 1234 + (int)t);
     fails += compare(t, blocks, n, "random");
   }
-  printf("real rows (pread, middle of tensor):\n");
+  printf("real rows (pread, middle of tensor; IQ1_M / IQ2_XS: random blocks only, their model is not used here):\n");
   const int64_t N = 5120 * 64;  // 64 rows of 5120
   fails += real_rows("blk.3.ffn_gate_exps.weight", QType::IQ1_S, N);
   fails += real_rows("blk.3.ffn_down_exps.weight", QType::IQ1_S, N);

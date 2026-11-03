@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate src/kernels/quant_grids.h: IQ1_S / IQ2_XXS grid table VALUES (data, from the public ggml format
+"""Generate src/kernels/quant_grids.h: IQ1_S (also IQ1_M) / IQ2_XXS / IQ2_XS grid table VALUES (data, from the public ggml format
 description ggml-common.h) plus derived GPU-friendly tables. Usage: gen_quant_grids.py path/to/ggml-common.h out.h"""
 import re, sys
 
@@ -11,6 +11,7 @@ def table(name):
 
 iq1s = table('iq1s_grid'); assert len(iq1s) == 2048
 iq2xxs = table('iq2xxs_grid'); assert len(iq2xxs) == 256
+iq2xs = table('iq2xs_grid'); assert len(iq2xs) == 512
 ksigns = table('ksigns_iq2xs'); assert len(ksigns) == 128
 # derived: byte mask (0xFF where the sign bit is set) for each 7-bit sign index (parity bit included by ksigns)
 signmask = []
@@ -33,6 +34,8 @@ with open(sys.argv[2], 'w') as f:
     f.write('#define Q_IQ1S_GRID_VALUES \\\n  ' + fmt(iq1s, 16) + '\n\n')
     f.write('// IQ2_XXS: 256 entries, 8 x uint8 in {8,25,43} per entry\n')
     f.write('#define Q_IQ2XXS_GRID_VALUES \\\n  ' + fmt(iq2xxs, 16) + '\n\n')
+    f.write('// IQ2_XS: 512 entries, 8 x uint8 in {8,25,43} per entry\n')
+    f.write('#define Q_IQ2XS_GRID_VALUES \\\n  ' + fmt(iq2xs, 16) + '\n\n')
     f.write('// ksigns_iq2xs: 7-bit index -> 8 sign bits (bit 7 = parity)\n')
     f.write('#define Q_KSIGNS_IQ2XS_VALUES \\\n  ' + fmt(ksigns, 2) + '\n\n')
     f.write('// derived: 7-bit sign index -> 8 byte masks (0xFF = negate element j)\n')
@@ -53,6 +56,12 @@ with open(sys.argv[2], 'w') as f:
         for i in range(4): words.append(h(b[2 * i]) | (h(b[2 * i + 1]) << 16))
     f.write('\n// derived: IQ2_XXS grid as half values, 4 x uint32 per entry\n')
     f.write('#define Q_IQ2XXS_GRID_HALF_VALUES \\\n  ' + fmt(words, 8) + '\n')
+    words = []
+    for v in iq2xs:
+        b = [(v >> (8 * j)) & 0xff for j in range(8)]
+        for i in range(4): words.append(h(b[2 * i]) | (h(b[2 * i + 1]) << 16))
+    f.write('\n// derived: IQ2_XS grid as half values, 4 x uint32 per entry\n')
+    f.write('#define Q_IQ2XS_GRID_HALF_VALUES \\\n  ' + fmt(words, 8) + '\n')
     words = []
     for sg in ksigns:
         for i in range(4):
