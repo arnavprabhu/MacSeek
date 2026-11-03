@@ -130,8 +130,8 @@ src/core/      metal.hpp/.mm   Device/queue/library/pipeline cache, Buffer (MTLB
 src/gguf/      gguf.hpp/.cpp   mmap-free parser of all splits: metadata map, tensor table {name,type,dims,file,offset,nbytes}
 src/store/     weights.*       loads resident (dense) tensors into arena buffers, optional repack per kernel layout;
                                TokenEmbd = token_embd rows by pread (not resident by default)
-               experts.*       expert cache: slot arena (one slot = gate+up+down of one (layer,expert), per-size-class
-                               pools), pread pool (F_NOCACHE, 8-16 threads), policy.cpp (LRU / sampled LFU with aging /
+               experts.*       expert cache: per-matrix-size region pools, one eviction/pinning domain (an entry = gate+up+down
+                               regions of one (layer,expert)), pread pool (F_NOCACHE, 8-16 threads), policy.cpp (LRU / sampled LFU with aging /
                                static frequency-pinned), stats, ensure/prefetch/pin, leases released by command-buffer
                                completion, io_event (MTLSharedEvent) GPU waits, bulk stream ring for prefill
                engram.*        engram row fetcher: rows -> packed 144 B rows (dedupe, 8-way row cache, async batches)
@@ -195,7 +195,8 @@ bit-exactly (enables the 1-minute loop: load 200K snapshot, decode 128, time a 2
 ## 5. Memory plan (64 GB)
 OS/apps headroom >= 8 GB (never swap: check `sysctl vm.swapusage` before/after every run). Resident dense weights
 ~6.5 GB; token_embd stays mmap/pread (lookup only). Activations/scratch for prefill chunk <= 2 GB. State at 200K < 1 GB.
-Expert slot arena = remainder, target ~38-42 GB (~40% of all experts; 40 GiB = 141 slots/layer = 36.7%), sized at
+Expert arena (region pools) = remainder, target ~35-42 GB (UD-IQ1_S: 40 GiB = 36.7% of experts; GSQ-RCO Coder:
+34.5 GiB = 55.6% of experts), sized at
 startup with `ms::recommend_arena_bytes(planned_other)` (available - 8 GiB headroom - what is still to be allocated).
 Engram row cache <= 1 GB.
 

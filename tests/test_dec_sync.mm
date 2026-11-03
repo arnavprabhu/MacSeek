@@ -302,7 +302,7 @@ static void test_loop(int slots_div, bool all_hit) {
     ExpertCacheOptions p0 = o; p0.arena_bytes = 64 << 20;
     ExpertCache probe(lay, p0);
     // misses: a third of all experts (>= 240 leases per token); all_hit: everything, pre-loaded
-    o.arena_bytes = probe.classes()[0].slot_bytes * (NL * NE / slots_div);
+    o.arena_bytes = probe.entry_bytes(0) * (NL * NE / slots_div);
   }
   ExpertCache cache(lay, o);
   if (all_hit) {

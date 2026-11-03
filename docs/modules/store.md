@@ -65,31 +65,57 @@ auto st = cache.stream(layer, ids, n);           // prefill bulk mode, see below
 cache.layer_stats(l) / total_stats() / stats_report() / write_routing_stats(path)
 ```
 
-**Slots and size classes.** A slot is gate+up+down of one (layer, expert). Expert e's matrix is the e-th contiguous
-slab (nbytes/384) of each 3D tensor. Each matrix is placed in the slot at `file offset mod 16 KiB` inside a
-16 KiB-rounded region, so the 16 KiB-aligned read lands in place (no copy, no bounce buffer). Region sizes are
-computed exactly (max over the 384 experts) per layer. Layers with identical regions form a class with its own pool:
+**Region pools, one eviction domain.** Expert e's matrix is the e-th contiguous slab (nbytes/n_experts) of each 3D
+tensor. Every matrix type gets a REGION size = max over all (layer, expert) matrices of that type of
+`rup(file offset mod 16 KiB + len, 16 KiB)`; types with equal region sizes share a pool. A pool is an array of
+fixed-size regions in page-aligned anonymous memory, wrapped as no-copy shared MTLBuffers of
+<= min(maxBufferLength, 8 GiB) whole regions (`cache.buffers()` for a residency set). A matrix sits in its region at
+`file offset mod 16 KiB`, so the 16 KiB-aligned read lands in place (no copy, no bounce buffer). The arena is split
+across pools in proportion to their total demand (every expert of every layer), so every pool holds the same fraction
+of its matrices; with a routing-statistics file: a floor of 16 experts per layer, then greedy count/byte selection,
+then the rest by remaining demand. GSQ-RCO Coder at 34.5 GiB (`describe()`):
 
-| class | layers | gate/up/down | data | slot | slots/layer @ 40 GiB |
-|---|---|---|---|---|---|
-| 0 | 0-19 (20) | IQ1_S/IQ1_S/IQ1_S | 6.912 MB | 6,979,584 B | 141 |
-| 1 | 20-29, 35-38 (14) | IQ1_S/IQ1_S/IQ2_XXS | 7.649 MB | 7,716,864 B | 141 |
-| 2 | 30-34, 39 (6) | IQ2_XXS x3 | 9.124 MB | 9,191,424 B | 141 |
+| pool | type | region | regions | GiB | demand | regions / entry (mean / max) |
+|---|---|---|---|---|---|---|
+| 0 | IQ1_M | 2,605,056 B | 6406 | 15.54 | 11520 | 1.50 / 3 |
+| 1 | IQ2_XXS | 3,063,808 B | 4484 | 12.79 | 8064 | 1.05 / 3 |
+| 2 | IQ2_XS | 3,440,640 B | 1922 | 6.16 | 3456 | 0.45 / 3 |
 
-Padding is <1% (vs 25% if every slot were 9.19 MB). At 40 GiB: 5640 slots = 36.7% of all experts. Without routing
-stats the arena is split as equal slots per layer. With a routing-statistics file it is split greedily by
-count/byte over all (layer, expert), with a floor of 16 slots per layer. Pools are split into MTLBuffers of
-<= min(maxBufferLength, 8 GiB) whole slots (`cache.buffers()` gives them for a residency set). With
-`prefault` (default on), every arena page is touched at startup by 8 threads, which keeps zero-fill page faults
+= 55.6% of all 40 x 192 experts (34.5 of 62.0 GiB in regions). UD-IQ1_S gets 2 pools (IQ1_S, IQ2_XXS).
+
+An ENTRY is one resident (layer, expert) owning 3 regions (gate, up, down), possibly in different pools; entries are
+what the policy, the key map, leases, `ExpertView::slot` and pinning see (`n_slots()` = total regions / 3 entry ids).
+The policy has ONE class: global LRU / LFU / Static over the whole arena (no per-layer or per-size-class quotas). A
+miss needing region sizes {a, b, c} takes free regions; if some size has none, policy victims that own a region of a
+missing size are evicted (all 3 of their regions go back to their pools) until all are available. Replaces the old
+per-size-class slot pools (Coder: 8 classes of 1-14 layers, each needing its own streaming room, so ~30% of the arena
+could not be pinned during prefill).
+
+With `prefault` (default on), every arena page is touched at startup by 8 threads, which keeps zero-fill page faults
 (~2 µs per 16 KiB page, ~1 ms per expert) off the miss path. `wire` (`MACSEEK_ARENA_MLOCK=1`) mlocks the arena
-instead, so it is never compressed or paged out. Recommended in production once the arena is sized with memguard
-(not default, because wiring ~40 GB fails loudly if memory is short).
+instead, so it is never compressed or paged out.
 
-**Safety (never evict what the GPU uses).** A slot can be evicted only if it is Ready, has refcount 0 and is not
+**Safety (never evict what the GPU uses).** An entry can be evicted only if it is Ready, has refcount 0 and is not
 pinned. `ensure()` takes a ref per returned view; refs are dropped by `release()` / the lease destructor /
-`release_after(cmdbuf)` (Metal completion handler). If every slot of a class is held, `ensure()` blocks (and aborts
-after 30 s with a message). Tested with a command buffer held open on an event: 80 churning misses never evict its slots,
-and they become evictable after completion.
+`release_after(cmdbuf)` (Metal completion handler). If a needed region size has nothing evictable, `ensure()` blocks
+(and aborts after 30 s with a per-pool message). Tested with a command buffer held open on an event: 80 churning misses
+never evict its entries, and they become evictable after completion.
+
+**Prefetch protection.** An unused prefetch is protected while young (fewer than `n_slots()` demand accesses since it
+was issued; `MACSEEK_PF_PROTECT=<accesses>`, 0 = off): `prefetch()` never evicts it, `ensure()` only as a last resort,
+and then the youngest / highest-key one (layer l+1's before the current layer's own pending prefetches; a prefill uses
+a layer's experts in id order). Plain LRU evicted the current layer's next prefetches first and cascaded. Speculation
+cap: `prefetch()` stops when fewer than `min(unpinned/4, 64 x max regions per entry)` unpinned regions of a needed size
+would remain neither leased nor speculative (room for one demand group). Calling `prefetch(l+1, all)` again after each
+of layer l's groups tops the next layer up as layer l's prefetches get used.
+
+**Prefill pinning.** `pin_resident(keep)` pins Ready entries, most-accessed first, while every pool keeps at least
+`reserve_regions(p, keep) = max(ceil(keep x max(1, mean regions of p per entry)), 24 x max per entry)` regions
+unpinned (capped at the pool). ds41 default `MACSEEK_PF_PIN_FREE=256`: Coder 384/269/256 regions = 2.52 GiB (7.3% of
+34.5 GiB) stay unpinned, so up to 51.5% of all experts stay pinned across chunks (old design: ~30% of the arena was
+unpinnable). `group_cap(l) = clamp(unpinned capacity(l) / 3, 1, 64)` where unpinned capacity = min over the layer's
+pools of unpinned regions / regions per entry: two groups leased at once always fit (Coder after pinning: 42 for
+IQ1_M x3 and IQ2_XS/IQ2_XS/IQ1_M layers, 28-29 for 3-matrix IQ2_XXS / IQ2_XS layers; 64 before the first pin).
 
 **I/O.** `IoPool`: N workers (default 8) each issue one blocking pread (queue depth = N). Two priority queues (demand,
 prefetch), FIFO across requests, so the oldest demand request finishes first. A request = the 3 matrix ranges split
@@ -102,17 +128,19 @@ with the highest ticket whose lease *and all earlier leases* are complete. So on
 committed before the reads finish (`encodeWaitForEvent`). CPU `lease.wait()` waits per slot, so it never waits on
 unrelated leases.
 
-**Policies** (`PolicyKind` or a custom `EvictionPolicy` subclass via `o.custom_policy`): `LRU` (O(1) intrusive list
-per class); `LFU` with aging (counts per (layer, expert) survive eviction, x`lfu_decay` every `lfu_period` accesses;
-victim = least frequent of 64 random candidates, `lfu_sample=0` = exact scan); `Static` = frequency-pinned set from a
-routing-statistics file (top `pin_fraction`=85% of each class's slots pinned and preloaded at startup, the rest LRU).
+**Policies** (`PolicyKind` or a custom `EvictionPolicy` subclass via `o.custom_policy`; one class = the whole arena;
+the cache's `evictable()` predicate also says which region sizes a victim must free): `LRU` (intrusive list, victim =
+first evictable from the tail); `LFU` with aging (counts per (layer, expert) survive eviction, x`lfu_decay` every
+`lfu_period` accesses; victim = least frequent of 64 random candidates, `lfu_sample=0` = exact scan); `Static` =
+frequency-pinned set from a routing-statistics file (globally most frequent (layer, expert) by count / entry bytes
+until `pin_fraction`=85% of every pool is pinned; preloaded at startup, the rest LRU).
 Pinned slots leave the policy's candidate lists, so victim search stays O(1). Stats file format: one line per layer
 (40), 384 whitespace-separated counts, `#` comments; `write_routing_stats()` dumps the observed demand counts in
 the same format.
 
 **Bulk stream (prefill).** `cache.stream(layer, ids, n)` -> `ExpertStream`. Cached experts are served from the cache
 (one lease, `items()[0..n_cached)`). Misses go in file order through a ring of `ring_slots` staging slots (separate
-memory, sized for the largest class), loaded by a feeder thread on the same pool while the GPU consumes them. Protocol
+memory, sized for the largest entry), loaded by a feeder thread on the same pool while the GPU consumes them. Protocol
 per ring item i, in order: GPU `encode_wait_ready(cb,i)` -> kernels -> `encode_consumed(cb,i)` (between compute
 encoders), or CPU `wait_ready(i)` / `consumed(i)`. The feeder overwrites a ring slot only after its previous occupant was
 consumed. Values are contiguous, so a group of g items can wait on the last one and signal the last one. Tested with a
@@ -150,12 +178,17 @@ after a run.
 
 - `test_gguf`: 1043/1043 tensors match `docs/tensors.txt`; typed metadata (bool, f32, string, int/float/string
   arrays, u64 multipliers, 43-item compress_ratios, chat template).
-- `test_store_experts`: synthetic 2-class expert file with byte-exact checks. Covers: miss/hit/data/stats, io_event
-  GPU wait, LRU order, in-use protection (held lease + a GPU command buffer blocked on an event), prefetch
-  used/wasted, demand on a still-loading prefetch (promotion), LFU keeps a hot expert where LRU does not, static pinning from a stats file (+ stats write/read),
-  alignment {1, 4K, 16K} x chunk {whole, 16K, 1M}, mlock-wired arena, stream with a CPU consumer (cached + ring, file order, ring reuse
-  across layers), stream with a GPU consumer (Metal kernel, 3-slot ring, one command buffer). Plus 5 real experts from
-  all 3 classes vs plain preads.
+- `test_store_experts`: synthetic expert files with 3 region sizes and mixed per-layer types (AAA, AAB, BBA, BBB, CCA,
+  CCC), byte-exact checks. Covers: pool geometry / proportional split, miss/hit/data/stats, io_event GPU wait, global
+  LRU order and size-targeted victims, in-use protection (held lease + a GPU command buffer blocked on an event),
+  prefetch used/wasted, promotion, young-prefetch protection + last-resort victim + speculation cap, LFU keeps a hot
+  expert where LRU does not, static pinning from a stats file (per-pool budgets, + stats write/read), alignment
+  {1, 4K, 16K} x chunk {whole, 16K, 1M}, mlock-wired arena with many small MTLBuffers, stream with a CPU / GPU consumer,
+  a 2-thread randomized ensure/prefetch/pin/unpin/pin_resident/unpin_resident stress (LRU and LFU; every view and every
+  final resident checked against pread), and a prefill simulation with 192 experts/layer (4 chunks: group_cap groups
+  with two leases alive released by command-buffer completion, next-layer prefetch, pin_resident between chunks:
+  pinned entries never evicted, loads per chunk ~= unpinned experts). Plus 7 real experts of layers 0, 7, 17, 23, 39
+  (mixed types) vs plain preads, and `describe()` at 34.5 GiB with dry_io.
 - `test_store_engram`: synthetic table, all 3 modes. Covers: dedupe, cache hits (no reads on repeat), batch of
   20000 rows, last row at EOF, no-cache mode. Plus 48 real rows per mode vs plain preads.
 - `test_store_weights`: subset load (layers 0-1 + globals, 0.96 GB, 2 MTLBuffers) byte-exact vs pread; repack hook;
@@ -253,8 +286,10 @@ Prompt batch, 256 tokens = 12288 rows in one async request:
   `load_locked` (CPU cost per miss) or a pre-repacked expert file on SSD.
 - `stream()` uses one global ring: streams are consumed in creation order (fine for layer-sequential prefill). Every ring
   item must be consumed, or later streams stall.
-- `ensure()` blocks if a class has no evictable slot. Size the arena so concurrent leases (<= 6 per layer x layers in
-  flight) are a small fraction of each class.
+- `ensure()` blocks if a needed region size has nothing evictable. Size the arena so concurrent leases (<= 6 per layer x
+  layers in flight, or two prefill groups of `group_cap`) are a small fraction of each pool.
+- `group_cap()` counts every expert of a group against the unpinned room, but pinned (hit) experts need none: a
+  caller could size groups by their non-pinned members (`is_pinned()`) for larger groups after pin_resident.
 - dry_io mode (policy simulation) allocates nothing. Its numbers in §7 use a synthetic Zipf routing trace; real
   routing statistics must come from the model (`write_routing_stats`).
 - The F_NOCACHE fds still serve pages already in the unified page cache (e.g. after an mmap-based oracle run), so cold

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -79,7 +80,9 @@ struct ExpertCache::Impl {
   uint64_t next_ticket = 1, base = 1, done = 0;
   std::deque<int> pending;          // remaining not-ready slots for tickets base, base+1, ...
   std::vector<uint8_t> pinset;      // Static: keys that get pinned when loaded
-  std::vector<int> pin_quota, pin_count;
+  std::vector<int> pin_budget;      // Static: per pool, max regions pinned by the pinned set
+  uint64_t tick = 0;                // demand accesses so far
+  uint64_t pf_window = 0;           // unused prefetches younger than this many demand accesses are protected
   // bulk-stream ring
   int K = 0;
   uint64_t ring_slot_bytes = 0;
@@ -97,86 +100,106 @@ ExpertCache::ExpertCache(const ExpertLayout& layout, const ExpertCacheOptions& o
   if (o_.align == 0) o_.align = 1;
   if (o_.align > kPage || (o_.align & (o_.align - 1))) { fprintf(stderr, "experts: align must be a power of 2 <= 16384\n"); abort(); }
   const int NL = L_.n_layers, NE = L_.n_experts;
-  // ---- size classes: exact per-layer regions (max over experts of the 16K-rounded span at offset mod 16K) ----
-  std::map<std::vector<uint64_t>, int> cls_of;
-  layer_class_.assign(NL, 0);
-  for (int l = 0; l < NL; l++) {
-    std::vector<uint64_t> key;
+  // ---- region size per matrix type: max over every (layer, expert) matrix of that type of the 16K-rounded span at
+  //      offset mod 16K; one pool per distinct region size ----
+  std::map<int, uint64_t> type_region;
+  for (int l = 0; l < NL; l++)
     for (int k = 0; k < 3; k++) {
       const ExpertMat& m = L_.layers[l].mat[k];
       uint64_t r = 0;
       for (int e = 0; e < NE; e++) r = std::max(r, rup((m.base + (uint64_t)e * m.stride) % kPage + m.len, kPage));
-      key.push_back(r);
+      uint64_t& tr = type_region[(int)m.type];
+      tr = std::max(tr, r);
     }
-    for (int k = 0; k < 3; k++) key.push_back((uint64_t)L_.layers[l].mat[k].type);
-    auto it = cls_of.find(key);
-    if (it == cls_of.end()) {
-      ClassInfo ci; ci.region[0] = key[0]; ci.region[1] = key[1]; ci.region[2] = key[2];
-      ci.slot_bytes = key[0] + key[1] + key[2]; ci.n_slots = 0;
-      it = cls_of.emplace(key, (int)classes_.size()).first;
-      classes_.push_back(ci);
+  std::map<uint64_t, int> pool_of;
+  for (auto& tr : type_region) pool_of[tr.second] = 0;
+  for (auto& po : pool_of) { po.second = (int)pools_.size(); PoolInfo pi; pi.region = po.first; pools_.push_back(pi); }
+  for (auto& tr : type_region) pools_[pool_of[tr.second]].types.push_back((GType)tr.first);
+  const int P = (int)pools_.size();
+  if (P > 32) { fprintf(stderr, "experts: too many region sizes (%d)\n", P); abort(); }
+  layer_pool_.assign((size_t)NL * 3, 0); layer_use_.assign((size_t)NL * P, 0); layer_mask_.assign(NL, 0);
+  for (int l = 0; l < NL; l++)
+    for (int k = 0; k < 3; k++) {
+      const int pp = pool_of[type_region[(int)L_.layers[l].mat[k].type]];
+      layer_pool_[(size_t)l * 3 + k] = pp; layer_use_[(size_t)l * P + pp]++; layer_mask_[l] |= 1u << pp;
+      pools_[pp].demand += NE;
     }
-    layer_class_[l] = it->second;
-    classes_[it->second].layers.push_back(l);
+  for (int pp = 0; pp < P; pp++) {
+    int sum = 0, mx = 0;
+    for (int l = 0; l < NL; l++) { sum += layer_use_[(size_t)l * P + pp]; mx = std::max<int>(mx, layer_use_[(size_t)l * P + pp]); }
+    pools_[pp].mean_use = NL ? (double)sum / NL : 0; pools_[pp].max_use = mx;
   }
-  // ---- split the arena across classes ----
-  const int C = (int)classes_.size();
+  // ---- split the arena across pools ----
   std::vector<double> rstats;
   bool have_stats = !o_.stats_path.empty() && read_routing_stats(o_.stats_path, NL, NE, rstats);
   if (!o_.stats_path.empty() && !have_stats) fprintf(stderr, "experts: could not read routing stats %s\n", o_.stats_path.c_str());
-  uint64_t per_layer_bytes = 0;
-  for (int l = 0; l < NL; l++) per_layer_bytes += classes_[layer_class_[l]].slot_bytes;
-  if (!have_stats) {
-    // equal slots per layer
-    uint64_t spl = o_.arena_bytes / per_layer_bytes;
-    for (auto& c : classes_) c.n_slots = (int)std::min<uint64_t>(spl * c.layers.size(), (uint64_t)NE * c.layers.size());
+  uint64_t total_demand = 0;
+  for (auto& pi : pools_) total_demand += pi.demand * pi.region;
+  if (o_.arena_bytes >= total_demand) {
+    for (auto& pi : pools_) pi.n_regions = (int)pi.demand;   // everything fits
   } else {
-    // floor of 16 slots per layer, then greedy by (count / bytes) over all (layer, expert)
+    std::vector<uint64_t> sel(P, 0);   // regions selected so far
     uint64_t budget = o_.arena_bytes;
-    for (auto& c : classes_) {
-      c.n_slots = (int)std::min<uint64_t>(16 * c.layers.size(), budget / c.slot_bytes);
-      budget -= (uint64_t)c.n_slots * c.slot_bytes;
+    if (have_stats) {
+      // floor of 16 experts per layer, then greedy by (count / bytes) over all (layer, expert)
+      for (int pp = 0; pp < P; pp++) {
+        uint64_t f = 0;
+        for (int l = 0; l < NL; l++) f += 16ull * layer_use_[(size_t)l * P + pp];
+        f = std::min<uint64_t>({f, pools_[pp].demand, budget / pools_[pp].region});
+        sel[pp] = f; budget -= f * pools_[pp].region;
+      }
+      std::vector<std::pair<double, uint32_t>> rank;
+      for (int l = 0; l < NL; l++)
+        for (int e = 0; e < NE; e++)
+          if (rstats[(size_t)l * NE + e] > 0) rank.push_back({rstats[(size_t)l * NE + e] / entry_bytes(l), key(l, e)});
+      std::sort(rank.begin(), rank.end(), [](auto& x, auto& y) { return x.first > y.first; });
+      for (auto& r : rank) {
+        const int l = (int)(r.second / NE);
+        const uint64_t eb = entry_bytes(l);
+        if (eb > budget) continue;
+        bool room = true;
+        for (int pp = 0; pp < P; pp++) room &= sel[pp] + layer_use_[(size_t)l * P + pp] <= pools_[pp].demand;
+        if (!room) continue;
+        for (int pp = 0; pp < P; pp++) sel[pp] += layer_use_[(size_t)l * P + pp];
+        budget -= eb;
+      }
     }
-    std::vector<std::pair<double, uint32_t>> rank;
-    for (int l = 0; l < NL; l++)
-      for (int e = 0; e < NE; e++) rank.push_back({rstats[(size_t)l * NE + e] / classes_[layer_class_[l]].slot_bytes, (uint32_t)(l * NE + e)});
-    std::sort(rank.begin(), rank.end(), [](auto& a, auto& b) { return a.first > b.first; });
-    std::vector<int> taken(C, 0);
-    for (auto& r : rank) {
-      int c = layer_class_[r.second / NE];
-      if (classes_[c].slot_bytes > budget) continue;
-      if (taken[c] + classes_[c].n_slots >= (int)(NE * classes_[c].layers.size())) continue;
-      taken[c]++; budget -= classes_[c].slot_bytes;
+    // the rest in proportion to the remaining demand (no stats: every pool holds the same fraction of its matrices)
+    double rem = 0;
+    for (int pp = 0; pp < P; pp++) rem += (double)(pools_[pp].demand - sel[pp]) * pools_[pp].region;
+    for (int pp = 0; pp < P; pp++) {
+      uint64_t extra = rem > 0 ? (uint64_t)((double)budget * (pools_[pp].demand - sel[pp]) / rem) : 0;
+      pools_[pp].n_regions = (int)std::min<uint64_t>(pools_[pp].demand, sel[pp] + extra);
     }
-    for (int c = 0; c < C; c++) classes_[c].n_slots += taken[c];
   }
-  for (int c = 0; c < C; c++)
-    if (classes_[c].n_slots < 12) {
-      fprintf(stderr, "experts: arena %.2f GiB too small: class %d gets %d slots (need >= 12)\n", o_.arena_bytes / 1073741824.0, c, classes_[c].n_slots);
+  for (auto& pi : pools_)
+    if (pi.n_regions < 12 * pi.max_use) {
+      fprintf(stderr, "experts: arena %.2f GiB too small: pool of %llu B regions gets %d regions (need >= %d)\n",
+              o_.arena_bytes / 1073741824.0, (unsigned long long)pi.region, pi.n_regions, 12 * pi.max_use);
       abort();
     }
-  // ---- allocate slots ----
+  // ---- allocate regions: per pool, MTLBuffers of whole regions ----
   Device& dev = Device::get();
   size_t maxbuf = o_.max_buffer_bytes ? o_.max_buffer_bytes : std::min<size_t>(dev.max_buffer_length(), 8ull << 30);
-  for (int c = 0; c < C; c++) {
-    ClassInfo& ci = classes_[c];
-    uint64_t per_buf = std::max<uint64_t>(1, maxbuf / ci.slot_bytes);
-    for (int s0 = 0; s0 < ci.n_slots; s0 += (int)per_buf) {
-      int ns = (int)std::min<uint64_t>(per_buf, ci.n_slots - s0);
-      size_t bytes = (size_t)ns * ci.slot_bytes;
+  for (int pp = 0; pp < P; pp++) {
+    const PoolInfo& pi = pools_[pp];
+    uint64_t per_buf = std::max<uint64_t>(1, maxbuf / pi.region);
+    for (int r0 = 0; r0 < pi.n_regions; r0 += (int)per_buf) {
+      int nr = (int)std::min<uint64_t>(per_buf, pi.n_regions - r0);
+      size_t bytes = (size_t)nr * pi.region;
       char* mem = nullptr; Buffer b; uint64_t gbase = 0;
       if (!o_.dry_io) {   // dry_io (policy simulation): no memory at all
         mem = (char*)mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
         if (mem == MAP_FAILED) { perror("experts mmap"); abort(); }
         p_->maps.push_back({mem, bytes});
-        b = dev.wrap(mem, bytes, "expert_slots");
+        b = dev.wrap(mem, bytes, "expert_regions");
         p_->bufs.push_back(b);
         gbase = [(__bridge id<MTLBuffer>)b.buf gpuAddress];
       }
-      for (int i = 0; i < ns; i++) {
-        Slot s; s.cls = c; s.host = mem + (size_t)i * ci.slot_bytes;
-        s.buf = b.sub((size_t)i * ci.slot_bytes, ci.slot_bytes); s.gpu = gbase + (uint64_t)i * ci.slot_bytes;
-        slots_.push_back(std::move(s));
+      for (int i = 0; i < nr; i++) {
+        Region R;
+        if (mem) { R.host = mem + (size_t)i * pi.region; R.buf = b.sub((size_t)i * pi.region, pi.region); R.gpu = gbase + (uint64_t)i * pi.region; }
+        regions_.push_back(R); region_pool_.push_back(pp);
       }
       arena_bytes_ += bytes;
     }
@@ -196,26 +219,32 @@ ExpertCache::ExpertCache(const ExpertLayout& layout, const ExpertCacheOptions& o
     });
     for (auto& t : th) t.join();
   }
-  free_.assign(C, {});
-  for (int s = (int)slots_.size() - 1; s >= 0; s--) free_[slots_[s].cls].push_back(s);
+  free_reg_.assign(P, {});
+  for (int r = (int)regions_.size() - 1; r >= 0; r--) free_reg_[region_pool_[r]].push_back(r);
+  pinned_reg_.assign(P, 0); spec_reg_.assign(P, 0); ref_reg_.assign(P, 0);
+  // entry ids: every resident expert owns 3 regions, so total regions / 3 bounds the number of residents
+  slots_.resize(std::max<size_t>(1, regions_.size() / 3));
+  for (int s = (int)slots_.size() - 1; s >= 0; s--) free_slots_.push_back(s);
+  {
+    long w = env_int("MACSEEK_PF_PROTECT", -1);   // demand accesses an unused prefetch stays protected (0 = off)
+    p_->pf_window = w >= 0 ? (uint64_t)w : (uint64_t)slots_.size();
+  }
   map_.assign((size_t)NL * NE, -1);
   stats_.assign(NL, LayerStats{});
   access_.assign((size_t)NL * NE, 0.0);
   id<MTLDevice> mdev = (__bridge id<MTLDevice>)dev.device();
   p_->io_ev = [mdev newSharedEvent];
   p_->io_ev.signaledValue = 0;
-  // ---- policy ----
+  // ---- policy: one class (the whole arena) ----
   if (o_.custom_policy) p_->policy = o_.custom_policy;
   else p_->policy = std::shared_ptr<EvictionPolicy>(make_policy(o_.policy, o_.lfu_decay, o_.lfu_period, o_.lfu_sample).release());
-  std::vector<int> sc(slots_.size());
-  for (size_t s = 0; s < slots_.size(); s++) sc[s] = slots_[s].cls;
-  p_->policy->init(sc, C, NL * NE);
+  p_->policy->init(std::vector<int>(slots_.size(), 0), 1, NL * NE);
   // ---- I/O ----
   pool_ = std::make_unique<IoPool>(o_.io_threads, kPage);
-  // ---- ring ----
+  // ---- ring (staging slots sized for the largest entry) ----
   if (o_.ring_slots > 0 && !o_.dry_io) {
     p_->K = o_.ring_slots;
-    for (auto& c : classes_) p_->ring_slot_bytes = std::max(p_->ring_slot_bytes, c.slot_bytes);
+    for (int l = 0; l < NL; l++) p_->ring_slot_bytes = std::max(p_->ring_slot_bytes, entry_bytes(l));
     size_t bytes = (size_t)p_->K * p_->ring_slot_bytes;
     char* mem = (char*)mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
     if (mem == MAP_FAILED) { perror("ring mmap"); abort(); }
@@ -233,17 +262,25 @@ ExpertCache::ExpertCache(const ExpertLayout& layout, const ExpertCacheOptions& o
     p_->consume_ev = [mdev newSharedEvent]; p_->consume_ev.signaledValue = 0;
     p_->feeder = std::thread([this] { stream_feeder(); });
   }
-  // ---- static frequency-pinned set ----
+  // ---- static frequency-pinned set: globally most frequent (layer, expert) by count / bytes, until pin_fraction of
+  //      every pool is pinned ----
   if (o_.policy == PolicyKind::Static && have_stats) {
     p_->pinset.assign((size_t)NL * NE, 0);
-    p_->pin_quota.assign(C, 0); p_->pin_count.assign(C, 0);
-    for (int c = 0; c < C; c++) {
-      int quota = (int)(o_.pin_fraction * classes_[c].n_slots);
-      p_->pin_quota[c] = quota;
-      std::vector<std::pair<double, uint32_t>> r;
-      for (int l : classes_[c].layers) for (int e = 0; e < NE; e++) if (rstats[(size_t)l * NE + e] > 0) r.push_back({rstats[(size_t)l * NE + e], key(l, e)});
-      std::sort(r.begin(), r.end(), [](auto& a, auto& b) { return a.first > b.first; });
-      for (int i = 0; i < quota && i < (int)r.size(); i++) p_->pinset[r[i].second] = 1;
+    p_->pin_budget.assign(P, 0);
+    for (int pp = 0; pp < P; pp++) p_->pin_budget[pp] = (int)(o_.pin_fraction * pools_[pp].n_regions);
+    std::vector<std::pair<double, uint32_t>> r;
+    for (int l = 0; l < NL; l++)
+      for (int e = 0; e < NE; e++)
+        if (rstats[(size_t)l * NE + e] > 0) r.push_back({rstats[(size_t)l * NE + e] / entry_bytes(l), key(l, e)});
+    std::stable_sort(r.begin(), r.end(), [](auto& x, auto& y) { return x.first > y.first; });
+    std::vector<int> used(P, 0);
+    for (auto& x : r) {
+      const int l = (int)(x.second / NE);
+      bool ok = true;
+      for (int pp = 0; pp < P; pp++) ok &= used[pp] + layer_use_[(size_t)l * P + pp] <= p_->pin_budget[pp];
+      if (!ok) continue;
+      for (int pp = 0; pp < P; pp++) used[pp] += layer_use_[(size_t)l * P + pp];
+      p_->pinset[x.second] = 1;
     }
     if (o_.preload_pinned) {
       for (int l = 0; l < NL; l++) {
@@ -267,21 +304,96 @@ ExpertCache::~ExpertCache() {
   for (auto& m : p_->maps) munmap(m.first, m.second);
 }
 
+uint64_t ExpertCache::entry_bytes(int layer) const {
+  uint64_t b = 0;
+  for (int k = 0; k < 3; k++) b += pools_[layer_pool(layer, k)].region;
+  return b;
+}
+
+double ExpertCache::cached_fraction() const {
+  double f = 1;
+  for (auto& pi : pools_) if (pi.demand) f = std::min(f, (double)pi.n_regions / pi.demand);
+  return f;
+}
+
+int ExpertCache::reserve_regions(int pp, int keep) const {
+  const PoolInfo& pi = pools_[pp];
+  double r = std::ceil(std::max(0, keep) * std::max(1.0, pi.mean_use));
+  r = std::max(r, 24.0 * pi.max_use);   // every layer can stream groups of >= 8
+  return (int)std::min<double>(r, pi.n_regions);
+}
+
+int ExpertCache::unpinned_capacity_locked(int layer) const {
+  const int P = (int)pools_.size();
+  int cap = INT32_MAX;
+  for (int pp = 0; pp < P; pp++) {
+    const int u = layer_use_[(size_t)layer * P + pp];
+    if (u) cap = std::min(cap, (pools_[pp].n_regions - pinned_reg_[pp]) / u);
+  }
+  return std::min(cap, (int)slots_.size());
+}
+
+int ExpertCache::unpinned_capacity(int layer) const { std::lock_guard<std::mutex> g(mu_); return unpinned_capacity_locked(layer); }
+
+int ExpertCache::group_cap(int layer) const {
+  std::lock_guard<std::mutex> g(mu_);
+  return std::max(1, std::min(64, unpinned_capacity_locked(layer) / 3));
+}
+
 // ---------------- core (under mu_) ----------------
-int ExpertCache::take_slot_locked(int cls, bool block, std::unique_lock<std::mutex>& lk) {
+int ExpertCache::take_entry_locked(int layer, TakeMode mode, std::unique_lock<std::mutex>& lk) {
   auto t0 = std::chrono::steady_clock::now();
+  const int P = (int)pools_.size();
+  const uint8_t* use = &layer_use_[(size_t)layer * P];
+  if (mode == kPrefetch)   // speculation cap: keep a demand margin of unpinned regions that are neither leased nor
+    for (int pp = 0; pp < P; pp++) {   // unused prefetches (i.e. free or evictable for the next demand group)
+      if (!use[pp]) continue;
+      const int unp = pools_[pp].n_regions - pinned_reg_[pp];
+      const int margin = std::min(unp / 4, 64 * pools_[pp].max_use);   // ~1 prefill group of 64 for any layer
+      if (unp - spec_reg_[pp] - ref_reg_[pp] - use[pp] < margin) return -1;
+    }
   for (;;) {
-    if (!free_[cls].empty()) { int s = free_[cls].back(); free_[cls].pop_back(); return s; }
-    struct Ctx { const std::vector<Slot>* sl; } ctx{&slots_};
-    int v = p_->policy->victim(cls, [](const void* c, int s) {
-      const Slot& x = (*((const Ctx*)c)->sl)[s];
-      return x.state == Ready && x.ref == 0 && !x.pinned;
-    }, &ctx);
-    if (v >= 0) { evict_locked(v); return v; }
-    if (!block) return -1;
+    uint32_t need = 0;
+    for (int pp = 0; pp < P; pp++) if (free_reg_[pp].size() < use[pp]) need |= 1u << pp;
+    if (!need && !free_slots_.empty()) {
+      int s = free_slots_.back(); free_slots_.pop_back();
+      Slot& x = slots_[s];
+      for (int m = 0; m < 3; m++) { auto& fl = free_reg_[layer_pool(layer, m)]; x.reg[m] = fl.back(); fl.pop_back(); }
+      return s;
+    }
+    // evict a victim that owns a region of a missing size (any victim if only entry ids ran out). Young unused
+    // prefetches (issued < pf_window demand accesses ago) are spared: prefetch never evicts them, demand only as a last
+    // resort (prefill prefetches layer l+1 before layer l's MoE runs; LRU would otherwise evict layer l's own
+    // not-yet-used prefetches first).
+    struct Ctx { const ExpertCache* c; uint32_t need; bool spare_pf; } ctx{this, need, p_->pf_window > 0};
+    auto pred = [](const void* cp, int s) {
+      const Ctx& c = *(const Ctx*)cp;
+      const Slot& x = c.c->slots_[s];
+      if (x.state != Ready || x.ref != 0 || x.pinned || x.key == ~0u) return false;
+      if (c.spare_pf && x.prefetched && !x.used && c.c->p_->tick - x.pf_tick < c.c->p_->pf_window) return false;
+      return !c.need || (c.c->layer_mask_[x.key / c.c->L_.n_experts] & c.need) != 0;
+    };
+    int v = p_->policy->victim(0, pred, &ctx);
+    if (v < 0 && ctx.spare_pf && mode == kDemand) {
+      // last resort: the YOUNGEST unused prefetch, highest key on ties (the speculation furthest ahead: layer l+1's
+      // before the current layer's own pending prefetches, and within a layer the experts a prefill uses last, since
+      // groups run in expert-id order). An LRU order would evict the current layer's next prefetches and cascade.
+      uint64_t best = 0;
+      for (int s = 0; s < (int)slots_.size(); s++) {
+        const Slot& x = slots_[s];
+        if (x.state != Ready || x.ref != 0 || x.pinned || x.key == ~0u || !x.prefetched || x.used) continue;
+        if (need && !(layer_mask_[x.key / L_.n_experts] & need)) continue;
+        if (v < 0 || x.pf_tick > best || (x.pf_tick == best && x.key > slots_[v].key)) { v = s; best = x.pf_tick; }
+      }
+    }
+    if (v >= 0) { evict_locked(v); continue; }
+    if (mode != kDemand) return -1;
     if (!to_submit_.empty()) { lk.unlock(); flush_submits(); lk.lock(); continue; }   // loads we wait on must be queued
     if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(30)) {
-      fprintf(stderr, "experts: no evictable slot in class %d for 30 s (all %d slots in use/pinned/loading)\n", cls, classes_[cls].n_slots);
+      fprintf(stderr, "experts: no evictable entry for layer %d for 30 s (every region of a needed size in use/pinned/loading):\n", layer);
+      for (int pp = 0; pp < P; pp++)
+        fprintf(stderr, "  pool %d (%llu B): %d regions, %zu free, %d pinned, layer needs %d\n", pp, (unsigned long long)pools_[pp].region,
+                pools_[pp].n_regions, free_reg_[pp].size(), pinned_reg_[pp], use[pp]);
       abort();
     }
     cv_.wait_for(lk, std::chrono::milliseconds(50));
@@ -297,34 +409,65 @@ void ExpertCache::evict_locked(int s) {
     p_->policy->on_evict(s, x.key);
     map_[x.key] = -1;
   }
-  x.key = ~0u; x.state = Empty; x.prefetched = x.used = false; x.pinned = false;
+  set_pinned_locked(s, false);
+  set_spec_locked(s, false);
+  for (int m = 0; m < 3; m++) if (x.reg[m] >= 0) { free_reg_[region_pool_[x.reg[m]]].push_back(x.reg[m]); x.reg[m] = -1; }
+  x.key = ~0u; x.state = Empty; x.prefetched = x.used = false; x.res_pin = false;
+  free_slots_.push_back(s);
+}
+
+void ExpertCache::set_pinned_locked(int s, bool v) {
+  Slot& x = slots_[s];
+  if (x.pinned == v) return;
+  const bool spec = x.spec;
+  if (spec) set_spec_locked(s, false);
+  x.pinned = v;
+  for (int m = 0; m < 3; m++) if (x.reg[m] >= 0) {
+    pinned_reg_[region_pool_[x.reg[m]]] += v ? 1 : -1;
+    if (x.ref > 0) ref_reg_[region_pool_[x.reg[m]]] += v ? -1 : 1;   // ref_reg_ counts unpinned leased entries
+  }
+  if (spec || (!v && x.prefetched && !x.used)) set_spec_locked(s, !v);
+}
+
+// spec = unpinned prefetch no demand access has used yet (counted per pool for the prefetch speculation cap)
+void ExpertCache::set_spec_locked(int s, bool v) {
+  Slot& x = slots_[s];
+  if (x.spec == v) return;
+  x.spec = v;
+  for (int m = 0; m < 3; m++) if (x.reg[m] >= 0) spec_reg_[region_pool_[x.reg[m]]] += v ? 1 : -1;
+}
+
+bool ExpertCache::can_pin_locked(int layer, const std::vector<int>& budget) const {
+  const int P = (int)pools_.size();
+  for (int pp = 0; pp < P; pp++) if (pinned_reg_[pp] + layer_use_[(size_t)layer * P + pp] > budget[pp]) return false;
+  return true;
 }
 
 void ExpertCache::load_locked(int s, uint32_t k, int prio) {
   Slot& x = slots_[s];
   const int layer = (int)(k / L_.n_experts), e = (int)(k % L_.n_experts);
-  const ClassInfo& ci = classes_[x.cls];
   x.key = k; x.state = Loading; map_[k] = s;
-  if (!p_->pinset.empty() && p_->pinset[k] && p_->pin_count[x.cls] < p_->pin_quota[x.cls]) { x.pinned = true; p_->pin_count[x.cls]++; }
+  if (!p_->pinset.empty() && p_->pinset[k] && can_pin_locked(layer, p_->pin_budget)) set_pinned_locked(s, true);
   static const bool cold_pf = env_int("MACSEEK_PF_COLD", 0) != 0;   // prefetches enter at the eviction end
   if (!x.pinned) { if (cold_pf && prio == 1) p_->policy->on_insert_cold(s, k); else p_->policy->on_insert(s, k); }
+  for (int m = 0; m < 3; m++) {
+    const ExpertMat& em = L_.layers[layer].mat[m];
+    x.data_off[m] = (uint32_t)((em.base + (uint64_t)e * em.stride) % kPage);
+  }
+  if (o_.dry_io) { x.state = Ready; return; }
   inflight_++;
   auto req = std::make_shared<IoRequest>();
-  uint64_t region = 0;
   const uint64_t A = o_.align, chunk = o_.read_chunk ? rup(o_.read_chunk, A) : (1ull << 40);
   for (int m = 0; m < 3; m++) {
     const ExpertMat& em = L_.layers[layer].mat[m];
     uint64_t off = em.base + (uint64_t)e * em.stride;
-    x.data_off[m] = (uint32_t)(region + off % kPage);
     uint64_t lo = rdown(off, A), hi = std::min(rup(off + em.len, A), em.file_size);
-    char* dst = x.host + region + (off % kPage) - (off - lo);
+    char* dst = regions_[x.reg[m]].host + (off % kPage) - (off - lo);
     for (uint64_t a = lo; a < hi; a += chunk) {
       uint64_t len = std::min(chunk, hi - a);
       req->chunks.push_back({em.fd, a, (uint32_t)len, dst + (a - lo), 0});
     }
-    region += ci.region[m];
   }
-  if (o_.dry_io) { inflight_--; x.state = Ready; return; }
   req->priority = prio;
   req->on_done = [this, s](IoRequest& r) { on_loaded(s, r.bytes.load()); };
   x.req = req.get();
@@ -361,9 +504,10 @@ ExpertView ExpertCache::view_locked(int s) const {
   const int layer = (int)(x.key / L_.n_experts);
   for (int m = 0; m < 3; m++) {
     const ExpertMat& em = L_.layers[layer].mat[m];
-    v.mat[m] = x.buf.sub(x.data_off[m], em.len);
-    v.gpu[m] = x.gpu + x.data_off[m];
-    v.host[m] = x.host + x.data_off[m];
+    const Region& R = regions_[x.reg[m]];
+    v.mat[m] = R.buf.sub(x.data_off[m], em.len);
+    v.gpu[m] = R.gpu + x.data_off[m];
+    v.host[m] = R.host ? R.host + x.data_off[m] : nullptr;
     v.type[m] = em.type;
   }
   return v;
@@ -375,11 +519,11 @@ ExpertLease ExpertCache::ensure(int layer, const int* ids, int n) {
   lease.views.reserve(n); lease.slots_.reserve(n);
   std::unique_lock<std::mutex> lk(mu_);
   LayerStats& st = stats_[layer];
-  const int cls = layer_class_[layer];
   std::vector<int> waiting;
   for (int i = 0; i < n; i++) {
     uint32_t k = key(layer, ids[i]);
     access_[k] += 1;
+    p_->tick++;
     int s = map_[k];
     if (s >= 0) {
       Slot& x = slots_[s];
@@ -394,14 +538,15 @@ ExpertLease ExpertCache::ensure(int layer, const int* ids, int n) {
       }
       if (x.prefetched && !x.used) st.prefetch_used++;
     } else {
-      s = take_slot_locked(cls, true, lk);
+      s = take_entry_locked(layer, kDemand, lk);
       // the lock may have been dropped while blocking: re-check the key
-      if (map_[k] >= 0) { free_[cls].push_back(s); s = map_[k]; st.hits++; }
+      if (map_[k] >= 0) { evict_locked(s); s = map_[k]; st.hits++; }
       else { st.misses++; load_locked(s, k, 0); }
     }
     Slot& x = slots_[s];
     x.used = true;
-    x.ref++;
+    set_spec_locked(s, false);
+    if (x.ref++ == 0 && !x.pinned) for (int m = 0; m < 3; m++) ref_reg_[region_pool_[x.reg[m]]]++;
     if (!x.pinned) p_->policy->on_access(s, k);
     if (x.state != Ready && std::find(waiting.begin(), waiting.end(), s) == waiting.end()) waiting.push_back(s);
     lease.slots_.push_back(s);
@@ -420,14 +565,14 @@ ExpertLease ExpertCache::ensure(int layer, const int* ids, int n) {
 int ExpertCache::prefetch(int layer, const int* ids, int n) {
   std::unique_lock<std::mutex> lk(mu_);
   int issued = 0;
-  const int cls = layer_class_[layer];
   for (int i = 0; i < n; i++) {
     uint32_t k = key(layer, ids[i]);
     if (map_[k] >= 0) continue;
-    int s = take_slot_locked(cls, false, lk);
+    int s = take_entry_locked(layer, kPrefetch, lk);
     if (s < 0) break;
     load_locked(s, k, 1);
-    slots_[s].prefetched = true; slots_[s].used = false;
+    slots_[s].prefetched = true; slots_[s].used = false; slots_[s].pf_tick = p_->tick;
+    if (!slots_[s].pinned) set_spec_locked(s, true);
     stats_[layer].prefetch_issued++;
     issued++;
   }
@@ -439,19 +584,17 @@ int ExpertCache::prefetch(int layer, const int* ids, int n) {
 int ExpertCache::pin(int layer, const int* ids, int n) {
   std::unique_lock<std::mutex> lk(mu_);
   int pinned = 0;
-  const int cls = layer_class_[layer];
   for (int i = 0; i < n; i++) {
     uint32_t k = key(layer, ids[i]);
     int s = map_[k];
     if (s < 0) {
-      s = take_slot_locked(cls, false, lk);
+      s = take_entry_locked(layer, kPin, lk);
       if (s < 0) break;
       load_locked(s, k, 1);
     }
     if (!slots_[s].pinned) {
-      slots_[s].pinned = true;
+      set_pinned_locked(s, true);
       p_->policy->on_evict(s, k);   // leaves the policy's candidate set
-      if (!p_->pin_count.empty()) p_->pin_count[cls]++;
     }
     pinned++;
   }
@@ -465,9 +608,9 @@ void ExpertCache::unpin(int layer, const int* ids, int n) {
   for (int i = 0; i < n; i++) {
     int s = map_[key(layer, ids[i])];
     if (s >= 0 && slots_[s].pinned) {
-      slots_[s].pinned = false;
+      set_pinned_locked(s, false);
+      slots_[s].res_pin = false;
       p_->policy->on_insert(s, slots_[s].key);
-      if (!p_->pin_count.empty()) p_->pin_count[slots_[s].cls]--;
     }
   }
   cv_.notify_all();
@@ -475,30 +618,31 @@ void ExpertCache::unpin(int layer, const int* ids, int n) {
 
 int ExpertCache::pin_resident(int keep_unpinned) {
   std::lock_guard<std::mutex> g(mu_);
+  const int P = (int)pools_.size(), NE = L_.n_experts;
+  std::vector<int> unp(P), floor_(P);
+  for (int pp = 0; pp < P; pp++) { unp[pp] = pools_[pp].n_regions - pinned_reg_[pp]; floor_[pp] = reserve_regions(pp, keep_unpinned); }
+  std::vector<std::pair<double, int>> cand;
+  for (int s = 0; s < (int)slots_.size(); s++) {
+    const Slot& x = slots_[s];
+    if (!x.pinned && x.state == Ready && x.key != ~0u) cand.push_back({access_[x.key], s});
+  }
+  std::stable_sort(cand.begin(), cand.end(), [](auto& a, auto& b) { return a.first > b.first; });
   int total = 0;
-  for (int c = 0; c < (int)classes_.size(); c++) {
-    int unpinned = 0, ready = 0;
-    std::vector<std::pair<double, int>> cand;
-    for (int s = 0; s < (int)slots_.size(); s++) {
-      const Slot& x = slots_[s];
-      if (x.cls != c || x.pinned) continue;
-      unpinned++;
-      if (x.state == Ready && x.key != ~0u) { cand.push_back({access_[x.key], s}); ready++; }
-    }
-    std::sort(cand.begin(), cand.end(), [](auto& a, auto& b) { return a.first > b.first; });
-    // streaming room per class: 3 prefill groups (see group_cap) for builds with many small size classes (GSQ-RCO Coder:
-    // 8 classes of 1-14 layers); keep_unpinned applies as given for the 3-class UD-IQ1_S layout
-    const int keep_c = classes_.size() <= 3 ? keep_unpinned
-                     : std::max(3 * class_group(c), keep_unpinned * (int)classes_[c].layers.size() / std::max(1, L_.n_layers));
-    int pc = 0;
-    for (auto& pr : cand) {
-      if (unpinned <= keep_c) break;
-      Slot& x = slots_[pr.second];
-      x.pinned = true; x.res_pin = true;
-      p_->policy->on_evict(pr.second, x.key);   // leaves the policy's candidate set
-      unpinned--; total++; pc++;
-    }
-    if (getenv("MACSEEK_VERBOSE")) fprintf(stderr, "pin_resident: class %d: %d unpinned (%d ready) -> pinned %d\n", c, unpinned + pc, ready, pc);
+  for (auto& pr : cand) {
+    Slot& x = slots_[pr.second];
+    const uint8_t* use = &layer_use_[(size_t)(x.key / NE) * P];
+    bool ok = true;
+    for (int pp = 0; pp < P; pp++) ok &= unp[pp] - use[pp] >= floor_[pp];
+    if (!ok) continue;
+    for (int pp = 0; pp < P; pp++) unp[pp] -= use[pp];
+    set_pinned_locked(pr.second, true); x.res_pin = true;
+    p_->policy->on_evict(pr.second, x.key);   // leaves the policy's candidate set
+    total++;
+  }
+  if (getenv("MACSEEK_VERBOSE")) {
+    fprintf(stderr, "pin_resident: %zu ready unpinned -> pinned %d;", cand.size(), total);
+    for (int pp = 0; pp < P; pp++) fprintf(stderr, " pool %d: %d/%d unpinned (floor %d)", pp, unp[pp], pools_[pp].n_regions, floor_[pp]);
+    fprintf(stderr, "\n");
   }
   return total;
 }
@@ -508,13 +652,20 @@ void ExpertCache::unpin_resident() {
   for (int s = 0; s < (int)slots_.size(); s++) {
     Slot& x = slots_[s];
     if (!x.res_pin) continue;
-    x.res_pin = false; x.pinned = false;
+    x.res_pin = false;
+    set_pinned_locked(s, false);
     if (x.key != ~0u) p_->policy->on_insert(s, x.key);
   }
   cv_.notify_all();
 }
 
 bool ExpertCache::contains(int layer, int e) const { std::lock_guard<std::mutex> g(mu_); return map_[key(layer, e)] >= 0; }
+
+bool ExpertCache::is_pinned(int layer, int e) const {
+  std::lock_guard<std::mutex> g(mu_);
+  int s = map_[key(layer, e)];
+  return s >= 0 && slots_[s].pinned;
+}
 
 int ExpertCache::n_pinned() const {
   std::lock_guard<std::mutex> g(mu_);
@@ -535,7 +686,10 @@ void ExpertCache::drain() {
 
 void ExpertCache::release_slots(const std::vector<int>& sl) {
   std::lock_guard<std::mutex> g(mu_);
-  for (int s : sl) slots_[s].ref--;
+  for (int s : sl) {
+    Slot& x = slots_[s];
+    if (--x.ref == 0 && !x.pinned) for (int m = 0; m < 3; m++) ref_reg_[region_pool_[x.reg[m]]]--;
+  }
   cv_.notify_all();
 }
 
@@ -605,7 +759,6 @@ std::unique_ptr<ExpertStream> ExpertCache::stream(int layer, const int* ids, int
     for (size_t i = 0; i < cached.size(); i++) st->items_.push_back({cached[i], st->lease_.views[i], true, 0});
   }
   st->n_cached_ = st->items_.size();
-  const ClassInfo& ci = classes_[layer_class_[layer]];
   std::lock_guard<std::mutex> g(p_->rmu);
   for (int e : miss) {
     uint64_t seq = p_->ring_next++;
@@ -619,7 +772,7 @@ std::unique_ptr<ExpertStream> ExpertCache::stream(int layer, const int* ids, int
       v.gpu[m] = p_->ring_gpu[r] + doff;
       v.host[m] = p_->ring_host[r] + doff;
       v.type[m] = em.type;
-      region += ci.region[m];
+      region += pools_[layer_pool(layer, m)].region;
     }
     st->items_.push_back({e, v, false, seq});
     p_->jobs.push_back({seq, layer, e});
@@ -648,7 +801,6 @@ void ExpertCache::stream_feeder() {
       }
     }
     const int r = (int)(j.seq % K);
-    const ClassInfo& ci = classes_[layer_class_[j.layer]];
     auto req = std::make_shared<IoRequest>();
     uint64_t region = 0;
     const uint64_t A = o_.align, chunk = o_.read_chunk ? rup(o_.read_chunk, A) : (1ull << 40);
@@ -658,7 +810,7 @@ void ExpertCache::stream_feeder() {
       uint64_t lo = rdown(off, A), hi = std::min(rup(off + em.len, A), em.file_size);
       char* dst = p_->ring_host[r] + region + (off % kPage) - (off - lo);
       for (uint64_t a = lo; a < hi; a += chunk) req->chunks.push_back({em.fd, a, (uint32_t)std::min(chunk, hi - a), dst + (a - lo), 0});
-      region += ci.region[m];
+      region += pools_[layer_pool(j.layer, m)].region;
     }
     const uint64_t seq = j.seq; const int layer = j.layer;
     auto done = [this, seq, layer, K](uint64_t bytes) {
@@ -755,21 +907,40 @@ std::string ExpertCache::stats_report() const {
 
 std::string ExpertCache::describe() const {
   std::ostringstream os;
-  char b[256];
-  snprintf(b, sizeof b, "ExpertCache: arena %.2f GiB, %zu slots, policy %s, %d io threads, chunk %zu KiB, align %u, ring %d\n",
-           arena_bytes_ / 1073741824.0, slots_.size(), o_.custom_policy ? "custom" : policy_name(o_.policy), o_.io_threads,
-           o_.read_chunk >> 10, o_.align, p_->K);
+  char b[320];
+  uint64_t all = 0, data = 0;
+  for (auto& pi : pools_) all += pi.demand * pi.region;
+  for (int l = 0; l < L_.n_layers; l++) data += L_.expert_bytes(l) * (uint64_t)L_.n_experts;
+  snprintf(b, sizeof b, "ExpertCache: arena %.2f GiB in %zu region pools (one eviction/pinning domain), %zu entry ids, policy %s, "
+           "%d io threads, chunk %zu KiB, align %u, ring %d\n",
+           arena_bytes_ / 1073741824.0, pools_.size(), slots_.size(), o_.custom_policy ? "custom" : policy_name(o_.policy),
+           o_.io_threads, o_.read_chunk >> 10, o_.align, p_->K);
   os << b;
-  for (size_t c = 0; c < classes_.size(); c++) {
-    const ClassInfo& ci = classes_[c];
-    const ExpertLayerLayout& ll = L_.layers[ci.layers[0]];
-    snprintf(b, sizeof b, "  class %zu: slot %llu B (regions %llu/%llu/%llu, types %s/%s/%s), %d layers, %d slots (%.1f/layer, %.1f%% of experts)\n",
-             c, (unsigned long long)ci.slot_bytes, (unsigned long long)ci.region[0], (unsigned long long)ci.region[1],
-             (unsigned long long)ci.region[2], type_name(ll.mat[0].type), type_name(ll.mat[1].type), type_name(ll.mat[2].type),
-             (int)ci.layers.size(), ci.n_slots, (double)ci.n_slots / ci.layers.size(),
-             100.0 * ci.n_slots / (ci.layers.size() * L_.n_experts));
+  for (size_t pp = 0; pp < pools_.size(); pp++) {
+    const PoolInfo& pi = pools_[pp];
+    std::string ty;
+    for (GType t : pi.types) { if (!ty.empty()) ty += "+"; ty += type_name(t); }
+    snprintf(b, sizeof b, "  pool %zu: region %llu B (%s), %d regions = %.2f GiB, demand %llu regions (%.2f GiB) -> %.1f%% cached, "
+             "%.2f/entry avg (max %d)\n",
+             pp, (unsigned long long)pi.region, ty.c_str(), pi.n_regions, (double)pi.n_regions * pi.region / 1073741824.0,
+             (unsigned long long)pi.demand, (double)pi.demand * pi.region / 1073741824.0, 100.0 * pi.n_regions / std::max<uint64_t>(1, pi.demand),
+             pi.mean_use, pi.max_use);
     os << b;
   }
+  snprintf(b, sizeof b, "  expected cached: %.1f%% of all %d x %d experts (%.2f of %.2f GiB in regions; expert data %.2f GiB)\n",
+           100.0 * cached_fraction(), L_.n_layers, L_.n_experts, arena_bytes_ / 1073741824.0, all / 1073741824.0, data / 1073741824.0);
+  os << b;
+  uint64_t rb = 0;
+  std::string rs;
+  for (size_t pp = 0; pp < pools_.size(); pp++) {
+    int r = reserve_regions((int)pp, 256);
+    rb += (uint64_t)r * pools_[pp].region;
+    rs += (pp ? "/" : "") + std::to_string(r);
+  }
+  snprintf(b, sizeof b, "  pin_resident(256) keeps %s regions unpinned (%.2f GiB, %.1f%% of the arena): up to %.1f%% of all experts pinnable\n",
+           rs.c_str(), rb / 1073741824.0, 100.0 * rb / std::max<uint64_t>(1, arena_bytes_),
+           100.0 * cached_fraction() * (1.0 - (double)rb / std::max<uint64_t>(1, arena_bytes_)));
+  os << b;
   return os.str();
 }
 
