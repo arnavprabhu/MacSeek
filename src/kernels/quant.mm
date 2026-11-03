@@ -370,7 +370,11 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
                 (uint32_t)row_bytes(a.t_shared, kExpertDim), (uint32_t)row_bytes(a.t_shared, kExpertInter), 1, 0};
   const int n_gu = (gu_r ? a.n_routed : 0) + (gu_s ? 1 : 0);
   if (n_gu > 0) {
-    const int nr = a.gu_nr ? a.gu_nr : (int)env_gu_nr, ks = a.gu_ks ? a.gu_ks : (int)env_gu_ks, rsg = a.gu_rsg ? a.gu_rsg : (int)env_gu_rsg;
+    // IQ2_XXS routed gate/up (8-lane decoder): 4 rows per simdgroup x 4 (bench --moe-sweep: -2%; nr/rsg are bit-identical)
+    static const bool env_set = getenv("MACSEEK_MOE_GU_NR") || getenv("MACSEEK_MOE_GU_RSG");
+    const bool x4 = !env_set && gu_r && a.t_gate_up == QType::IQ2_XXS;
+    const int nr = a.gu_nr ? a.gu_nr : x4 ? 4 : (int)env_gu_nr, ks = a.gu_ks ? a.gu_ks : (int)env_gu_ks,
+              rsg = a.gu_rsg ? a.gu_rsg : x4 ? 4 : (int)env_gu_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     args.tiles = (kExpertInter + rows_per_tg - 1) / rows_per_tg;
