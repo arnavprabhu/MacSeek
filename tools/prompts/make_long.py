@@ -27,7 +27,11 @@ GIT_FILES = ["user-manual.adoc", "gitcore-tutorial.adoc", "gittutorial.adoc", "g
              "githooks.adoc", "git-config.adoc", "git-branch.adoc", "git-remote.adoc", "git-blame.adoc"]
 PY_FILES = ["heapq.py", "bisect.py", "textwrap.py", "fractions.py", "statistics.py", "functools.py",
             "difflib.py", "dataclasses.py", "shlex.py", "string/__init__.py", "csv.py", "calendar.py",
-            "argparse.py", "contextlib.py", "graphlib.py", "colorsys.py", "random.py", "operator.py"]
+            "argparse.py", "contextlib.py", "graphlib.py", "colorsys.py", "random.py", "operator.py",
+            # appended for the 262K prompt (documents after the 200K prompt's cut, so it is unchanged)
+            "pathlib/_local.py", "typing.py", "inspect.py", "pickle.py", "tarfile.py", "zipfile/__init__.py",
+            "subprocess.py", "threading.py", "logging/__init__.py", "enum.py", "ast.py", "decimal.py",
+            "configparser.py", "email/message.py", "http/client.py", "tempfile.py", "pprint.py", "glob.py"]
 
 NEEDLE = ("Important note for later: the access code for the Halvorsen observatory archive is "
           "MAPLE-7314-QUARTZ. Remember this code exactly.")
@@ -110,7 +114,7 @@ def main():
             j = p.find("\n\n", j + 2)
     body = full[:best_char] + NEEDLE + "\n\n" + full[best_char:]
     text = head + body.rstrip() + tail_text
-    name = f"long_needle_d{int(round(depth * 100)):02d}" + ("" if target >= 190000 else f"_{target // 1000}k")
+    name = f"long_needle_d{int(round(depth * 100)):02d}" + ("" if 190000 <= target < 250000 else f"_{target // 1000}k")
     tp, ip = os.path.join(HERE, name + ".txt"), os.path.join(HERE, name + ".ids")
     ids = tokenize_text(tool, model, text, tmp)
     with open(tp, "w", encoding="utf-8") as f:
