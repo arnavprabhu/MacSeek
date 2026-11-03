@@ -72,6 +72,26 @@ class Model {
   // called after each prefill chunk with (tokens done, tokens total) of the current prefill() call
   void set_progress(std::function<void(int, int)> f) { progress_ = std::move(f); }
 
+  // ---- speculative decoding (docs/speculative.md) ----
+  // Exact multi-token verify: toks[0..k) (1 <= k <= 8) are appended at positions pos()..pos()+k-1 by kernels that
+  // reproduce decode() bit for bit per token (same per-lane arithmetic; weights fetched once for all k).
+  // next[j] = greedy token after toks[j]; logits (optional) [k][vocab]. The state advances by k provisionally:
+  // verify_keep(m) keeps toks[0..m) (1 <= m <= k) and rolls the rest back exactly. Requires the default decode
+  // configuration (MACSEEK_DEC_* defaults, MACSEEK_DEC_SYNC=shared); verify_supported() says why not otherwise.
+  void verify(const int32_t* toks, int k, int32_t* next, float* logits = nullptr);
+  void verify_keep(int m);
+  static bool verify_supported(std::string* why = nullptr);
+  // dspark target features of the last verify: [3][k][5120] (mean over hc copies of the attention input of layers
+  // 37, 38, 39 for each verified token); valid until the next verify
+  const float* verify_features() const;
+  struct SpecProfile {
+    long passes = 0, tokens = 0;   // verify passes, tokens fed
+    double total_ms = 0, gpu_ms = 0, wait_ms = 0, expert_ms = 0, io_stall_ms = 0, keep_ms = 0, engram_ms = 0;
+    uint64_t io_bytes = 0;
+    void reset() { *this = SpecProfile{}; }
+  };
+  SpecProfile& spec_profile() { return sprof_; }
+
   DecodeProfile& profile() { return prof_; }
   PrefillProfile& prefill_profile() { return pprof_; }
   std::string stats_report() const;
@@ -85,6 +105,7 @@ class Model {
   int pos_ = 0;
   DecodeProfile prof_;
   PrefillProfile pprof_;
+  SpecProfile sprof_;
   const int32_t* next_toks_ = nullptr;   // prefill: the next chunk (engram row prefetch)
   int next_n_ = 0;
   long pinned_ = 0;

@@ -86,8 +86,9 @@ void encode_moe_decode_table(Enc& e, const MoeDecodeArgs& a, const Buffer& table
 //   SharedGu then AfterSharedGu  == All, bit-identical (each h element is computed by the same thread code)
 //   Shared then Routed           == All up to float summation order (y += shared; y += routed instead of one sum)
 //   SharedGu then SharedDown     == Shared, bit-identical (the shared expert's gate/up and its down projection alone)
+//   RoutedGu then RoutedDown       == Routed, bit-identical (split so several tokens' routed experts share one barrier)
 // SharedGu / Shared / SharedDown never read `table`.
-enum class MoePart { All, SharedGu, AfterSharedGu, Shared, Routed, SharedDown };
+enum class MoePart { All, SharedGu, AfterSharedGu, Shared, Routed, SharedDown, RoutedGu, RoutedDown };
 void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& table, MoePart part);
 
 // Prefill MoE (grouped GEMM over experts, tensor API). Routing is given in expert-sorted order: routed expert j

@@ -528,6 +528,145 @@ void encode_window_commit(Enc& e, State& s, int L, int start, int n) {
   e.barrier();
 }
 
+// ---------------------------------------------------------------- speculative verify (k decode queries)
+DecQScratch make_dec_q_scratch(const State& s) {
+  auto& d = Device::get();
+  const int max_blocks = (s.opt.max_pos + kCandBS - 1) / kCandBS;
+  const int max_splits = (kWin + kTopk + 15) / 16;
+  DecQScratch q;
+  q.scores = d.alloc((size_t)(s.opt.max_pos + kRowPad) * 4, "attn.vq.scores");
+  q.bscores = d.alloc((size_t)(max_blocks + kRowPad) * 4, "attn.vq.bscores");
+  q.hist = d.alloc(2 * 4096 * 4, "attn.vq.hist");
+  q.ctl = d.alloc(2 * 4 * 4, "attn.vq.ctl");
+  q.sel = d.alloc(2 * 2048 * 4, "attn.vq.sel");
+  q.cand = d.alloc((size_t)2 * s.opt.dec_cand_cap * 8, "attn.vq.cand");
+  q.cand_list = d.alloc((size_t)kCandBlocks * 4, "attn.vq.cand_list");
+  q.topk = d.alloc((size_t)kTopk * 4, "attn.vq.topk");
+  q.part = d.alloc((size_t)max_splits * kH * kD * 4, "attn.vq.part");
+  q.ml = d.alloc((size_t)max_splits * kH * 8, "attn.vq.ml");
+  return q;
+}
+
+void encode_kv_window_to(Enc& e, State& s, int L, const Buffer& kv, const Buffer& norm_w, int start, int n,
+                         const Buffer& chunk) {
+  KvArgs a{start, n, 0, s.opt.actq ? 1 : 0};
+  e.set_pipeline("attn_kv_window");
+  e.set_buffer(0, kv); e.set_buffer(1, norm_w); e.set_buffer(2, tab_of(s, L));
+  e.set_buffer(3, chunk); e.set_value(4, a);
+  e.dispatch_groups(n, 1, 1, 128);
+}
+
+// Mirrors the dec_fast_index branch of encode_index_decode, one problem set per query (same kernels, arguments and
+// order of dispatches within each query), all queries of a stage concurrently.
+void encode_index_decode_k(Enc& e, State& s, int L, const Buffer& iq, const Buffer& iw, int pos0, int k,
+                           const std::vector<DecQScratch>& qs) {
+  if (!s.opt.dec_fast_index) { fprintf(stderr, "attn: verify needs MACSEEK_ATTN_DEC_FAST=1\n"); abort(); }
+  const int r = ratio_of(L), sl = src_slot(kv_source_of(L));
+  const bool lm = uses_cand(L), cs = is_cand_source(L);
+  const int per_tg = 4096;
+  auto len_of = [&](int j) { return (pos0 + j + 1) / r; };
+  auto nblocks_of = [&](int j) { return (len_of(j) + kCandBS - 1) / kCandBS; };
+  auto nvirt_of = [&](int j) { return lm ? std::min(nblocks_of(j), kCandBlocks) * kCandBS : len_of(j); };
+  bool any = false;
+  for (int j = 0; j < k; j++) {
+    const int nvirt = nvirt_of(j);
+    if (nvirt <= 0) continue;
+    any = true;
+    const DecQScratch& Q = qs[j];
+    const int tpt = lm ? 4 : 16, tiles = (nvirt + 63) / 64;
+    IdxDec2Args a{pos0 + j, len_of(j), nvirt, s.opt.actq ? 1 : 0, tpt, cs ? 1 : 0, s.cap[sl] + kRowPad};
+    e.set_pipeline(lm ? "attn_idx_score_dec2_list" : "attn_idx_score_dec2");
+    e.set_buffer(0, iq.sub((size_t)j * kIH * kID * 4, (size_t)kIH * kID * 4));
+    e.set_buffer(1, iw.sub((size_t)j * kIH * 4, (size_t)kIH * 4));
+    e.set_buffer(2, tab_of(s, L)); e.set_buffer(3, s.ikey[sl]);
+    e.set_buffer(4, Q.scores);
+    if (lm) e.set_buffer(5, Q.cand_list); else e.set_buffer(5, Q.bscores);
+    e.set_buffer(6, Q.hist.sub(0, 4096 * 4));
+    e.set_buffer(7, Q.hist.sub(4096 * 4, 4096 * 4)); e.set_value(8, a);
+    e.dispatch_groups((tiles + tpt - 1) / tpt, 1, 1, 128);
+  }
+  if (!any) return;
+  e.barrier();
+  auto compact = [&](const DecQScratch& Q, int p, const Buffer& sc, int n, int kk) {
+    CompactArgs c{n, kk, s.opt.dec_cand_cap, per_tg};
+    e.set_pipeline("attn_topk_compact");
+    e.set_buffer(0, sc); e.set_buffer(1, Q.hist.sub((size_t)p * 4096 * 4, 4096 * 4));
+    e.set_buffer(2, Q.ctl.sub((size_t)p * 16, 16)); e.set_buffer(3, Q.sel.sub((size_t)p * 2048 * 4, 2048 * 4));
+    e.set_buffer(4, Q.cand.sub((size_t)p * s.opt.dec_cand_cap * 8, (size_t)s.opt.dec_cand_cap * 8)); e.set_value(5, c);
+    e.dispatch_groups((n + per_tg - 1) / per_tg, 1, 1, 256);
+  };
+  auto fin = [&](const DecQScratch& Q, int p, const Buffer& sc, int n, int kk, const Buffer& out) {
+    FinalArgs f{n, kk, (p == 0 && lm) ? 1 : 0};
+    e.set_pipeline("attn_topk_final");
+    e.set_buffer(0, sc); e.set_buffer(1, Q.hist.sub((size_t)p * 4096 * 4, 4096 * 4));
+    e.set_buffer(2, Q.ctl.sub((size_t)p * 16, 16)); e.set_buffer(3, Q.sel.sub((size_t)p * 2048 * 4, 2048 * 4));
+    e.set_buffer(4, Q.cand.sub((size_t)p * s.opt.dec_cand_cap * 8, (size_t)s.opt.dec_cand_cap * 8));
+    e.set_buffer(5, Q.cand_list); e.set_buffer(6, out); e.set_value(7, f);
+    e.dispatch_groups(1, 1, 1, 1024);
+  };
+  for (int j = 0; j < k; j++) {
+    if (nvirt_of(j) <= 0) continue;
+    compact(qs[j], 0, qs[j].scores, nvirt_of(j), kTopk);
+    if (cs) compact(qs[j], 1, qs[j].bscores, nblocks_of(j), kCandBlocks);
+  }
+  e.barrier();
+  for (int j = 0; j < k; j++) {
+    if (nvirt_of(j) <= 0) continue;
+    fin(qs[j], 0, qs[j].scores, nvirt_of(j), kTopk, qs[j].topk);
+    if (cs) fin(qs[j], 1, qs[j].bscores, nblocks_of(j), kCandBlocks, qs[j].cand_list);
+  }
+  e.barrier();
+}
+
+// Mirrors the n == 1 branch of encode_sparse (split-K kernel, then attn_sparse_combine), per query.
+void encode_sparse_k(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks, const Buffer& out, int pos0, int k,
+                     const Buffer& chunk, const std::vector<DecQScratch>& qs) {
+  if (s.opt.dec_mpp) { fprintf(stderr, "attn: verify needs MACSEEK_ATTN_DEC_MPP=0\n"); abort(); }
+  const int r = ratio_of(L);
+  const int ntop = r ? kTopk : 0;
+  const int R = kWin + ntop;
+  const Buffer& ckv = r ? s.ckv[src_slot(kv_source_of(L))] : s.win[L];
+  const int rps = std::max(16, s.opt.dec_rows_split / 16 * 16);
+  const int splits = (R + rps - 1) / rps;
+  const int hg = s.opt.dec_heads_tg == 16 ? 16 : 8;
+  const bool pf = hg == 8 && s.opt.dec_prefetch;
+  const size_t qb = (size_t)kH * kD * 4;
+  for (int j = 0; j < k; j++) {
+    SparseArgs a{pos0 + j, 1, pos0, ntop, splits, rps, 1.0f / std::sqrt((float)kD)};
+    e.set_pipeline(hg == 16 ? "attn_sparse_h16" : pf ? "attn_sparse_h8_pf" : "attn_sparse_h8");
+    e.set_buffer(0, q.sub((size_t)j * qb, qb)); e.set_buffer(1, s.win[L]); e.set_buffer(2, chunk); e.set_buffer(3, ckv);
+    e.set_buffer(4, qs[j].topk); e.set_buffer(5, sinks); e.set_buffer(6, tab_of(s, L)); e.set_buffer(7, out.sub((size_t)j * qb, qb));
+    e.set_buffer(8, qs[j].part); e.set_buffer(9, qs[j].ml); e.set_value(10, a);
+    e.dispatch_groups(kH / hg, splits, 1, hg == 16 ? 256 : 128);
+  }
+  e.barrier();
+  for (int j = 0; j < k; j++) {
+    CombArgs c{pos0 + j, splits};
+    e.set_pipeline("attn_sparse_combine");
+    e.set_buffer(0, qs[j].part); e.set_buffer(1, qs[j].ml); e.set_buffer(2, sinks); e.set_buffer(3, tab_of(s, L));
+    e.set_buffer(4, out.sub((size_t)j * qb, qb)); e.set_value(5, c);
+    e.dispatch_groups(kH, 1, 1, 128);
+  }
+  e.barrier();
+}
+
+void encode_window_commit_from(Enc& e, State& s, int L, int start, int n, const Buffer& chunk) {
+  if (n <= 0) return;
+  CommitArgs a{start, 0};
+  e.set_pipeline("attn_window_commit");
+  e.set_buffer(0, chunk); e.set_buffer(1, s.win[L]); e.set_value(2, a);
+  e.dispatch_groups(n, 1, 1, 64);
+}
+
+void encode_compress_state_row(Enc& e, State& s, int L, const Buffer& c_kv, const Buffer& c_gate, int start, int pos) {
+  const int r = ratio_of(L);
+  if (r <= 1) return;
+  StateArgs a{start, pos, r};
+  e.set_pipeline("attn_compress_state");
+  e.set_buffer(0, c_kv); e.set_buffer(1, c_gate); e.set_buffer(2, s.cst[src_slot(L)]); e.set_value(3, a);
+  e.dispatch_groups(1, 1, 1, 128);
+}
+
 void encode_quant_sim(Enc& e, const Buffer& x, uint32_t n, int mode) {
   QuantArgs a{n, mode};
   e.set_pipeline("attn_quant_sim");

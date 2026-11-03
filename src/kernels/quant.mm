@@ -358,12 +358,14 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
                     env_gu_rsg = env_int("MACSEEK_MOE_GU_RSG", 4), env_d_nr = env_int("MACSEEK_MOE_D_NR", 4),
                     env_d_ks = env_int("MACSEEK_MOE_D_KS", 1), env_d_rsg = env_int("MACSEEK_MOE_D_RSG", 2);
   // which pieces this call encodes
-  const bool gu_r = part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Routed;
+  const bool gu_r = part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Routed ||
+                    part == MoePart::RoutedGu;
   const bool gu_s = a.has_shared && (part == MoePart::All || part == MoePart::SharedGu || part == MoePart::Shared);
-  const bool d_r = gu_r;
+  const bool d_r = part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Routed ||
+                   part == MoePart::RoutedDown;
   const bool d_s = a.has_shared && (part == MoePart::All || part == MoePart::AfterSharedGu || part == MoePart::Shared ||
                                     part == MoePart::SharedDown);
-  const bool shared_only = !gu_r;   // n_routed = 0 views: scratch rebased to the shared expert's h row
+  const bool shared_only = !gu_r && !d_r;   // n_routed = 0 views: scratch rebased to the shared expert's h row
   const Buffer h = shared_only ? a.scratch.sub((size_t)a.n_routed * kExpertInter * 4, (size_t)kExpertInter * 4) : a.scratch;
   QMoeArgs args{shared_only ? 0u : (uint32_t)a.n_routed, d_s ? 1u : 0u, (uint32_t)kExpertDim, (uint32_t)kExpertInter,
                 (uint32_t)row_bytes(a.t_gate_up, kExpertDim), (uint32_t)row_bytes(a.t_down, kExpertInter),

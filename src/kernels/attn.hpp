@@ -137,4 +137,24 @@ void encode_quant_sim(Enc& e, const Buffer& x, uint32_t n, int mode);
 // rope tables on the CPU (float2 [max_pos][32])
 void make_rope_table(float* dst, int max_pos, bool yarn);
 
+// ---- speculative verify: k queries at positions pos0..pos0+k-1, each computed exactly like a decode (n = 1) call ----
+// Per-query scratch: the decode index pipeline buffers, the query's top-k / candidate list (persist across layers like
+// State::topk / cand_list do for decode) and its split-K partials.
+struct DecQScratch { Buffer scores, bscores, hist, ctl, sel, cand, cand_list, topk, part, ml; };
+DecQScratch make_dec_q_scratch(const State& s);
+// kv window rows of n tokens -> chunk (half [n][512]); same values as the ring rows encode_kv_window writes for n == 1
+void encode_kv_window_to(Enc& e, State& s, int layer, const Buffer& kv, const Buffer& norm_w, int start, int n,
+                         const Buffer& chunk);
+// indexer (dec_fast_index path) for k queries, stage-interleaved; q rows iq [k][32][128], iw [k][32]. Ends with a barrier.
+void encode_index_decode_k(Enc& e, State& s, int layer, const Buffer& iq, const Buffer& iw, int pos0, int k,
+                           const std::vector<DecQScratch>& qs);
+// sparse attention (decode split-K kernels + combine) for k queries; window positions >= pos0 come from chunk rows
+// (pos - pos0), older ones from the ring (not modified). q / out [k][64][512]. Ends with a barrier.
+void encode_sparse_k(Enc& e, State& s, int layer, const Buffer& q, const Buffer& sinks, const Buffer& out, int pos0,
+                     int k, const Buffer& chunk, const std::vector<DecQScratch>& qs);
+// chunk rows [0, n) (positions start..) -> ring slots (deferred window commit of accepted tokens). No barrier.
+void encode_window_commit_from(Enc& e, State& s, int layer, int start, int n, const Buffer& chunk);
+// compressor partial-group state slot of position `pos` <- row i of c_kv / c_gate (ratio > 1 sources). No barrier.
+void encode_compress_state_row(Enc& e, State& s, int layer, const Buffer& c_kv, const Buffer& c_gate, int start, int pos);
+
 }  // namespace ms::attn

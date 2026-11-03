@@ -112,8 +112,10 @@ int cmd_bench(int argc, char** argv) {
   ms::Timer td;
   uint64_t th = 1469598103934665603ull;   // FNV-1a over the generated ids: equal hash = identical greedy output
   std::string first;
+  std::vector<int32_t> gen_toks;   // greedy output (token source for --vexact past the end of the corpus)
   for (int i = 0; i < nd; i++) {
     tok = m.decode(tok);
+    gen_toks.push_back(tok);
     th = (th ^ (uint32_t)tok) * 1099511628211ull;
     if (i < 12) first += (i ? "," : "") + std::to_string(tok);
   }
@@ -133,6 +135,34 @@ int cmd_bench(int argc, char** argv) {
     }
     std::sort(ts.begin(), ts.end());
     if (!ts.empty()) fprintf(stderr, "verify: K=%d passes %zu median %.1f ms min %.1f ms max %.1f ms\n", vk, ts.size(), ts[ts.size() / 2], ts[0], ts.back());
+  }
+  // --vexact K: cost of K-token exact verify passes (Model::verify, the speculative path) on the corpus continuation,
+  // all K tokens kept; 16 passes, warm cache. Printed to stderr next to the decode ms/token.
+  for (const std::string& vxs : split_csv(arg(argc, argv, "--vexact", ""))) {
+    const int vx = std::stoi(vxs);
+    if (vx <= 0) continue;
+    int at = m.pos();
+    std::vector<double> ts;
+    std::vector<int32_t> nx(vx);
+    // tokens: the corpus continuation, or (past its end) the greedy output generated above, replayed
+    const bool from_corpus = at + 18 * vx <= (int)corpus.size();
+    std::vector<int32_t> src = from_corpus ? std::vector<int32_t>(corpus.begin() + at, corpus.begin() + at + 18 * vx) : gen_toks;
+    m.spec_profile().reset();
+    for (int r = 0, o = 0; r < 18 && o + vx <= (int)src.size() && m.pos() + vx <= m.max_pos(); r++, o += vx) {
+      ms::Timer tv;
+      m.verify(src.data() + o, vx, nx.data());
+      m.verify_keep(vx);
+      if (r >= 2) ts.push_back(tv.ms());   // first passes warm the verify buffers
+      (void)at;
+    }
+    std::sort(ts.begin(), ts.end());
+    auto& sp = m.spec_profile();
+    if (!ts.empty())
+      fprintf(stderr, "vexact: K=%d passes %zu median %.1f ms (%.2fx decode %.1f ms/token) min %.1f max %.1f | per pass: gpu %.1f wait %.1f "
+              "expert %.1f io_stall %.1f keep %.2f engram %.2f io %.0f MB\n", vx, ts.size(), ts[ts.size() / 2],
+              ts[ts.size() / 2] / (1e3 * dec_s / nd), 1e3 * dec_s / nd, ts[0], ts.back(), sp.gpu_ms / sp.passes,
+              sp.wait_ms / sp.passes, sp.expert_ms / sp.passes, sp.io_stall_ms / sp.passes, sp.keep_ms / sp.passes,
+              sp.engram_ms / sp.passes, sp.io_bytes / 1e6 / sp.passes);
   }
   // prefill chunk at depth
   double pf_s = 0;
@@ -238,4 +268,52 @@ int cmd_profile(int argc, char** argv) {
   fprintf(stderr, "mem: %s | swap grew: %s\n", m1.str().c_str(), ms::swap_grew(m0, m1) ? "YES" : "no");
   if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
   return 0;
+}
+
+// macseek spec-check --ids prompt.ids [--state S] [--n 64] [--k 4] [--reject]
+// Exactness of Model::verify: greedy-decode n tokens (recording logits), restore the state, then feed the same tokens
+// through verify in passes of k (with --reject, keep fewer tokens per pass to exercise the rollback) and compare the
+// greedy tokens and the logits bit for bit with decode().
+int cmd_speccheck(int argc, char** argv) {
+  auto ids = read_ids(arg(argc, argv, "--ids"));
+  const int n = std::stoi(arg(argc, argv, "--n", "64"));
+  const int k = std::stoi(arg(argc, argv, "--k", "4"));
+  const bool reject = flag(argc, argv, "--reject");
+  ms::ds41::Model m;
+  const int V = m.config().vocab;
+  std::string st = arg(argc, argv, "--state");
+  size_t from = 0;
+  if (!st.empty()) { if (!m.load_state(st)) { fprintf(stderr, "load_state failed\n"); return 1; } from = (size_t)m.pos(); }
+  int32_t tok = m.prefill(ids.data() + from, (int)(ids.size() - from));
+  auto snap = m.snapshot();
+  std::vector<int32_t> seq{tok}, out;
+  std::vector<float> lg((size_t)n * V);
+  ms::Timer td;
+  for (int i = 0; i < n; i++) { int32_t nx = m.decode(seq[i], lg.data() + (size_t)i * V); out.push_back(nx); seq.push_back(nx); }
+  const double dms = td.ms() / n;
+  if (!m.restore(*snap)) { fprintf(stderr, "restore failed\n"); return 1; }
+  int i = 0, pass = 0, tok_bad = 0, row_bad = 0;
+  double maxd = 0;
+  std::vector<float> vl((size_t)k * V);
+  std::vector<int32_t> nx(k);
+  ms::Timer tv;
+  while (i < n) {
+    const int kk = std::min(k, n - i);
+    m.verify(seq.data() + i, kk, nx.data(), vl.data());
+    int keep = reject ? 1 + (pass * 7 + 3) % kk : kk;
+    for (int j = 0; j < keep; j++) {
+      if (nx[j] != out[i + j]) { tok_bad++; if (tok_bad <= 5) fprintf(stderr, "spec-check: token %d: verify %d decode %d\n", i + j, nx[j], out[i + j]); }
+      const float* a = vl.data() + (size_t)j * V; const float* b = lg.data() + (size_t)(i + j) * V;
+      if (memcmp(a, b, (size_t)V * 4)) {
+        row_bad++;
+        for (int c = 0; c < V; c++) maxd = std::max(maxd, (double)std::fabs(a[c] - b[c]));
+      }
+    }
+    m.verify_keep(keep);
+    i += keep; pass++;
+  }
+  printf("spec-check: n %d k %d%s passes %d | token mismatches %d | logit rows not bit-identical %d (max |diff| %.3g) | "
+         "decode %.1f ms/token, verify %.1f ms/pass\n", n, k, reject ? " (reject)" : "", pass, tok_bad, row_bad, maxd, dms,
+         tv.ms() / pass);
+  return tok_bad || row_bad ? 1 : 0;
 }
