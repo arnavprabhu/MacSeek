@@ -29,7 +29,10 @@ the SwiGLU clamp, or an accumulation-order sensitive value), not a memory race. 
 
 ## Next steps
 1. Fix the ZALL bug above, then re-enable ZALL (it was +11% prefill).
-2. Finish / measure speculative decoding (coder-spec), merge if it wins at 260K.
+2. Speculative decoding (coder-spec, not merged, off by default): exact k-token verify + rollback and the dspark
+   drafter work; 8K+4K test: plain 25.4 tok/s, spec K=2 27.0 tok/s, K=3 20.9 (smaller expert arena -> SSD stalls).
+   Blocker: spec vs plain tok_hash differ over the 4K run (find the first diverging token, bench --out-ids). Verify
+   costs 1.38x / 1.83x / 2.45x a decode at k=2/3/4 at 260K. Details + next steps in docs/speculative.md on coder-spec.
 3. Remaining decode gap to the bandwidth floor: routed MoE +1.8 ms, sparse attn +1.6, barriers 1.6, hc +0.85,
    indexer +0.8 (docs/modules/dec_gpu.md).
 4. Full 262K benchmark at the end (snapshot + bench --decode, prefill timing of the whole prompt).
