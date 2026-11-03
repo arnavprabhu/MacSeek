@@ -10,16 +10,48 @@
 template <typename Q> struct SvW {   // generic: decode inside every dot (no reuse)
   device const uchar* b;
   inline void prep(device const uchar* b_, ushort) { b = b_; }
-  inline float dot(ushort sub, thread const float4* xr) const { return Q::dot(b, sub, xr); }
+  inline float dot(ushort sub, thread const float4* xr, uint) const { return Q::dot(b, sub, xr); }
 };
-// Q5_K / Q6_K: hoisting the decoded values out of Q::dot changes the compiler's contraction of the expression (not
-// bit-identical, measured), so they use the generic per-token Q::dot.
+// Q5_K / Q6_K: only the integer unpacking is hoisted (exact); the float expression of Q::dot (incl. the scale products)
+// is re-evaluated per token from the same source expression so fast-math contracts it the same way.
+#ifndef SV_HOIST
+#define SV_HOIST 1   // Q5_K: raw words hoisted (bit-identical, tested); Q6_K: generic
+#endif
+#if SV_HOIST
+template <> struct SvW<QB_Q5K> {   // raw block words hoisted (loads only); all unpacking + float math per token
+  uint ql0, ql1, qh0, qh1, dd, A, B, C; ushort j;
+  inline void prep(device const uchar* b, ushort sub) {
+    j = sub >> 2; const int l0 = 8 * (sub & 3);
+    ql0 = q_ld32a(b + 48 + 32 * j + l0); ql1 = q_ld32a(b + 52 + 32 * j + l0);
+    qh0 = q_ld32a(b + 16 + l0); qh1 = q_ld32a(b + 20 + l0);
+    dd = q_ld32a(b); A = q_ld32a(b + 4); B = q_ld32a(b + 8); C = q_ld32a(b + 12);
+  }
+  inline float dot(ushort, thread const float4* xr, uint z) const {
+    const uint ql0 = this->ql0 ^ z, ql1 = this->ql1 ^ z, qh0 = (this->qh0 ^ z) >> (2 * j), qh1 = (this->qh1 ^ z) >> (2 * j);
+    float4 q[4]; float sm[4];
+    q[0] = q_u8x4((ql0 & 0x0F0F0F0Fu) | ((qh0 & 0x01010101u) << 4));
+    q[1] = q_u8x4((ql1 & 0x0F0F0F0Fu) | ((qh1 & 0x01010101u) << 4));
+    q[2] = q_u8x4(((ql0 >> 4) & 0x0F0F0F0Fu) | ((qh0 & 0x02020202u) << 3));
+    q[3] = q_u8x4(((ql1 >> 4) & 0x0F0F0F0Fu) | ((qh1 & 0x02020202u) << 3));
+    const uint dd = this->dd ^ z, sh = 16 * (j & 1);
+    const uint A = (this->A ^ z) >> sh, B = (this->B ^ z) >> sh, C = (this->C ^ z) >> sh;
+    const uint sc = j < 2 ? (A & 0x3F3Fu) : ((C & 0x0F0Fu) | ((A >> 2) & 0x3030u));
+    const uint mn = j < 2 ? (B & 0x3F3Fu) : (((C >> 4) & 0x0F0Fu) | ((B >> 2) & 0x3030u));
+    const float d = float(as_type<half2>(dd).x), dm = float(as_type<half2>(dd).y);
+    sm[0] = d * float(sc & 0xFF); sm[1] = dm * float(mn & 0xFF); sm[2] = d * float(sc >> 8); sm[3] = dm * float((mn >> 8) & 0xFF);
+    const float4 one = 1.f;
+    return sm[0] * (metal::dot(q[0], xr[0]) + metal::dot(q[1], xr[1])) - sm[1] * metal::dot(xr[0] + xr[1], one) +
+           sm[2] * (metal::dot(q[2], xr[2]) + metal::dot(q[3], xr[3])) - sm[3] * metal::dot(xr[2] + xr[3], one);
+  }
+};
+// Q6_K: hoisting (even raw words, laundered) is not bit-identical (measured): generic per-token Q::dot.
+#endif
 template <> struct SvW<QB_Q8_0> {
   float4 q0, q1; float d;
   inline void prep(device const uchar* b, ushort sub) {
     d = q_ldh(b); q0 = q_i8x4(q_ld32(b + 2 + 8 * sub)); q1 = q_i8x4(q_ld32(b + 6 + 8 * sub));
   }
-  inline float dot(ushort, thread const float4* xr) const { return d * (metal::dot(q0, xr[0]) + metal::dot(q1, xr[1])); }
+  inline float dot(ushort, thread const float4* xr, uint) const { return d * (metal::dot(q0, xr[0]) + metal::dot(q1, xr[1])); }
 };
 template <> struct SvW<QB_BF16> {
   float4 w0, w1;
@@ -27,7 +59,7 @@ template <> struct SvW<QB_BF16> {
     device const ushort4* p = (device const ushort4*)b;
     w0 = QB_BF16::cvt(p[sub]); w1 = QB_BF16::cvt(p[32 + sub]);
   }
-  inline float dot(ushort, thread const float4* xr) const { return metal::dot(w0, xr[0]) + metal::dot(w1, xr[1]); }
+  inline float dot(ushort, thread const float4* xr, uint) const { return metal::dot(w0, xr[0]) + metal::dot(w1, xr[1]); }
 };
 template <> struct SvW<QB_F16> {
   float4 w0, w1;
@@ -35,7 +67,7 @@ template <> struct SvW<QB_F16> {
     device const half4* p = (device const half4*)b;
     w0 = float4(p[sub]); w1 = float4(p[32 + sub]);
   }
-  inline float dot(ushort, thread const float4* xr) const { return metal::dot(w0, xr[0]) + metal::dot(w1, xr[1]); }
+  inline float dot(ushort, thread const float4* xr, uint) const { return metal::dot(w0, xr[0]) + metal::dot(w1, xr[1]); }
 };
 template <> struct SvW<QB_F32> {
   float4 w0, w1;
@@ -43,7 +75,7 @@ template <> struct SvW<QB_F32> {
     device const float4* p = (device const float4*)b;
     w0 = p[sub]; w1 = p[32 + sub];
   }
-  inline float dot(ushort, thread const float4* xr) const { return metal::dot(w0, xr[0]) + metal::dot(w1, xr[1]); }
+  inline float dot(ushort, thread const float4* xr, uint) const { return metal::dot(w0, xr[0]) + metal::dot(w1, xr[1]); }
 };
 
 // ---- matvec: K activation rows, mirrors q_mv (quant_mv.metal) ----
@@ -54,6 +86,7 @@ kernel void sv_mvk(device const uchar* W [[buffer(0)]], device const float* x [[
                    uint tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
                    ushort lane [[thread_index_in_simdgroup]], ushort nsg [[simdgroups_per_threadgroup]]) {
   const ushort ks = a.ksplit, kk = sg % ks, rs = sg / ks, rsg = nsg / ks;
+  const uint zz = a.ksplit >> 16;   // runtime zero (ksplit <= 32), see SvW<QB_Q5K>::dot
   const uint row0 = (tg * rsg + rs) * NR;
   constexpr ushort BPI = 32 / Q::LPB;
   const ushort sub = lane % Q::LPB, slot = lane / Q::LPB;
@@ -70,7 +103,7 @@ kernel void sv_mvk(device const uchar* W [[buffer(0)]], device const float* x [[
       if (t < (int)n) {
         float4 xr[Q::X4];
         Q::load_x(xg + t * a.x_stride + ib * Q::QK, sub, xr);
-        for (int r = 0; r < NR; r++) acc[r][t] += w[r].dot(sub, xr);
+        for (int r = 0; r < NR; r++) acc[r][t] += w[r].dot(sub, xr, zz * t);
       }
     }
   }
@@ -137,6 +170,7 @@ kernel void sv_moe_gu_s(device const float* x [[buffer(0)]], device float* h [[b
                         uint tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
                         ushort lane [[thread_index_in_simdgroup]], ushort nsg [[simdgroups_per_threadgroup]]) {
   const ushort ks = a.ksplit, kk = sg % ks, rs = sg / ks, rsg = nsg / ks;
+  const uint zz = a.ksplit >> 16;   // runtime zero (ksplit <= 32), see SvW<QB_Q5K>::dot
   const uint row0 = (tg * rsg + rs) * NR;
   constexpr ushort BPI = 32 / QS::LPB;
   const ushort sub = lane % QS::LPB, slot = lane / QS::LPB;
@@ -154,8 +188,8 @@ kernel void sv_moe_gu_s(device const float* x [[buffer(0)]], device float* h [[b
         float4 xr[QS::X4];
         QS::load_x(x + t * a.dim + ib * QS::QK, sub, xr);
         for (int r = 0; r < NR; r++) {
-          ag[r][t] += wg[r].dot(sub, xr);
-          au[r][t] += wu[r].dot(sub, xr);
+          ag[r][t] += wg[r].dot(sub, xr, zz * t);
+          au[r][t] += wu[r].dot(sub, xr, zz * t);
         }
       }
     }
@@ -198,6 +232,7 @@ kernel void sv_moe_down_s(device const float* h [[buffer(0)]], device float* y [
                           ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]],
                           ushort nsg [[simdgroups_per_threadgroup]]) {
   const ushort ks = a.ksplit, kk = sg % ks, rs = sg / ks, rsg = nsg / ks;
+  const uint zz = a.ksplit >> 16;   // runtime zero (ksplit <= 32), see SvW<QB_Q5K>::dot
   const uint row0 = (tg * rsg + rs) * NR;
   constexpr ushort BPI = 32 / QS::LPB;
   const ushort sub = lane % QS::LPB, slot = lane / QS::LPB;
@@ -211,7 +246,7 @@ kernel void sv_moe_down_s(device const float* h [[buffer(0)]], device float* y [
       if (t < (int)n) {
         float4 xr[QS::X4];
         QS::load_x(h + t * a.inter + ib * QS::QK, sub, xr);
-        for (int r = 0; r < NR; r++) acc[r][t] += w[r].dot(sub, xr);
+        for (int r = 0; r < NR; r++) acc[r][t] += w[r].dot(sub, xr, zz * t);
       }
     }
   }

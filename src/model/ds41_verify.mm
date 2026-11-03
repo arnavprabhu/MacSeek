@@ -25,6 +25,7 @@
 #include "kernels/spec.hpp"
 #include "model/dec_layer.hpp"
 #include "model/ds41_impl.hpp"
+#include "model/dspark.hpp"
 #include "model/engram_hash.hpp"
 #include "store/engram.hpp"
 #include "store/experts.hpp"
@@ -370,6 +371,34 @@ void Model::verify_keep(int m) {
   pos_ = S.start + m;
   S.start = -1;
   sprof_.keep_ms += t.ms();
+}
+
+int Model::spec_step(int32_t tok, std::vector<int32_t>& out, int k) {
+  if (!dsp_) { out.push_back(decode(tok)); return 0; }
+  Timer ts;
+  if (k <= 0) k = o_.spec;
+  k = std::min({k, dsp_->block_size(), sv::kMaxK - 1, max_pos() - pos_ - 1});
+  if (k <= 0) { out.push_back(decode(tok)); return 0; }
+  const int P = pos_;
+  int32_t dr[sv::kMaxK], toks[sv::kMaxK], nx[sv::kMaxK];
+  sstats_.draft_ms += dsp_->draft(tok, P, k, dr);
+  toks[0] = tok;
+  for (int i = 0; i < k; i++) toks[i + 1] = dr[i];
+  verify(toks, k + 1, nx);
+  int m = 0;
+  while (m < k && dr[m] == nx[m]) m++;
+  verify_keep(m + 1);
+  // features of the kept tokens (positions P..P+m) for the next draft
+  const float* F = verify_features();
+  std::vector<float> f(3 * 5120);
+  for (int j = 0; j <= m; j++) {
+    for (int ti = 0; ti < 3; ti++) memcpy(f.data() + ti * 5120, F + ((size_t)ti * (k + 1) + j) * 5120, 5120 * 4);
+    dsp_->add_feature(P + j, f.data());
+  }
+  for (int j = 0; j < m; j++) out.push_back(dr[j]);
+  out.push_back(nx[m]);
+  sstats_.steps++; sstats_.drafted += k; sstats_.accepted += m; sstats_.produced += m + 1; sstats_.step_ms += ts.ms();
+  return m;
 }
 
 }  // namespace ms::ds41

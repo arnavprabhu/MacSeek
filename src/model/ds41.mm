@@ -17,6 +17,7 @@
 #include "kernels/quant.hpp"
 #include "model/dec_layer.hpp"
 #include "model/ds41_impl.hpp"
+#include "model/dspark.hpp"
 #include "model/engram_hash.hpp"
 #include "store/engram.hpp"
 #include "store/experts.hpp"
@@ -35,6 +36,8 @@ ModelOptions ModelOptions::from_env() {
   o.actq_out = env_int("MACSEEK_ACTQ_OUT", env_int("MACSEEK_ACTQ", 0)) != 0;
   o.moe_group = (int)env_int("MACSEEK_MOE_GROUP", 64);
   o.verbose = env_int("MACSEEK_VERBOSE", 1) != 0;
+  o.spec = (int)env_int("MACSEEK_SPEC", 0);
+  o.draft_path = env_str("MACSEEK_DRAFT", "");
   return o;
 }
 
@@ -203,6 +206,22 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   }
   uint64_t planned = 2ull << 30;  // prefill transients + slack
   uint64_t arena = o.arena_gb > 0 ? (uint64_t)(o.arena_gb * 1073741824.0) : recommend_arena_bytes(planned, (uint64_t)(env_f("MACSEEK_HEADROOM_GB", 10) * 1073741824.0), (uint64_t)(env_f("MACSEEK_ARENA_MAX_GB", 46) * 1073741824.0));
+  // speculative decoding: the dspark drafter (~7.4 GiB wired) comes out of the arena (sized from the memory available
+  // before it was loaded: its pages do not reliably show up in `available` right away)
+  if (o_.spec > 0) {
+    std::string why;
+    const std::string dp = o_.draft_path.empty() ? DSpark::default_path() : o_.draft_path;
+    if (!verify_supported(&why)) fprintf(stderr, "macseek: speculative decoding off: %s\n", why.c_str());
+    else if (dp.empty() || !Gguf::exists(dp)) fprintf(stderr, "macseek: speculative decoding off: no dspark GGUF (MACSEEK_DRAFT)\n");
+    else {
+      DSparkTarget dt; dt.head = P.head; dt.te = te_.get(); dt.rope_plain = P.ast.rope_plain;
+      dsp_ = std::make_unique<DSpark>(dp, dt);
+      P.fcap = A((size_t)3 * 128 * 5120 * 4, "fcap");
+      P.capture = true;
+      if (o.arena_gb <= 0) arena = arena > dsp_->bytes() + (4ull << 30) ? arena - dsp_->bytes() : (4ull << 30);
+    }
+  }
+
   co.arena_bytes = arena;
   cache_ = std::make_unique<ExpertCache>(layout, co);
   if (o.verbose) {
@@ -214,6 +233,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
 }
 
 void Model::reset() {
+  if (dsp_) dsp_->reset();
   attn::reset(p_->ast);
   hasher_->reset();
   pos_ = 0;
@@ -442,6 +462,14 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       arch::encode_hc_step(*EP, a, P.asc); EP->barrier();
     }
     dbg_pt(*EP, l, 0, P.x, 5120);
+    // dspark target features (speculative decoding): mean over hc copies of this layer's attention input, last <= 128
+    // rows of the chunk (prefill only; verify captures its own)
+    if (P.capture && n > 1)
+      for (int ti = 0; ti < 3; ti++)
+        if (cfg_.dspark_targets[ti] == l) {
+          const int c = std::min(n, 128);
+          arch::encode_hc_mean(*EP, h.sub((size_t)(n - c) * 20480 * 4, (size_t)c * 20480 * 4), P.fcap.sub((size_t)ti * 128 * 5120 * 4, (size_t)c * 5120 * 4), c);
+        }
     cut(0);
     // ---- attention projections ----
     linear(*EP, L.q_a, P.x, P.qa, n);
@@ -987,6 +1015,14 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     fwrite(P.dbg2.cpu(), 4, 3 * 8 * 32768, f);
     fclose(f);
   }
+  if (P.capture && !dec && dsp_) {   // hand the prefill tail's features to the drafter
+    const int c = std::min(n, 128);
+    std::vector<float> f(3 * 5120);
+    for (int i = 0; i < c; i++) {
+      for (int ti = 0; ti < 3; ti++) memcpy(f.data() + ti * 5120, (const float*)P.fcap.cpu() + ((size_t)ti * 128 + i) * 5120, 5120 * 4);
+      dsp_->add_feature(start + n - c + i, f.data());
+    }
+  }
   if (logits_all) memcpy(logits_all, P.logits.cpu(), (size_t)n * V * 4);
   if (logits_last) memcpy(logits_last, (const float*)P.logits.cpu() + (logits_all ? (size_t)(n - 1) * V : 0), (size_t)V * 4);
   pos_ += n;
@@ -1045,6 +1081,7 @@ bool Model::load_state(const std::string& path) {
   }
   hasher_->set_state(hs);
   pos_ = (int)hdr[1];
+  if (dsp_) dsp_->reset();   // no target features for the restored positions: the draft ring refills as tokens go
   return (bool)f;
 }
 
@@ -1067,6 +1104,7 @@ bool Model::restore(const MemState& st) {
   memcpy(&hs, st.hasher.data(), sizeof hs);
   hasher_->set_state(hs);
   pos_ = st.pos;
+  if (dsp_) dsp_->reset();
   return true;
 }
 

@@ -13,6 +13,7 @@
 namespace ms {
 class Gguf; class Weights; class TokenEmbd; class ExpertCache; class EngramFetcher; struct EngramHashParams; class EngramHasher;
 }
+namespace ms::ds41 { class DSpark; }
 
 namespace ms::ds41 {
 
@@ -24,6 +25,8 @@ struct ModelOptions {
   bool actq_out = true;        // fp8 sim of the attention output before wo_a (reference act_quant). env MACSEEK_ACTQ_OUT
   int moe_group = 64;          // prefill: experts per MoE group (must fit the cache comfortably). env MACSEEK_MOE_GROUP
   bool verbose = true;
+  int spec = 0;                // speculative decoding: dspark drafts per pass (0 = off: no drafter loaded). env MACSEEK_SPEC
+  std::string draft_path;      // dspark GGUF ("" = DSpark::default_path()). env MACSEEK_DRAFT
   static ModelOptions from_env();
 };
 
@@ -91,6 +94,16 @@ class Model {
     void reset() { *this = SpecProfile{}; }
   };
   SpecProfile& spec_profile() { return sprof_; }
+  // Speculative greedy step (needs the drafter: ModelOptions::spec > 0). `tok` = the last sampled token, not yet fed.
+  // Drafts k tokens (0 = ModelOptions::spec), verifies [tok, drafts] exactly, keeps the accepted prefix and appends the
+  // produced tokens to out (accepted drafts + the target's next token; the last one is the next token to feed).
+  // Output is identical to calling decode() token by token. Returns the number of accepted drafts.
+  int spec_step(int32_t tok, std::vector<int32_t>& out, int k = 0);
+  bool spec_enabled() const { return (bool)dsp_; }
+  int spec_k() const { return o_.spec; }
+  struct SpecStats { long steps = 0, drafted = 0, accepted = 0, produced = 0; double draft_ms = 0, step_ms = 0;
+                     void reset() { *this = SpecStats{}; } };
+  SpecStats& spec_stats() { return sstats_; }
 
   DecodeProfile& profile() { return prof_; }
   PrefillProfile& prefill_profile() { return pprof_; }
@@ -106,6 +119,8 @@ class Model {
   DecodeProfile prof_;
   PrefillProfile pprof_;
   SpecProfile sprof_;
+  SpecStats sstats_;
+  std::unique_ptr<DSpark> dsp_;
   const int32_t* next_toks_ = nullptr;   // prefill: the next chunk (engram row prefetch)
   int next_n_ = 0;
   long pinned_ = 0;

@@ -19,6 +19,13 @@ std::string arg(int argc, char** argv, const char* k, const char* dflt = "") {
   return dflt;
 }
 bool flag(int argc, char** argv, const char* k) { for (int i = 2; i < argc; i++) if (!strcmp(argv[i], k)) return true; return false; }
+// --spec K (speculative decoding with the dspark drafter, K drafts per pass; 0 = off) -> MACSEEK_SPEC before the model
+// is constructed (the drafter is loaded before the expert arena is sized)
+int spec_arg(int argc, char** argv) {
+  std::string v = arg(argc, argv, "--spec", "");
+  if (!v.empty()) setenv("MACSEEK_SPEC", v.c_str(), 1);
+  return (int)ms::env_int("MACSEEK_SPEC", 0);
+}
 std::vector<int32_t> read_ids(const std::string& path) {
   std::ifstream f(path, std::ios::binary | std::ios::ate);
   if (!f) { fprintf(stderr, "cannot read %s\n", path.c_str()); exit(1); }
@@ -98,28 +105,55 @@ int cmd_bench(int argc, char** argv) {
   int np = std::stoi(arg(argc, argv, "--prefill", "2048"));
   int warm = std::stoi(arg(argc, argv, "--warm", "8"));
   auto corpus = read_ids(arg(argc, argv, "--ids"));
+  const int spec = spec_arg(argc, argv);
   ms::MemStatus m0 = ms::mem_status();
   ms::ds41::Model m;
+  const bool use_spec = spec > 0 && m.spec_enabled();
   double load_s = 0;
   auto load = [&]() { ms::Timer t; if (!st.empty() && !m.load_state(st)) { fprintf(stderr, "load_state failed\n"); exit(1); } load_s = t.ms() / 1e3; };
   load();
   const int depth = m.pos();
   // decode: feed the corpus token at the current position, then follow greedy output
   int32_t tok = depth < (int)corpus.size() ? corpus[depth] : 1;
-  for (int i = 0; i < warm; i++) tok = m.decode(tok);
+  // --spec K: the same greedy stream through speculative steps (identical tokens => identical tok_hash). The corpus
+  // continuation (--feed N tokens of the prompt tail first, e.g. after a snapshot short of the prompt end) is prefilled.
+  const int feed = std::stoi(arg(argc, argv, "--feed", "0"));
+  if (feed > 0 && depth + feed <= (int)corpus.size()) tok = m.prefill(corpus.data() + depth, feed);
+  std::vector<int32_t> stream;   // generated greedy tokens (spec mode: produced ahead in chunks)
+  size_t sp = 0;
+  auto next_tok = [&](int32_t t) -> int32_t {
+    if (!use_spec) return m.decode(t);
+    if (sp >= stream.size()) { stream.clear(); sp = 0; m.spec_step(t, stream); }
+    return stream[sp++];
+  };
+  for (int i = 0; i < warm; i++) tok = next_tok(tok);
   m.profile().reset();
   m.experts().reset_stats();
+  m.spec_stats().reset();
+  m.spec_profile().reset();
   ms::Timer td;
   uint64_t th = 1469598103934665603ull;   // FNV-1a over the generated ids: equal hash = identical greedy output
   std::string first;
   std::vector<int32_t> gen_toks;   // greedy output (token source for --vexact past the end of the corpus)
   for (int i = 0; i < nd; i++) {
-    tok = m.decode(tok);
+    tok = next_tok(tok);
     gen_toks.push_back(tok);
     th = (th ^ (uint32_t)tok) * 1099511628211ull;
     if (i < 12) first += (i ? "," : "") + std::to_string(tok);
   }
   double dec_s = td.ms() / 1e3;
+  if (std::string oid = arg(argc, argv, "--out-ids"); !oid.empty()) {   // the generated ids (int32)
+    std::ofstream f(oid, std::ios::binary); f.write((const char*)gen_toks.data(), gen_toks.size() * 4);
+  }
+  if (use_spec) {
+    auto& ss = m.spec_stats();
+    auto& vp = m.spec_profile();
+    fprintf(stderr, "spec: K=%d steps %ld | accepted %.3f of drafted, %.2f tokens/step | per step ms: total %.1f draft %.1f verify %.1f "
+            "(gpu %.1f io_stall %.1f) keep %.2f | %.2f tok/s\n", spec, ss.steps, ss.drafted ? (double)ss.accepted / ss.drafted : 0,
+            ss.steps ? (double)ss.produced / ss.steps : 0, ss.step_ms / std::max(1L, ss.steps), ss.draft_ms / std::max(1L, ss.steps),
+            vp.total_ms / std::max(1L, vp.passes), vp.gpu_ms / std::max(1L, vp.passes), vp.io_stall_ms / std::max(1L, vp.passes),
+            vp.keep_ms / std::max(1L, vp.passes), nd / dec_s);
+  }
   auto& p = m.profile();
   ms::LayerStats es = m.experts().total_stats();
   // --verify K: cost of K-token forward passes through the multi-token path right after decode (speculative-verify
@@ -203,7 +237,10 @@ int cmd_gen(int argc, char** argv) {
   int n = std::stoi(arg(argc, argv, "-n", "64"));
   float temp = std::stof(arg(argc, argv, "--temp", "0"));
   bool ignore_eos = flag(argc, argv, "--ignore-eos");
+  const int spec = spec_arg(argc, argv);
   ms::ds41::Model m;
+  const bool use_spec = spec > 0 && m.spec_enabled() && temp == 0.f;
+  if (spec > 0 && !use_spec) fprintf(stderr, "gen: speculative decoding not used (%s)\n", temp != 0.f ? "temperature > 0" : "drafter unavailable");
   // --state S: continue from a snapshot; the prompt is ids[pos..] (the snapshot holds ids[0..pos))
   std::string st = arg(argc, argv, "--state");
   size_t from = 0;
@@ -218,12 +255,20 @@ int cmd_gen(int argc, char** argv) {
   ms::tok::StreamDecoder dec(*tk);
   ms::Timer td;
   int i = 0;
+  std::vector<int32_t> stream, out_ids;   // spec: tokens produced ahead by the last speculative step
+  size_t sp = 0;
   for (; i < n; i++) {
     if (!ignore_eos && tk->is_eog(tok)) break;
     std::string s = dec.push(tok);
     text += s;
+    out_ids.push_back(tok);
     if (!flag(argc, argv, "--quiet")) { fwrite(s.data(), 1, s.size(), stdout); fflush(stdout); }
-    tok = m.decode(tok, nullptr, temp, 1234 + i);
+    if (use_spec) {
+      if (sp >= stream.size()) { stream.clear(); sp = 0; m.spec_step(tok, stream); }
+      tok = stream[sp++];
+    } else {
+      tok = m.decode(tok, nullptr, temp, 1234 + i);
+    }
     if ((i + 1) % 64 == 0) { win.push_back(64 / (tw.ms() / 1e3)); tw.reset(); }
   }
   std::string s = dec.flush(); text += s;
@@ -236,6 +281,15 @@ int cmd_gen(int argc, char** argv) {
   }
   std::string out = arg(argc, argv, "--out");
   if (!out.empty()) { std::ofstream f(out); f << text; }
+  // --out-ids F: the generated token ids (int32), e.g. to compare speculative and plain greedy output
+  std::string oid = arg(argc, argv, "--out-ids");
+  if (!oid.empty()) { std::ofstream f(oid, std::ios::binary); f.write((const char*)out_ids.data(), out_ids.size() * 4); }
+  if (use_spec) {
+    auto& ss = m.spec_stats();
+    fprintf(stderr, "spec: K=%d steps %ld | accepted %.3f of drafted, %.2f tokens/step | per step ms: total %.1f draft %.1f\n", spec,
+            ss.steps, ss.drafted ? (double)ss.accepted / ss.drafted : 0, ss.steps ? (double)ss.produced / ss.steps : 0,
+            ss.step_ms / std::max(1L, ss.steps), ss.draft_ms / std::max(1L, ss.steps));
+  }
   if (flag(argc, argv, "--stats")) fprintf(stderr, "%s\n", m.stats_report().c_str());
   return 0;
 }

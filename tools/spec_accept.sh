@@ -7,7 +7,7 @@ P=$1; K=$2; N=$3; OUT=${4:-logs/spec}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 MAIN=/Users/arnav/Desktop/MacSeek
 MODEL=${MACSEEK_TARGET:-$MAIN/models/DeepSeek-V4.1-Flash-1017-GSQ-RCO-Coder-GGUF/IQ2_XXS/DeepSeek-V4.1-Flash-1017-GSQ-RCO-Coder-IQ2_XXS-00001-of-00006.gguf}
-DRAFT=${MACSEEK_DRAFT:-"/Volumes/SanDisk500G/Models/Deepseek v4.1 Flash 1017 GSQ-RCO/dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf"}
+DRAFT=${MACSEEK_DRAFT:-"/Users/arnav/Desktop/MacSeek/models/dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf"}
 mkdir -p "$ROOT/$OUT"
 LOG="$ROOT/$OUT/accept_${P}_n${K}.out"
 # prompt text without the literal BOS (llama.cpp adds it)

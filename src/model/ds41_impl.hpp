@@ -33,7 +33,8 @@ struct Model::Impl {
   Buffer erow_b[2]; int erow_cur = 0;   // engram row buffers: current chunk / next chunk prefetch
   struct EPend { bool active = false; const int32_t* toks = nullptr; int n = 0, pos = 0, b = 0; EngramFetcher::Ticket t0, t1; } epend;
   Buffer tbl;                        // decode table mode: [40][6][3] device addresses of the routed experts                     // prefill: router logits of layer l+1 on layer l's FFN input, [n][384]
-  std::unique_ptr<VerifyState> vs;   // speculative verify buffers (lazily created)
+  std::unique_ptr<VerifyState> vs;
+  Buffer fcap; bool capture = false;  // dspark target features of the prefill tail [3][128][5120]   // speculative verify buffers (lazily created)
   Impl();
   ~Impl();
   arch::Scratch asc2;                // second scratch for the predictor router (same kernel family)   // prefill MoE scratch + routing tables (double-buffered)
