@@ -329,10 +329,17 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
 
   const bool dec = n == 1;
   Buffer h = P.h.sub(0, (size_t)n * 20480 * 4);
-  double wait_ms = 0, exp_ms = 0, gpu_ms = 0, moe_gpu_ms = 0, route_ms = 0;
+  double wait_ms = 0, exp_ms = 0, gpu_ms = 0, moe_gpu_ms = 0, route_ms = 0, g0_ms = 0, io_wait_ms = 0;
   long experts_used = 0, groups_run = 0;
   const LayerStats st0 = cache_->total_stats();
 
+  std::vector<std::pair<double, double>> spans;   // prefill: absolute GPU intervals of every command buffer
+  std::vector<int> span_kind;                      // 0 attention side, 1 first MoE group of a layer, 2 later MoE group
+  int span_next_kind = 0;
+  auto span = [&](const Enc& x) {
+    if (dec) return; double a0, a1; x.gpu_span(a0, a1);
+    if (a0 > 0 && a1 >= a0) { spans.push_back({a0, a1}); span_kind.push_back(span_next_kind); }
+  };
   auto e = std::make_unique<Enc>();
   arch::encode_embed(*e, (int)te_->type(), P.embrows, (uint32_t)te_->row_bytes(), h, n, 4);
   e->barrier();   // the layer-0 hc step reads h (with lazy engram kv nothing else separates them)
@@ -782,11 +789,13 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     e->wait();
     wait_ms += tw.ms();
     gpu_ms += e->gpu_ms();
-    for (auto& x : P.moe_inflight) { x->wait(); moe_gpu_ms += x->gpu_ms(); }   // done: the attention CB waited for them
+    span_next_kind = 0; span(*e);
+    for (size_t i = 0; i < P.moe_inflight.size(); i++) { auto& x = P.moe_inflight[i]; x->wait(); moe_gpu_ms += x->gpu_ms(); span_next_kind = 1 + (i > 0); span(*x); }
     P.moe_inflight.clear();
 
     // ---- MoE ----
     Timer tx;
+    Timer t_g0;   // CPU time from the attention side's completion to the first MoE group's commit
     const int* ids = (const int*)P.rids.cpu();
     if (dec) {
       static const bool force_ids = env_int("MACSEEK_PROF_FORCE", 0) != 0;   // PROFILING ONLY: wrong output
@@ -838,16 +847,33 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       // go first (GPU starts while the misses load) and the result stays bit-reproducible.
       const bool zall = (bool)P.zall && n * 6 <= (int)(P.route_all.size / 12);
       static const bool cached_first = env_int("MACSEEK_PF_CACHED_FIRST", 0) != 0;
-      if (cached_first || zall) std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
+      if (zall) {   // ready first, then loading, then absent (stable: id order inside each)
+        std::vector<int> rs(NE, 0);
+        for (int x : used) rs[x] = cache_->residency(l, x);
+        std::stable_sort(used.begin(), used.end(), [&](int a, int b) { return rs[a] > rs[b]; });
+      } else if (cached_first) std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
       const int G = std::max(1, std::min(o_.moe_group, cache_->group_cap(l)));
-      const int ngroups = ((int)used.size() + G - 1) / G;
+      // groups: at most moe_group experts, at most G of them not pinned (pinned residents need no free room)
+      std::vector<std::vector<int>> grp;
+      {
+        static const bool pin_aware = env_int("MACSEEK_PF_GROUP_PINAWARE", 1) != 0;
+        const int gmax = std::max(1, o_.moe_group);
+        int unp = 0;
+        for (int x : used) {
+          const bool pinned = pin_aware && cache_->is_pinned(l, x);
+          if (grp.empty() || (int)grp.back().size() >= gmax || (!pinned && unp >= G)) { grp.emplace_back(); unp = 0; }
+          grp.back().push_back(x);
+          if (!pinned) unp++;
+        }
+      }
+      const int ngroups = (int)grp.size();
       route_ms += troute.ms();
       experts_used += (long)used.size(); groups_run += ngroups;
       std::vector<ExpertLease> leases(ngroups);
       static id<MTLEvent> pchain = [(__bridge id<MTLDevice>)Device::get().device() newEvent];
       static uint64_t pval = 0;
       std::vector<std::unique_ptr<Enc>> encs(ngroups);
-      auto group_ids = [&](int gi) { return std::vector<int>(used.begin() + gi * G, used.begin() + std::min((int)used.size(), (gi + 1) * G)); };
+      auto group_ids = [&](int gi) { return grp[gi]; };
       // ZALL: global expert-sorted routing arrays in processing order: tok_all / wt_all [6n], slot_all[entry] = row
       int* tok_all = zall ? (int*)P.route_all.cpu() : nullptr;
       float* wt_all = zall ? (float*)(tok_all + n * 6) : nullptr;
@@ -867,7 +893,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         // top the next layer's prefetch up as this layer's prefetches get used (the cache caps speculation so a demand
         // group always has room; already present / in-flight experts are skipped)
         if (!pf_pred && n >= pf_prefetch_min && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, all_ids.data(), NE);
-        if (gi >= 2) { encs[gi - 2]->wait(); moe_gpu_ms += encs[gi - 2]->gpu_ms(); encs[gi - 2].reset(); }  // scratch reuse
+        if (gi >= 2) { encs[gi - 2]->wait(); moe_gpu_ms += encs[gi - 2]->gpu_ms(); span_next_kind = gi - 2 == 0 ? 1 : 2; span(*encs[gi - 2]); encs[gi - 2].reset(); }  // scratch reuse
         std::vector<int> gids = group_ids(gi);
         const int sb = gi & 1;
         // routing arrays for this group in route_dev[sb]: tok[total], wt[total], slot_of[n*6]
@@ -890,7 +916,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         offs[gids.size()] = c;
         encs[gi] = std::make_unique<Enc>();
         Enc& eg = *encs[gi];
-        if (cpu_wait_io) leases[gi].wait();
+        if (cpu_wait_io) { Timer tiw; leases[gi].wait(); io_wait_ms += tiw.ms(); }
         // groups accumulate into the same Y (sub): order their command buffers on the GPU (they may otherwise
         // overlap: untracked resources), while the CPU keeps encoding / loading ahead
         eg.between([&](void* cb) {
@@ -929,6 +955,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         eg.between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:pchain value:++pval]; });
         leases[gi].release_after(eg.cmdbuf());
         eg.commit();
+        if (gi == 0) g0_ms += t_g0.ms();
         (void)total;
       }
       // MACSEEK_PF_NODRAIN=1 (default): do not wait for this layer's MoE on the CPU; the next layer's attention command
@@ -940,7 +967,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         e->between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeWaitForEvent:pchain value:v]; });
         for (auto& x : encs) if (x) P.moe_inflight.push_back(std::move(x));
       } else {
-        for (auto& x : encs) if (x) { x->wait(); moe_gpu_ms += x->gpu_ms(); }
+        for (auto& x : encs) if (x) { x->wait(); moe_gpu_ms += x->gpu_ms(); span(*x); }
       }
     }
     exp_ms += tx.ms();
@@ -955,9 +982,27 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   e->wait();
   wait_ms += tw.ms();
   gpu_ms += e->gpu_ms();
-  for (auto& x : P.moe_inflight) { x->wait(); moe_gpu_ms += x->gpu_ms(); }
+  span(*e);
+  for (auto& x : P.moe_inflight) { x->wait(); moe_gpu_ms += x->gpu_ms(); span(*x); }
   P.moe_inflight.clear();
   next = *(const int32_t*)P.amax_i.cpu();
+  if (!dec && !spans.empty()) {   // GPU busy time = union of command-buffer intervals
+    std::vector<size_t> ord(spans.size());
+    for (size_t i = 0; i < ord.size(); i++) ord[i] = i;
+    std::sort(ord.begin(), ord.end(), [&](size_t a, size_t b) { return spans[a].first < spans[b].first; });
+    double busy = 0, cs = spans[ord[0]].first, ce = spans[ord[0]].second, gap_k[3] = {0, 0, 0};
+    for (size_t oi = 0; oi < ord.size(); oi++) {
+      const auto& sp = spans[ord[oi]];
+      if (sp.first > ce) { busy += ce - cs; gap_k[span_kind[ord[oi]]] += sp.first - ce; cs = sp.first; ce = sp.second; }
+      else ce = std::max(ce, sp.second);
+    }
+    busy += ce - cs;
+    if (env_int("MACSEEK_PROF", 0))
+      fprintf(stderr, "prefill-prof: GPU idle before attention CBs %.0f ms, before first MoE group %.0f ms, before later groups %.0f ms | "
+              "CPU attn-done->group0 commit %.0f ms, CPU io waits %.0f ms\n",
+              gap_k[0] * 1e3, gap_k[1] * 1e3, gap_k[2] * 1e3, g0_ms, io_wait_ms);
+    pf_busy_ms_ = busy * 1e3; pf_span_ms_ = (ce - spans[0].first) * 1e3;
+  }
   if (getenv("MACSEEK_DBG_PF") && !dec) {
     FILE* f = fopen(getenv("MACSEEK_DBG_PF"), "ab");
     fwrite(P.dbg.cpu(), 4, 80 * 5120, f);
@@ -979,6 +1024,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     if (pf_split)
       fprintf(stderr, "prefill-split: pos %d n %d gpu ms: hc_in %.0f proj %.0f attn %.0f oproj %.0f hc_ffn %.0f router %.0f\n", start, n,
               pf_split_ms[0], pf_split_ms[1], pf_split_ms[2], pf_split_ms[3], pf_split_ms[4], pf_split_ms[5]);
+    if (env_int("MACSEEK_PROF", 0))
+      fprintf(stderr, "prefill-prof: gpu busy %.0f ms of %.0f ms span\n", pf_busy_ms_, pf_span_ms_);
     if (env_int("MACSEEK_PROF", 0))
       fprintf(stderr, "prefill-prof: pos %d n %d total %.0f ms | engram %.0f | main gpu %.0f wait %.0f | moe %.0f (gpu %.0f) route %.1f | "
               "io %.2f GB | experts %ld groups %ld\n", start, n, tt.ms(), engram_ms, gpu_ms, wait_ms, exp_ms, moe_gpu_ms, route_ms,

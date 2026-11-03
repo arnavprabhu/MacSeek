@@ -661,6 +661,12 @@ void ExpertCache::unpin_resident() {
 
 bool ExpertCache::contains(int layer, int e) const { std::lock_guard<std::mutex> g(mu_); return map_[key(layer, e)] >= 0; }
 
+int ExpertCache::residency(int layer, int e) const {
+  std::lock_guard<std::mutex> g(mu_);
+  const int s = map_[key(layer, e)];
+  return s < 0 ? 0 : slots_[s].state == Ready ? 2 : 1;
+}
+
 bool ExpertCache::is_pinned(int layer, int e) const {
   std::lock_guard<std::mutex> g(mu_);
   int s = map_[key(layer, e)];

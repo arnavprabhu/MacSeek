@@ -64,6 +64,7 @@ class Enc {
   void commit();          // end encoding + commit (async)
   void wait();            // commit if needed + waitUntilCompleted; aborts on GPU error
   double gpu_ms() const;  // GPUEndTime - GPUStartTime after wait()
+  void gpu_span(double& start_s, double& end_s) const;   // absolute GPUStartTime / GPUEndTime (s) after wait()
   void* encoder();        // id<MTLComputeCommandEncoder>
   void* cmdbuf();         // id<MTLCommandBuffer>
  private:

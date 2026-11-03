@@ -88,6 +88,7 @@ class Model {
   const int32_t* next_toks_ = nullptr;   // prefill: the next chunk (engram row prefetch)
   int next_n_ = 0;
   long pinned_ = 0;
+  double pf_busy_ms_ = 0, pf_span_ms_ = 0;   // last prefill call: GPU busy (union of CBs) vs first-start..last-end
   std::function<void(int, int)> progress_;   // experts pinned by a multi-chunk prefill (released at the next decode)
   int32_t forward(const int32_t* toks, int n, float* logits_all, float* logits_last, float temperature, uint64_t seed);
   std::unique_ptr<Gguf> g_;
