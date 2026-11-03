@@ -1,10 +1,10 @@
 // MoE router: scores = sqrt(softplus(logit)); top-6 of (scores + bias); weights = score / (sum + 1e-20) * route_scale.
 // Plus prefill routing lists (per-expert token lists for grouped GEMM), deterministic (no atomics).
+// Templated on the routed-expert count NEXP (384: Unsloth/unpruned builds, 192: GSQ-RCO Coder); host names get a
+// _<NEXP> suffix.
 #include "arch_common.h"
 
-constant constexpr uint ARCH_NEXP = 384;
 constant constexpr uint ARCH_TOPK = 6;
-constant constexpr uint ARCH_EPL = ARCH_NEXP / 32;   // experts per lane
 
 struct ArchRouterParams {
   uint n_tokens;
@@ -24,9 +24,10 @@ inline float arch_sqrt_softplus(float x) {
 }
 
 // One simdgroup selects the top-6 experts of one token. Ties: lowest expert id. Writes ids/weights (descending key).
-template <typename PL>
+template <uint NEXP, typename PL>
 inline void arch_topk6(PL logits, device const float* bias, float route_scale, ushort lane,
                        device int* ids, device float* wts) {
+  constexpr uint ARCH_EPL = NEXP / 32;   // experts per lane
   float sc[ARCH_EPL], key[ARCH_EPL];
   for (uint i = 0; i < ARCH_EPL; i++) {
     uint e = lane + 32 * i;
@@ -58,7 +59,8 @@ inline void arch_topk6(PL logits, device const float* bias, float route_scale, u
   }
 }
 
-// logits [n][384] -> ids [n][6] int32, weights [n][6]. grid: ceil(n/4) x 128 threads (one simdgroup per token).
+// logits [n][NEXP] -> ids [n][6] int32, weights [n][6]. grid: ceil(n/4) x 128 threads (one simdgroup per token).
+template <uint NEXP>
 kernel void arch_router_topk(device const float* logits [[buffer(0)]],
                              device const float* bias [[buffer(1)]],
                              device int* ids [[buffer(2)]],
@@ -69,11 +71,12 @@ kernel void arch_router_topk(device const float* logits [[buffer(0)]],
                              ushort lane [[thread_index_in_simdgroup]]) {
   uint t = tg * 4 + sg;
   if (t >= p.n_tokens) return;
-  arch_topk6(logits + (ulong)t * ARCH_NEXP, bias, p.route_scale, lane, ids + t * ARCH_TOPK, wts + t * ARCH_TOPK);
+  arch_topk6<NEXP>(logits + (ulong)t * NEXP, bias, p.route_scale, lane, ids + t * ARCH_TOPK, wts + t * ARCH_TOPK);
 }
 
-// Decode: fused F32 matvec x[5120] . W[384][5120] + top-6 in one dispatch (last threadgroup selects).
-// grid: n_groups threadgroups (384 % (n_groups) == 0), any T multiple of 32. Also writes logits [384].
+// Decode: fused F32 matvec x[5120] . W[NEXP][5120] + top-6 in one dispatch (last threadgroup selects).
+// grid: n_groups threadgroups (NEXP % (n_groups) == 0), any T multiple of 32. Also writes logits [NEXP].
+template <uint NEXP>
 kernel void arch_router_fused(device const float* x [[buffer(0)]],
                               device const float* W [[buffer(1)]],
                               device const float* bias [[buffer(2)]],
@@ -89,7 +92,7 @@ kernel void arch_router_fused(device const float* x [[buffer(0)]],
                               ushort lane [[thread_index_in_simdgroup]]) {
   threadgroup uint flag;
   const ushort nsg = T / 32;
-  const uint rows = ARCH_NEXP / p.n_groups;
+  const uint rows = NEXP / p.n_groups;
   device const float4* xv = (device const float4*)x;
   for (uint r = sg; r < rows; r += nsg) {
     uint e = g * rows + r;
@@ -100,11 +103,11 @@ kernel void arch_router_fused(device const float* x [[buffer(0)]],
     if (lane == 0) logits[e] = acc;
   }
   if (!arch_last_group(counter, p.n_groups, tid, &flag)) return;
-  if (sg == 0) arch_topk6(logits, bias, p.route_scale, lane, ids, wts);
+  if (sg == 0) arch_topk6<NEXP>(logits, bias, p.route_scale, lane, ids, wts);
   arch_reset_counter(counter, tid);
 }
 
-// Prefill routing lists, pass 1: counts[e] = #entries (t,k) with ids[t*6+k] == e. grid: 48 x 256 (simdgroup/expert).
+// Prefill routing lists, pass 1: counts[e] = #entries (t,k) with ids[t*6+k] == e. grid: NEXP/8 x 256 (simdgroup/expert).
 kernel void arch_route_count(device const int* ids [[buffer(0)]],
                              device uint* counts [[buffer(1)]],
                              constant ArchRouterParams& p [[buffer(2)]],
@@ -119,8 +122,9 @@ kernel void arch_route_count(device const int* ids [[buffer(0)]],
   if (lane == 0) counts[e] = c;
 }
 
-// Pass 2: offsets[e] (exclusive scan, offsets[384] = total) and stable per-expert lists ordered by entry index:
-// list_entry[pos] = t*6+k, list_tok[pos] = t, list_w[pos] = weight, slot_of[t*6+k] = pos. grid: 48 x 256.
+// Pass 2: offsets[e] (exclusive scan, offsets[NEXP] = total) and stable per-expert lists ordered by entry index:
+// list_entry[pos] = t*6+k, list_tok[pos] = t, list_w[pos] = weight, slot_of[t*6+k] = pos. grid: NEXP/8 x 256.
+// p.pad = NEXP.
 kernel void arch_route_scatter(device const int* ids [[buffer(0)]],
                                device const float* wts [[buffer(1)]],
                                device const uint* counts [[buffer(2)]],
@@ -140,7 +144,7 @@ kernel void arch_route_scatter(device const int* ids [[buffer(0)]],
   off = simd_sum(off);
   if (lane == 0) {
     offsets[e] = off;
-    if (e == int(ARCH_NEXP) - 1) offsets[ARCH_NEXP] = off + counts[e];
+    if (e == int(p.pad) - 1) offsets[p.pad] = off + counts[e];
   }
   uint basepos = off;
   const ulong below = (1ul << lane) - 1ul;
@@ -158,3 +162,13 @@ kernel void arch_route_scatter(device const int* ids [[buffer(0)]],
     basepos += popcount(bits);
   }
 }
+
+#define ARCH_ROUTER_INST(N)                                                                                        \
+  template [[host_name("arch_router_topk_" #N)]] kernel void arch_router_topk<N>(                                 \
+      device const float*, device const float*, device int*, device float*, constant ArchRouterParams&, uint,     \
+      ushort, ushort);                                                                                             \
+  template [[host_name("arch_router_fused_" #N)]] kernel void arch_router_fused<N>(                               \
+      device const float*, device const float*, device const float*, coherent(device) device float*, device int*, \
+      device float*, device atomic_uint*, constant ArchRouterParams&, uint, ushort, ushort, ushort, ushort);
+ARCH_ROUTER_INST(384)
+ARCH_ROUTER_INST(192)

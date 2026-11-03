@@ -1,4 +1,4 @@
-// Engram block (GPU part) and row dequant kernels: IQ4_NL engram table rows, Q6_K token_embd rows.
+// Engram block (GPU part) and row dequant kernels: IQ4_NL engram table rows, Q6_K / Q5_K token_embd rows.
 #include "arch_common.h"
 
 constant constexpr uint ARCH_ENG_KV = 25600;   // engram_kv output: key [4][5120] then value [5120]
@@ -120,5 +120,43 @@ kernel void arch_embed_q6k(device const uchar* rows [[buffer(0)]],
   for (uint c = 0; c < p.copies; c++) {
     device float* oc = o + c * p.dim + yb;
     oc[0] = y1; oc[32] = y2; oc[64] = y3; oc[96] = y4;
+  }
+}
+
+// Q5_K rows -> F32 (same layout/launch as arch_embed_q6k). Block (256 values, 176 B): half d, half dmin, scales[12],
+// qh[32], qs[128]. Thread r of a block: 64-value chunk c = r >> 4, l = 2*(r & 15) + {0,1}: values 64c + l, 64c + 32 + l.
+inline void arch_q5k_scale_min(uint j, device const uchar* q, thread float& d, thread float& m) {
+  if (j < 4) { d = float(q[j] & 63); m = float(q[j + 4] & 63); }
+  else { d = float((q[j + 4] & 0xF) | ((q[j - 4] >> 6) << 4)); m = float((q[j + 4] >> 4) | ((q[j] >> 6) << 4)); }
+}
+kernel void arch_embed_q5k(device const uchar* rows [[buffer(0)]],
+                           device float* h [[buffer(1)]],
+                           constant ArchEmbedParams& p [[buffer(2)]],
+                           uint i [[thread_position_in_grid]]) {
+  const uint nb = p.dim / 256;
+  uint t = i / (nb * 64);
+  if (t >= p.n_tokens) return;
+  uint rem = i - t * nb * 64, b = rem >> 6, r = rem & 63, c = r >> 4, l0 = 2 * (r & 15);
+  device const uchar* blk = rows + (ulong)t * p.row_stride + b * 176;
+  const float d = float(*(device const half*)blk), dmin = float(*(device const half*)(blk + 2));
+  device const uchar* sc = blk + 4;
+  device const uchar* qh = blk + 16;
+  device const uchar* ql = blk + 48 + 32 * c;
+  float s1, m1, s2, m2;
+  arch_q5k_scale_min(2 * c, sc, s1, m1);
+  arch_q5k_scale_min(2 * c + 1, sc, s2, m2);
+  const float d1 = d * s1, mm1 = dmin * m1, d2 = d * s2, mm2 = dmin * m2;
+  const uint u1 = 1u << (2 * c), u2 = 2u << (2 * c);
+  float y[4];
+  for (uint k = 0; k < 2; k++) {
+    const uint l = l0 + k;
+    y[k] = d1 * float((ql[l] & 0xF) + ((qh[l] & u1) ? 16 : 0)) - mm1;
+    y[2 + k] = d2 * float((ql[l] >> 4) + ((qh[l] & u2) ? 16 : 0)) - mm2;
+  }
+  const uint yb = b * 256 + 64 * c + l0;
+  device float* o = h + (ulong)t * p.copies * p.dim;
+  for (uint cc = 0; cc < p.copies; cc++) {
+    device float* oc = o + cc * p.dim + yb;
+    oc[0] = y[0]; oc[1] = y[1]; oc[32] = y[2]; oc[33] = y[3];
   }
 }

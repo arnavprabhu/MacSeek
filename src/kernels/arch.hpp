@@ -9,7 +9,7 @@
 namespace ms::arch {
 
 constexpr int kDim = 5120, kHc = 4, kHcDim = 20480, kMix = 24;
-constexpr int kExperts = 384, kTopK = 6;
+constexpr int kExperts = 384, kTopK = 6;   // kExperts = max routed experts (buffers); Options::n_experts = actual
 constexpr int kVocab = 129280;
 constexpr int kEngramRows = 24, kEngramRowVals = 256, kEngramRowBytes = 144, kEngramKv = 25600;
 constexpr int kEmbedRowBytes = 4200;   // Q6_K row of 5120
@@ -39,7 +39,8 @@ struct Options {
   int hc_threads = 512;        // MACSEEK_ARCH_HC_T: decode step threadgroup size (128/256/512/1024; 5120/T groups)
   bool hc_prefill_rows = false;  // MACSEEK_ARCH_HC_PREFILL=rows: per-token mixes kernel instead of the MMA GEMM
   bool hc_prefill_mma8 = false;  // MACSEEK_ARCH_HC_PREFILL=mma8: 8-token MMA tiles instead of 32-token tiles
-  int router_groups = 96;      // MACSEEK_ARCH_ROUTER_G: fused router threadgroups (divides 384)
+  int router_groups = 96;      // MACSEEK_ARCH_ROUTER_G: fused router threadgroups (divides n_experts)
+  int n_experts = 384;         // routed experts per layer (384 or 192); the model sets it from the GGUF
   int hc_row_splits = 1;       // MACSEEK_ARCH_HC_SPLITS: decode step threadgroups per dim chunk (mix rows split; only
                                // when h_out != h_in; bit-identical). HcStep::row_splits overrides.
 };
@@ -106,6 +107,10 @@ void encode_iq4nl_rows(Enc& e, Buffer src, uint32_t row_stride, Buffer dst, int 
 // ---------------- embedding ----------------
 // Q6_K rows of token_embd (4200 B each, row_stride bytes apart) -> h [n][copies][5120] (copies = 4: hc expand).
 void encode_embed_q6k(Enc& e, Buffer rows, uint32_t row_stride, Buffer h, int n, int copies = 4);
+// Q5_K rows (3520 B each) -> same layout.
+void encode_embed_q5k(Enc& e, Buffer rows, uint32_t row_stride, Buffer h, int n, int copies = 4);
+// dispatch by ggml type id (14 = Q6_K, 13 = Q5_K)
+void encode_embed(Enc& e, int ggml_type, Buffer rows, uint32_t row_stride, Buffer h, int n, int copies = 4);
 
 // ---------------- sampling / logits ----------------
 // argmax per row (ties -> lowest index), single dispatch. temperature > 0: Gumbel-max sampling of

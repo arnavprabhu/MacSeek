@@ -94,6 +94,10 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   if (o.verbose) fprintf(stderr, "macseek: weights %.2f GiB in %.0f ms (%.1f GB/s)\n", w_->bytes() / 1073741824.0, w_->load_ms(), w_->gbps());
 
   auto& P = *p_;
+  // model variant from the GGUF: routed experts per layer (384 unpruned / 192 GSQ-RCO Coder)
+  cfg_.n_experts = (int)g_->get_i64("deepseek41.expert_count", 384);
+  if (cfg_.n_experts != 384 && cfg_.n_experts != 192) { fprintf(stderr, "macseek: expert_count %d unsupported\n", cfg_.n_experts); abort(); }
+  arch::options().n_experts = cfg_.n_experts;
   P.L.resize(cfg_.n_layers);
   for (int l = 0; l < cfg_.n_layers; l++) {
     LayerW& L = P.L[l];
@@ -113,8 +117,26 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   }
   P.out_norm = wt(*w_, "output_norm.weight");
   P.head = wt(*w_, "output.weight");
+  {  // BF16 routers (GSQ-RCO builds) -> F32 copies: the fused decode router and the predictor copies read F32 (exact)
+    size_t nconv = 0;
+    for (int l = 0; l < cfg_.n_layers; l++) if (P.L[l].gate_inp.t == QType::BF16) nconv++;
+    if (nconv) {
+      const size_t per = (size_t)cfg_.n_experts * 5120 * 4;
+      Buffer all = d.alloc(per * nconv, "router_f32");
+      size_t k = 0;
+      for (int l = 0; l < cfg_.n_layers; l++) {
+        W& g = P.L[l].gate_inp;
+        if (g.t != QType::BF16) continue;
+        const uint16_t* src = (const uint16_t*)g.b.cpu();
+        float* dst = (float*)((char*)all.cpu() + per * k);
+        for (size_t i = 0; i < (size_t)g.rows * g.cols; i++) { uint32_t u = (uint32_t)src[i] << 16; memcpy(dst + i, &u, 4); }
+        g.b = all.sub(per * k, per); g.t = QType::F32;
+        k++;
+      }
+    }
+  }
   {  // Q8_0 router copies for next-layer prediction: 2.1 MB instead of 7.9 MB per layer read each decode token
-    const int R = 384, C = 5120, nb = C / 32;
+    const int R = cfg_.n_experts, C = 5120, nb = C / 32;
     const size_t rb = (size_t)nb * 34;
     Buffer all = d.alloc(rb * R * cfg_.n_layers, "pred_w");
     P.pred_w.resize(cfg_.n_layers);
@@ -166,14 +188,15 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   P.aout = A(n * 32768 * 4, "aout");
   if (alias) { P.aout16 = P.q.sub(0, n * 32768 * 2); P.otmp = P.q.sub(n * 32768 * 2, n * 8192 * 4); }
   else { P.aout16 = A(n * 32768 * 2, "aout16"); P.otmp = A(n * 8192 * 4, "otmp"); }
-  P.oa = A(n * 8192 * 4, "oa"); P.rlog = A(n * 384 * 4, "rlog"); P.rids = A(n * 6 * 4, "rids"); P.rw = A(n * 6 * 4, "rw");
-  P.embrows = A(n * 4200 + 16384, "embrows"); P.erow = A(2 * n * 24 * 144 + 16384, "erow");
+  const int NE = cfg_.n_experts;
+  P.oa = A(n * 8192 * 4, "oa"); P.rlog = A(n * NE * 4, "rlog"); P.rids = A(n * 6 * 4, "rids"); P.rw = A(n * 6 * 4, "rw");
+  P.embrows = A(n * te_->row_bytes() + 16384, "embrows"); P.erow = A(2 * n * 24 * 144 + 16384, "erow");
   P.erow_b[0] = P.erow; P.erow_b[1] = A(2 * n * 24 * 144 + 16384, "erow2");
   P.dbg = A(80 * 5120 * 4 + 16384, "dbg"); P.dbg2 = A(3 * 8 * 32768 * 4 + 16384, "dbg2");
   P.edeq = A(n * 6144 * 4, "edeq"); P.ekv = A(alias ? (n + 1) * 25600 * 4 : 2 * n * 25600 * 4, "ekv");
   P.logits = A((size_t)std::max(o.max_logits_rows, 1) * cfg_.vocab * 4, "logits");
   P.amax_i = A(64, "amax_i"); P.amax_v = A(64, "amax_v");
-  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * 384 * 4, "plog"); P.plog_n = A(n * 384 * 4, "plog_n"); P.tbl = A(40 * 4096, "tbl");
+  P.pids = A(64, "pids"); P.pw = A(64, "pw"); P.plog = A(4 * NE * 4, "plog"); P.plog_n = A(n * NE * 4, "plog_n"); P.tbl = A(40 * 4096, "tbl");
   P.asc2 = arch::Scratch::create(64, 1);
   P.moe_dec_scratch = A(q::moe_decode_scratch_bytes(), "moe_dec");
   const int total = (int)n * 6;
@@ -277,7 +300,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   tk0.wait(); tk1.wait();
   if (getenv("MACSEEK_DBG_HASH")) {
     auto fnv = [](const void* p, size_t nb) { uint64_t h = 1469598103934665603ull; for (size_t i = 0; i < nb; i++) h = (h ^ ((const uint8_t*)p)[i]) * 1099511628211ull; return h; };
-    fprintf(stderr, "dbg-hash: n %d embrows %016llx erow %016llx toks %016llx\n", n, (unsigned long long)fnv(P.embrows.cpu(), (size_t)n * 4200),
+    fprintf(stderr, "dbg-hash: n %d embrows %016llx erow %016llx toks %016llx\n", n, (unsigned long long)fnv(P.embrows.cpu(), (size_t)n * te_->row_bytes()),
             (unsigned long long)fnv(P.erow.cpu(), (size_t)2 * n * 24 * 144), (unsigned long long)fnv(toks, (size_t)n * 4));
   }
   if (const char* dp = getenv("MACSEEK_DBG_DUMP"); dp && n == 1 && getenv("MACSEEK_DBG_EROW")) {
@@ -286,7 +309,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     std::vector<uint32_t> hs(48); EngramHasher::State st0 = hasher_->state();
     fwrite(&st0, sizeof st0, 1, f);
     fwrite(P.erow.cpu(), 1, 2 * 24 * 144, f);
-    fwrite(P.embrows.cpu(), 1, 4200, f);
+    fwrite(P.embrows.cpu(), 1, te_->row_bytes(), f);
     fclose(f);
   }
   if (engram_ahead && next_toks_ && next_n_ > 0) {
@@ -304,7 +327,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   const LayerStats st0 = cache_->total_stats();
 
   auto e = std::make_unique<Enc>();
-  arch::encode_embed_q6k(*e, P.embrows, 4200, h, n, 4);
+  arch::encode_embed(*e, (int)te_->type(), P.embrows, (uint32_t)te_->row_bytes(), h, n, 4);
   e->barrier();   // the layer-0 hc step reads h (with lazy engram kv nothing else separates them)
   // layer-0 attention mix_prev = identity (pre = [1,0,0,0])
   {
@@ -353,7 +376,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   static const bool cpu_wait_io = env_int("MACSEEK_PF_GPU_WAIT", 0) == 0;
   static const bool dec_cpu_wait = env_int("MACSEEK_CPU_WAIT_IO", 0) != 0;
   // prefill: prefetch only the union of each token's predicted top-k (layer l+1's router on layer l's FFN input)
-  // instead of all 384 experts of layer l+1. MACSEEK_PF_PRED=0: prefetch everything (previous behaviour).
+  // instead of all experts of layer l+1. MACSEEK_PF_PRED=0: prefetch everything (previous behaviour).
+  const int NE = cfg_.n_experts;
   static const bool pf_pred = env_int("MACSEEK_PF_PRED", 0) != 0;
   static const int pf_pred_k = (int)env_int("MACSEEK_PF_PRED_K", 8);
   static const bool pred_on = env_int("MACSEEK_PRED", 1) != 0;   // decode next-layer expert prefetch (win: +9%)
@@ -361,22 +385,22 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   static const int pred_depth = std::min(4, (int)env_int("MACSEEK_PRED_DEPTH", 1));
   auto prefetch_predicted = [&](int l) {
     for (int d = 1; d <= pred_depth && l + d < cfg_.n_layers; d++) {
-      const float* lg = (const float*)P.plog.cpu() + (d - 1) * 384;
+      const float* lg = (const float*)P.plog.cpu() + (d - 1) * NE;
       const float* bias = (const float*)P.L[l + d].bias.b.cpu();
       std::pair<float, int> sc[384];
-      for (int x = 0; x < 384; x++) {
+      for (int x = 0; x < NE; x++) {
         float v = lg[x];
         float sp = v > 20.f ? v : std::log1p(std::exp(v));
         sc[x] = {std::sqrt(sp) + bias[x], x};
       }
-      const int k = std::min(pred_k, 384);
-      std::partial_sort(sc, sc + k, sc + 384, [](auto& a, auto& b) { return a.first > b.first; });
+      const int k = std::min(pred_k, NE);
+      std::partial_sort(sc, sc + k, sc + NE, [](auto& a, auto& b) { return a.first > b.first; });
       int ids[384];
       for (int i = 0; i < k; i++) ids[i] = sc[i].second;
       cache_->prefetch(l + d, ids, k);
     }
   };
-  static std::vector<int> all_ids = [] { std::vector<int> v(384); for (int i = 0; i < 384; i++) v[i] = i; return v; }();
+  static std::vector<int> all_ids = [NE] { std::vector<int> v(NE); for (int i = 0; i < NE; i++) v[i] = i; return v; }();
   // Attention side of layer l for this call: hc boundary (+engram), attention, hc boundary into the FFN, router,
   // and zeroing of `sub` (the MoE accumulates into it). Encodes into E; no commit.
   static const bool dbg_on = getenv("MACSEEK_DBG_DUMP") != nullptr;
@@ -474,7 +498,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         for (int d = 1; d <= pred_depth && l + d < cfg_.n_layers; d++) {
           static const bool pred_q8 = env_int("MACSEEK_PRED_Q8", 1) != 0;
           const W& g = pred_q8 ? P.pred_w[l + d] : P.L[l + d].gate_inp;
-          q::encode_matvec(E, g.t, g.b, g.rows, g.cols, P.x, P.plog.sub((size_t)(d - 1) * 384 * 4, 384 * 4));
+          q::encode_matvec(E, g.t, g.b, g.rows, g.cols, P.x, P.plog.sub((size_t)(d - 1) * NE * 4, NE * 4));
         }
     }
     else {
@@ -700,8 +724,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     // prefill: a big chunk routes to nearly every expert of a layer, so start streaming this layer's experts now (they
     // load while attention runs) and the next layer's while this layer's MoE runs. MACSEEK_PF_PREFETCH=0 disables.
     if (!dec && n >= pf_prefetch_min) {
-      if (l == 0) cache_->prefetch(0, all_ids.data(), 384);
-      if (!pf_pred && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, all_ids.data(), 384);
+      if (l == 0) cache_->prefetch(0, all_ids.data(), NE);
+      if (!pf_pred && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, all_ids.data(), NE);
     }
     static const bool dbg_pf = getenv("MACSEEK_DBG_PF") != nullptr;   // diagnostics: prefill per-layer row-0 checkpoints
     auto dbg_pf_copy = [&](int slot, Buffer src) {
@@ -763,26 +787,26 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       if (pf_pred && n >= pf_prefetch_min && l + 1 < cfg_.n_layers) {
         const float* lg = (const float*)P.plog_n.cpu();
         const float* bias = (const float*)P.L[l + 1].bias.b.cpu();
-        std::vector<char> want(384, 0);
+        std::vector<char> want(NE, 0);
         std::pair<float, int> sc[384];
-        const int k = std::min(pf_pred_k, 384);
+        const int k = std::min(pf_pred_k, NE);
         for (int t = 0; t < n; t++) {
-          const float* r = lg + (size_t)t * 384;
-          for (int x = 0; x < 384; x++) { float v = r[x]; float sp = v > 20.f ? v : std::log1p(std::exp(v)); sc[x] = {std::sqrt(sp) + bias[x], x}; }
-          std::partial_sort(sc, sc + k, sc + 384, [](auto& a, auto& b) { return a.first > b.first; });
+          const float* r = lg + (size_t)t * NE;
+          for (int x = 0; x < NE; x++) { float v = r[x]; float sp = v > 20.f ? v : std::log1p(std::exp(v)); sc[x] = {std::sqrt(sp) + bias[x], x}; }
+          std::partial_sort(sc, sc + k, sc + NE, [](auto& a, auto& b) { return a.first > b.first; });
           for (int i = 0; i < k; i++) want[sc[i].second] = 1;
         }
         std::vector<int> ids;
-        for (int x = 0; x < 384; x++) if (want[x]) ids.push_back(x);
+        for (int x = 0; x < NE; x++) if (want[x]) ids.push_back(x);
         cache_->prefetch(l + 1, ids.data(), (int)ids.size());
       }
       // CPU routing tables, experts processed in groups that fit the cache
       Timer troute;
       const float* rw = (const float*)P.rw.cpu();
-      std::vector<std::vector<int>> toks_of(384);
+      std::vector<std::vector<int>> toks_of(NE);
       for (int t = 0; t < n; t++) for (int k = 0; k < 6; k++) toks_of[ids[t * 6 + k]].push_back(t * 6 + k);
       std::vector<int> used;
-      for (int x = 0; x < 384; x++) if (!toks_of[x].empty()) used.push_back(x);
+      for (int x = 0; x < NE; x++) if (!toks_of[x].empty()) used.push_back(x);
       // cached experts first, so the GPU starts while misses load
       // MACSEEK_PF_CACHED_FIRST=1: process cached experts first (GPU starts sooner) - but then the order in which groups
       // accumulate into Y depends on cache timing, so outputs are not bit-reproducible. Default: fixed id order.

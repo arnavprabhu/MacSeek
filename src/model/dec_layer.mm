@@ -236,7 +236,7 @@ void encode_dec_attn_side(Enc& e, DecCtx& c, int l, int pos) {
   if (o.pred_on && !sk(c, kSkipPred))
     for (int d = 1; d <= o.pred_depth && l + d < cfg.n_layers; d++) {
       const W& g = (o.pred_q8 && c.pred_w && !c.pred_w->empty()) ? (*c.pred_w)[l + d] : (*c.L)[l + d].gate_inp;
-      q::encode_matvec(e, g.t, g.b, g.rows, g.cols, B.x, B.plog.sub((size_t)(d - 1) * 384 * 4, 384 * 4));
+      q::encode_matvec(e, g.t, g.b, g.rows, g.cols, B.x, B.plog.sub((size_t)(d - 1) * g.rows * 4, (size_t)g.rows * 4));
     }
   for (int k = 0; k < o.probe_dispatches; k++) fill0(e, asc.dummy.sub(16 * (k % 8), 16), 4);   // PROFILING probe
   // the MoE accumulates into sub (consumed by the hc step above): zero it in the router stage with `reorder`

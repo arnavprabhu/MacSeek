@@ -32,9 +32,19 @@ uint32_t hc_threads() {
   return (v == 128 || v == 256 || v == 512 || v == 1024) ? (uint32_t)v : 512u;
 }
 bool hc_prefill_rows() { return options().hc_prefill_rows; }
+int n_exp() { const int n = options().n_experts; if (n != 384 && n != 192) { fprintf(stderr, "arch: n_experts %d unsupported\n", n); abort(); } return n; }
 uint32_t router_groups() {
+  const int ne = n_exp();
   int v = options().router_groups;
-  return (v > 0 && v <= 384 && 384 % v == 0) ? (uint32_t)v : 96u;
+  return (v > 0 && v <= ne && ne % v == 0) ? (uint32_t)v : (ne % 96 == 0 ? 96u : 48u);
+}
+void* router_pso(const char* base) {   // per-NEXP pipeline, cached
+  static void* p384[2] = {nullptr, nullptr};
+  static void* p192[2] = {nullptr, nullptr};
+  const int k = std::string(base) == "arch_router_fused" ? 0 : 1;
+  void** slot = n_exp() == 384 ? &p384[k] : &p192[k];
+  if (!*slot) *slot = pso((std::string(base) + "_" + std::to_string(n_exp())).c_str());
+  return *slot;
 }
 
 Buffer or_dummy(const Buffer& b, const Scratch& s) { return b ? b : s.dummy; }
@@ -171,7 +181,7 @@ void encode_hc_mean(Enc& e, Buffer h, Buffer out, int n) {
 }
 
 void encode_router_fused(Enc& e, Buffer x, Buffer W, Buffer bias, Buffer ids, Buffer w, const Scratch& s) {
-  ARCH_PSO(p, "arch_router_fused");
+  void* p = router_pso("arch_router_fused");
   const uint32_t G = router_groups();
   RouterParams P{1, G, kRouteScale, 0};
   e.set_pipeline(p);
@@ -183,13 +193,13 @@ void encode_router_fused(Enc& e, Buffer x, Buffer W, Buffer bias, Buffer ids, Bu
   e.set_buffer(5, w);
   e.set_buffer(6, counter(s, kCounterRouter));
   e.set_value(7, P);
-  uint32_t rows = kExperts / G;
+  uint32_t rows = (uint32_t)n_exp() / G;
   uint32_t T = std::min<uint32_t>(256, std::max<uint32_t>(32, rows * 32));
   e.dispatch_groups(G, 1, 1, T);
 }
 
 void encode_router_topk(Enc& e, Buffer logits, Buffer bias, Buffer ids, Buffer w, int n) {
-  ARCH_PSO(p, "arch_router_topk");
+  void* p = router_pso("arch_router_topk");
   RouterParams P{(uint32_t)n, 0, kRouteScale, 0};
   e.set_pipeline(p);
   e.set_buffer(0, logits);
@@ -218,12 +228,12 @@ void encode_route_lists(Enc& e, Buffer ids, Buffer w, int n, const RouteLists& L
   ARCH_PSO(p_count, "arch_route_count");
   ARCH_PSO(p_scatter, "arch_route_scatter");
   if (n > L.max_tokens) { fprintf(stderr, "arch: route_lists n=%d > max %d\n", n, L.max_tokens); abort(); }
-  RouterParams P{(uint32_t)n, 0, kRouteScale, 0};
+  RouterParams P{(uint32_t)n, 0, kRouteScale, (uint32_t)n_exp()};
   e.set_pipeline(p_count);
   e.set_buffer(0, ids);
   e.set_buffer(1, L.counts);
   e.set_value(2, P);
-  e.dispatch_groups(kExperts / 8, 1, 1, 256);
+  e.dispatch_groups(n_exp() / 8, 1, 1, 256);
   e.barrier();
   e.set_pipeline(p_scatter);
   e.set_buffer(0, ids);
@@ -235,7 +245,7 @@ void encode_route_lists(Enc& e, Buffer ids, Buffer w, int n, const RouteLists& L
   e.set_buffer(6, L.w);
   e.set_buffer(7, L.slot_of);
   e.set_value(8, P);
-  e.dispatch_groups(kExperts / 8, 1, 1, 256);
+  e.dispatch_groups(n_exp() / 8, 1, 1, 256);
 }
 
 void encode_engram_gate(Enc& e, Buffer h, Buffer kv, Buffer w, int n, const Scratch& s, Buffer gate_out) {
@@ -269,6 +279,22 @@ void encode_embed_q6k(Enc& e, Buffer rows, uint32_t row_stride, Buffer h, int n,
   e.set_buffer(1, h);
   e.set_value(2, P);
   e.dispatch_threads(n * (kDim / 256) * 64, 1, 1, 256);
+}
+
+void encode_embed_q5k(Enc& e, Buffer rows, uint32_t row_stride, Buffer h, int n, int copies) {
+  ARCH_PSO(p, "arch_embed_q5k");
+  EmbedParams P{(uint32_t)n, row_stride, (uint32_t)copies, (uint32_t)kDim};
+  e.set_pipeline(p);
+  e.set_buffer(0, rows);
+  e.set_buffer(1, h);
+  e.set_value(2, P);
+  e.dispatch_threads(n * (kDim / 256) * 64, 1, 1, 256);
+}
+
+void encode_embed(Enc& e, int t, Buffer rows, uint32_t row_stride, Buffer h, int n, int copies) {
+  if (t == 14) encode_embed_q6k(e, rows, row_stride, h, n, copies);
+  else if (t == 13) encode_embed_q5k(e, rows, row_stride, h, n, copies);
+  else { fprintf(stderr, "arch: token_embd type %d unsupported\n", t); abort(); }
 }
 
 void encode_argmax(Enc& e, Buffer logits, int rows, int V, Buffer out_idx, Buffer out_val, const Scratch& s,

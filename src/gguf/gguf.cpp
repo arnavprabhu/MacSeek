@@ -150,6 +150,14 @@ std::vector<std::string> Gguf::expand_splits(const std::string& path) {
     snprintf(tail, sizeof tail, "-%05d-of-%05d.gguf", i, n);
     out.push_back(m[1].str() + tail);
   }
+  // GSQ-RCO builds ship the Engram tables as a separate file (DeepSeek-V4.1-Flash-Engram-IQ4_NL.gguf) that is the
+  // last split of every build; llama.cpp wants a link named like the last split. If that link is missing, use the
+  // Engram file from the split directory or its parent.
+  if (!exists(out.back())) {
+    const std::string dir = out.back().substr(0, out.back().rfind('/'));
+    for (const std::string cand : {dir + "/DeepSeek-V4.1-Flash-Engram-IQ4_NL.gguf", dir + "/../DeepSeek-V4.1-Flash-Engram-IQ4_NL.gguf"})
+      if (exists(cand)) { out.back() = cand; break; }
+  }
   return out;
 }
 

@@ -94,8 +94,10 @@ void hc_step(const float* h_in, const float* x_sub, const float* mix_prev, const
   rmsnorm(xp.data(), norm_w, x_out, D, 1e-20);
 }
 
+int g_n_experts = 384;
+
 void router(const float* logits, const float* bias, int* ids, float* w, float route_scale) {
-  const int E = 384;
+  const int E = g_n_experts;
   std::vector<double> sc(E), key(E);
   for (int e = 0; e < E; e++) {
     double x = logits[e];
@@ -114,7 +116,7 @@ void router(const float* logits, const float* bias, int* ids, float* w, float ro
 void route_lists(const int* ids, const float* w, int n, std::vector<uint32_t>& counts, std::vector<uint32_t>& offsets,
                  std::vector<uint32_t>& entry, std::vector<uint32_t>& tok, std::vector<float>& lw,
                  std::vector<uint32_t>& slot_of) {
-  const int E = 384, N = n * 6;
+  const int E = g_n_experts, N = n * 6;
   counts.assign(E, 0);
   offsets.assign(E + 1, 0);
   entry.assign(N, 0);

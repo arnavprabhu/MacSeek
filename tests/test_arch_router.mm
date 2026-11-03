@@ -48,21 +48,25 @@ int main() {
   auto& d = Device::get();
   auto s = arch::Scratch::create(64, 4);
   bool ok = true;
+  for (const int NE : {384, 192}) {
+  arch::options().n_experts = NE;
+  ref_arch::g_n_experts = NE;
+  printf("== n_experts %d\n", NE);
 
   // 1) generic top-k from logits, n tokens
   for (int n : {1, 5, 2048}) {
-    std::vector<float> logits(n * 384), bias(384);
+    std::vector<float> logits(n * NE), bias(NE);
     r.fill_normal(logits.data(), logits.size(), 3.0f);
-    for (int i = 0; i < n * 384; i += 97) logits[i] = 30.0f + r.normal();  // softplus threshold branch
-    for (int i = 5; i < n * 384; i += 89) logits[i] = -25.0f;              // tiny-softplus branch
-    r.fill_normal(bias.data(), 384, 0.3f);
-    Buffer bl = up(logits.data(), logits.size() * 4), bb = up(bias.data(), 384 * 4);
+    for (int i = 0; i < n * NE; i += 97) logits[i] = 30.0f + r.normal();  // softplus threshold branch
+    for (int i = 5; i < n * NE; i += 89) logits[i] = -25.0f;              // tiny-softplus branch
+    r.fill_normal(bias.data(), NE, 0.3f);
+    Buffer bl = up(logits.data(), logits.size() * 4), bb = up(bias.data(), NE * 4);
     Buffer bid = d.alloc(n * 24), bw = d.alloc(n * 24);
     { Enc e; arch::encode_router_topk(e, bl, bb, bid, bw, n); e.wait(); }
     int ties = 0;
     bool o = true;
     for (int t = 0; t < n && o; t++)
-      o &= check_token(&logits[t * 384], bias.data(), (int*)bid.cpu() + t * 6, (float*)bw.cpu() + t * 6, t, ties);
+      o &= check_token(&logits[t * NE], bias.data(), (int*)bid.cpu() + t * 6, (float*)bw.cpu() + t * 6, t, ties);
     printf("router_topk n=%d: %s (near-ties %d)\n", n, o ? "ok" : "FAIL", ties);
     ok &= o;
 
@@ -72,27 +76,27 @@ int main() {
       std::vector<uint32_t> c, off, ent, tok, slot;
       std::vector<float> lw;
       ref_arch::route_lists((int*)bid.cpu(), (float*)bw.cpu(), n, c, off, ent, tok, lw, slot);
-      bool lo = !memcmp(L.counts.cpu(), c.data(), 384 * 4) && !memcmp(L.offsets.cpu(), off.data(), 385 * 4) &&
+      bool lo = !memcmp(L.counts.cpu(), c.data(), NE * 4) && !memcmp(L.offsets.cpu(), off.data(), (NE + 1) * 4) &&
                 !memcmp(L.entry.cpu(), ent.data(), n * 24) && !memcmp(L.tok.cpu(), tok.data(), n * 24) &&
                 !memcmp(L.w.cpu(), lw.data(), n * 24) && !memcmp(L.slot_of.cpu(), slot.data(), n * 24);
-      printf("route_lists n=%d: %s (offsets[384]=%u)\n", n, lo ? "ok (bit-exact)" : "FAIL", ((uint32_t*)L.offsets.cpu())[384]);
+      printf("route_lists n=%d: %s (offsets[E]=%u)\n", n, lo ? "ok (bit-exact)" : "FAIL", ((uint32_t*)L.offsets.cpu())[NE]);
       ok &= lo;
     }
   }
 
   // 3) fused decode matvec + top-k (synthetic and real layer-0 router)
-  std::vector<float> W(384 * 5120), bias(384), x(5120);
+  std::vector<float> W(NE * 5120), bias(NE), x(5120);
   r.fill_normal(W.data(), W.size(), 0.02f);
-  r.fill_normal(bias.data(), 384, 0.1f);
+  r.fill_normal(bias.data(), NE, 0.1f);
   bool real = false;
   for (int pass = 0; pass < 2; pass++) {
     if (pass == 1) {
-      real = arch_test::read_tensor_f32("blk.0.ffn_gate_inp.weight", W) && arch_test::read_tensor_f32("blk.0.exp_probs_b.bias", bias);
-      if (!real) { printf("real router check skipped (model not present)\n"); break; }
+      real = arch_test::read_tensor_f32("blk.0.ffn_gate_inp.weight", W) && W.size() == (size_t)NE * 5120 && arch_test::read_tensor_f32("blk.0.exp_probs_b.bias", bias);
+      if (!real) { printf("real router check skipped (model not present or not a 384-expert model)\n"); break; }
     }
-    Buffer bW = up(W.data(), W.size() * 4), bb = up(bias.data(), 384 * 4), bx = d.alloc(5120 * 4);
+    Buffer bW = up(W.data(), W.size() * 4), bb = up(bias.data(), NE * 4), bx = d.alloc(5120 * 4);
     Buffer bid = d.alloc(24), bw = d.alloc(24);
-    for (int G : {48, 96, 24, 384}) {
+    for (int G : {48, 96, 24, NE}) {
       arch::options().router_groups = G;
       int ties = 0;
       bool o = true;
@@ -100,13 +104,13 @@ int main() {
         r.fill_normal(x.data(), 5120, 1.0f);
         memcpy(bx.cpu(), x.data(), 5120 * 4);
         { Enc e; arch::encode_router_fused(e, bx, bW, bb, bid, bw, s); e.wait(); }
-        std::vector<float> logits(384);
-        for (int e = 0; e < 384; e++) {
+        std::vector<float> logits(NE);
+        for (int e = 0; e < NE; e++) {
           double a = 0;
           for (int i = 0; i < 5120; i++) a += (double)W[e * 5120 + i] * x[i];
           logits[e] = (float)a;
         }
-        if (it == 0) o &= arch_test::close("fused logits", (float*)s.router_logits.cpu(), logits.data(), 384, 1e-5f, 1e-4f);
+        if (it == 0) o &= arch_test::close("fused logits", (float*)s.router_logits.cpu(), logits.data(), NE, 1e-5f, 1e-4f);
         o &= check_token(logits.data(), bias.data(), (int*)bid.cpu(), (float*)bw.cpu(), it, ties);
       }
       printf("router_fused %s G=%d: %s (near-ties %d)\n", pass ? "real blk.0" : "synthetic", G, o ? "ok" : "FAIL", ties);
@@ -122,6 +126,8 @@ int main() {
     printf("router_fused %d-dispatch stress: %s (%d differ)\n", R, bad ? "FAIL" : "ok", bad);
     ok &= bad == 0;
   }
+  }
+  arch::options().n_experts = 384;
   printf(ok ? "test_arch_router: ALL OK\n" : "test_arch_router: FAILED\n");
   return ok ? 0 : 1;
 }

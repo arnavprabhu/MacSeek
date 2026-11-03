@@ -18,7 +18,9 @@ void hc_step(const float* h_in, const float* x_sub, const float* mix_prev, const
 
 void rmsnorm(const float* x, const float* w, float* y, int dim, double eps);
 
-// router for one token: logits [384] -> ids [6], w [6] (descending by score+bias)
+// routed experts used by router / route_lists (384 or 192)
+extern int g_n_experts;
+// router for one token: logits [E] -> ids [6], w [6] (descending by score+bias)
 void router(const float* logits, const float* bias, int* ids, float* w, float route_scale = 1.5f);
 // grouped lists, ordering identical to the GPU kernels
 void route_lists(const int* ids, const float* w, int n, std::vector<uint32_t>& counts, std::vector<uint32_t>& offsets,

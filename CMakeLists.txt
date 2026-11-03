@@ -40,7 +40,7 @@ file(GLOB_RECURSE LIB_SRCS CONFIGURE_DEPENDS
   ${CMAKE_SOURCE_DIR}/src/server/*.cpp)
 add_library(macseek_lib STATIC ${LIB_SRCS})
 target_include_directories(macseek_lib PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_compile_definitions(macseek_lib PUBLIC MACSEEK_METALLIB="${METALLIB}")
+target_compile_definitions(macseek_lib PUBLIC MACSEEK_METALLIB="${METALLIB}" MACSEEK_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(macseek_lib PUBLIC "-framework Metal" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(macseek_lib metallib)
 
