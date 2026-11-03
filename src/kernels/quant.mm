@@ -284,6 +284,14 @@ std::string moe_pair(QType r, QType s) {
   if (!is_iq(r) || !is_moe_shared(s)) return {};
   return std::string(kname(r)) + "_" + kname(s);
 }
+// table (decode) variants: MACSEEK_MOE_DEC_V=0 selects the previous IQ1_M decoder and 16-lane IQ2_XXS gate/up
+// (instantiated with the Coder's Q5_K shared expert)
+std::string moe_pair_t(QType r, QType s) {
+  static const bool v0 = env_int("MACSEEK_MOE_DEC_V", 1) == 0;
+  if (v0 && r == QType::IQ1_M && s == QType::Q5_K) return "iq1_m0_q5_k";
+  if (v0 && r == QType::IQ2_XXS && s == QType::Q5_K) return "iq2_xxs0_q5_k";
+  return moe_pair(r, s);
+}
 }  // namespace
 
 size_t moe_decode_scratch_bytes() { return sizeof(float) * (kMaxRouted + 1) * kExpertInter; }
@@ -343,7 +351,7 @@ void encode_moe_decode_table(Enc& e, const MoeDecodeArgs& a, const Buffer& table
 }
 
 void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& table, MoePart part) {
-  const std::string p_gu = moe_pair(a.t_gate_up, a.t_shared), p_d = moe_pair(a.t_down, a.t_shared);
+  const std::string p_gu = moe_pair_t(a.t_gate_up, a.t_shared), p_d = moe_pair_t(a.t_down, a.t_shared);
   if (p_gu.empty() || p_d.empty()) die("moe_decode_table type combo", a.t_gate_up, 0, 0);
   if ((part == MoePart::SharedGu || part == MoePart::Shared || part == MoePart::SharedDown) && !a.has_shared) return;
   static const long env_gu_nr = env_int("MACSEEK_MOE_GU_NR", 2), env_gu_ks = env_int("MACSEEK_MOE_GU_KS", 1),
@@ -362,7 +370,7 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
                 (uint32_t)row_bytes(a.t_shared, kExpertDim), (uint32_t)row_bytes(a.t_shared, kExpertInter), 1, 0};
   const int n_gu = (gu_r ? a.n_routed : 0) + (gu_s ? 1 : 0);
   if (n_gu > 0) {
-    const int nr = a.gu_nr ? a.gu_nr : (int)env_gu_nr, ks = (int)env_gu_ks, rsg = a.gu_rsg ? a.gu_rsg : (int)env_gu_rsg;
+    const int nr = a.gu_nr ? a.gu_nr : (int)env_gu_nr, ks = a.gu_ks ? a.gu_ks : (int)env_gu_ks, rsg = a.gu_rsg ? a.gu_rsg : (int)env_gu_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     args.tiles = (kExpertInter + rows_per_tg - 1) / rows_per_tg;
@@ -379,7 +387,7 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
   if (!d_r && !d_s) return;
   if (n_gu > 0) e.barrier();
   {
-    const int nr = a.d_nr ? a.d_nr : (int)env_d_nr, ks = (int)env_d_ks, rsg = a.d_rsg ? a.d_rsg : (int)env_d_rsg;
+    const int nr = a.d_nr ? a.d_nr : (int)env_d_nr, ks = a.d_ks ? a.d_ks : (int)env_d_ks, rsg = a.d_rsg ? a.d_rsg : (int)env_d_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     std::string fn = std::string("q_moe_down_t_") + p_d + "_r" + std::to_string(nr);

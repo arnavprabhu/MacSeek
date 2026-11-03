@@ -48,6 +48,16 @@ with open(sys.argv[2], 'w') as f:
         for i in range(4): words.append(H[b[2 * i]] | (H[b[2 * i + 1]] << 16))
     f.write('\n// derived: IQ1_S grid as half values, 4 x uint32 (= 8 halfs) per entry\n')
     f.write('#define Q_IQ1S_GRID_HALF_VALUES \\\n  ' + fmt(words, 8) + '\n')
+    # derived: IQ1_M (also IQ1_S) grid with the delta folded in: entry i (0..2047) = grid_i + 1/8, entry 2048 + i =
+    # grid_i - 1/8 (index = qs | (qh nibble incl. the delta-sign bit 3) << 8); values exact in half
+    HD = {(0xff, 1): 0xBB00, (0x00, 1): 0x3000, (0x01, 1): 0x3C80, (0xff, -1): 0xBC80, (0x00, -1): 0xB000, (0x01, -1): 0x3B00}
+    words = []
+    for sgn in (1, -1):
+        for v in iq1s:
+            b = [(v >> (8 * j)) & 0xff for j in range(8)]
+            for i in range(4): words.append(HD[(b[2 * i], sgn)] | (HD[(b[2 * i + 1], sgn)] << 16))
+    f.write('\n// derived: IQ1_M grid + delta as half values, [2][2048] entries (delta +1/8, -1/8) of 4 x uint32\n')
+    f.write('#define Q_IQ1M_GRIDD_HALF_VALUES \\\n  ' + fmt(words, 8) + '\n')
     import struct as _st
     def h(v): return _st.unpack('<H', _st.pack('<e', float(v)))[0]
     words = []

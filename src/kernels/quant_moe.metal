@@ -19,6 +19,12 @@ struct QMoeArgs {
 // from the matvec choice: gate and up share the x registers, so wider lanes win there; bench_qmatvec --moe)
 template <typename Q> struct QMoeGuDec { typedef Q T; };
 template <> struct QMoeGuDec<QB_IQ1M> { typedef QB_IQ1M_T<8> T; };
+// IQ2_XXS gate/up: 8 lanes per block (one sub-block per lane; header loads amortized over 32 weights; +2% MoE decode)
+template <> struct QMoeGuDec<QB_IQ2XXS> { typedef QB_IQ2XXS_T<8> T; };
+// previous decoders (MACSEEK_MOE_DEC_V=0): IQ1_M with delta * group sum, IQ2_XXS gate/up with 16 lanes
+typedef QB_IQ1M_T<16, 0> QB_IQ1M0;
+template <> struct QMoeGuDec<QB_IQ1M0> { typedef QB_IQ1M_T<8, 0> T; };
+typedef QB_IQ2XXS_T<16, 0> QB_IQ2XXS0;
 
 template <typename T>
 static inline T q_pick6(uint e, T a0, T a1, T a2, T a3, T a4, T a5) {
@@ -229,14 +235,18 @@ kernel void q_moe_down_t(device const float* h [[buffer(0)]], device float* y [[
   {
     constexpr ushort BPI = 32 / QR::LPB;
     const ushort sub = lane % QR::LPB, slot = lane / QR::LPB;
-    const uint nb = a.inter / QR::QK, nu = nb * a.n_routed;
-    for (uint u = kk * BPI + slot; u < nu; u += ks * BPI) {
-      const uint e = u / nb, ib = u - e * nb;
+    // (expert, block) of the flattened unit index u, advanced incrementally (no integer division per iteration)
+    const uint nb = a.inter / QR::QK, nu = nb * a.n_routed, st = ks * BPI;
+    uint e = 0, ib = kk * BPI + slot;
+    while (ib >= nb && e < a.n_routed) { ib -= nb; e++; }
+    for (uint u = kk * BPI + slot; u < nu; u += st) {
       device const uchar* D = tbl[e].d;
       float4 xr[QR::X4];
       QR::load_x(h + e * a.inter + ib * QR::QK, sub, xr);
       for (int r = 0; r < NR; r++)
         acc[r] += QR::dot(D + (ulong)min(row0 + r, a.dim - 1) * a.rb_d_r + ib * QR::BB, sub, xr);
+      ib += st;
+      while (ib >= nb) { ib -= nb; e++; }
     }
   }
   if (a.has_shared) {
@@ -274,3 +284,6 @@ kernel void q_moe_down_t(device const float* h [[buffer(0)]], device float* y [[
       threadgroup float*, uint, ushort, ushort, ushort);
 #define Q_MOE_T_ALL(QR, QS, name) Q_MOE_T_INST(QR, QS, name, 1) Q_MOE_T_INST(QR, QS, name, 2) Q_MOE_T_INST(QR, QS, name, 4)
 Q_MOE_PAIRS(Q_MOE_T_ALL)
+// previous decoders with the Coder's Q5_K shared expert (table variants only: the decode path)
+Q_MOE_T_ALL(QB_IQ1M0, QB_Q5K, "iq1_m0_q5_k")
+Q_MOE_T_ALL(QB_IQ2XXS0, QB_Q5K, "iq2_xxs0_q5_k")

@@ -1,6 +1,8 @@
+#import <Metal/Metal.h>
 // bench_qmatvec: decode matvec (n=1) and matvec_n timing on the real shapes, as % of measured read bandwidth.
 // Weights are rotated over >= 512 MiB of copies so every call streams from DRAM (as in real decode).
 // Usage: bench_qmatvec [--sweep] [--rules] [--reps R] [--n N] [filter-substring]
+//   --moe-sweep gu,down,shared[,routed|shared]: launch-shape sweep of the MoE decode table part (Routed / Shared)
 //   --rules: launch rule v0 (generic) vs v1 (default, Q5_K rule) interleaved, best + median (q::matvec_cfg_rule)
 #include <algorithm>
 #include <cstdio>
@@ -101,12 +103,100 @@ static int bench_moe(double bw, int reps, const char* filt) {
   return 0;
 }
 
+// MoE decode table variant, launch-shape sweep of one part (bench_qmatvec --moe-sweep gu,down,shared [routed|shared]):
+// the part's gate/up shape is swept with the down shape at its default, then the down shape with gate/up at default.
+static int bench_moe_sweep(double bw, int reps, const std::string& spec) {
+  auto& d = Device::get();
+  auto parse = [](std::string n) {
+    for (QType t : {QType::IQ1_S, QType::IQ2_XXS, QType::IQ1_M, QType::IQ2_XS, QType::Q6_K, QType::Q8_0, QType::Q5_K}) {
+      std::string tn = q::type_name(t);
+      for (auto& ch : tn) ch = (char)tolower(ch);
+      if (tn == n) return t;
+    }
+    fprintf(stderr, "unknown type %s\n", n.c_str()); exit(2);
+  };
+  const size_t c1 = spec.find(','), c2 = spec.find(',', c1 + 1), c3 = spec.find(',', c2 + 1);
+  const QType gu_t = parse(spec.substr(0, c1)), dn_t = parse(spec.substr(c1 + 1, c2 - c1 - 1));
+  const QType sh_t = parse(spec.substr(c2 + 1, c3 == std::string::npos ? std::string::npos : c3 - c2 - 1));
+  const bool shared = c3 != std::string::npos && spec.substr(c3 + 1) == "shared";
+  const q::MoePart part = shared ? q::MoePart::Shared : q::MoePart::Routed;
+  const int D = q::kExpertDim, I = q::kExpertInter;
+  const size_t gu = q::row_bytes(gu_t, D) * I, dn = q::row_bytes(dn_t, I) * D;
+  const size_t sgu = q::row_bytes(sh_t, D) * I, sdn = q::row_bytes(sh_t, I) * D;
+  const size_t per = 6 * (2 * gu + dn) + 2 * sgu + sdn;
+  const size_t used = shared ? 2 * sgu + sdn : 6 * (2 * gu + dn);
+  const int copies = (int)std::max<size_t>(2, (512ull << 20) / per);
+  std::vector<Buffer> arenas(copies), tbls(copies);
+  std::vector<q::MoeDecodeArgs> args(copies);
+  Buffer x = d.alloc(D * 4), y = d.alloc(D * 4), w = d.alloc(64), scratch = d.alloc(q::moe_decode_scratch_bytes());
+  for (int k = 0; k < copies; k++) {
+    arenas[k] = d.alloc(per);
+    uint32_t* p = (uint32_t*)arenas[k].cpu(); uint32_t st = 777 + k;
+    for (size_t i = 0; i < per / 4; i++) { st = st * 1664525u + 1013904223u; p[i] = st & 0x3bff3bffu; }
+    tbls[k] = d.alloc(6 * 3 * 8);
+    q::MoeDecodeArgs& a = args[k];
+    a.t_gate_up = gu_t; a.t_down = dn_t; a.t_shared = sh_t; a.n_routed = 6; a.has_shared = true;
+    const uint64_t base = [(__bridge id<MTLBuffer>)arenas[k].buf gpuAddress] + arenas[k].off;
+    uint64_t* t = (uint64_t*)tbls[k].cpu();
+    size_t off = 0;
+    for (int e = 0; e < 6; e++) {
+      t[3 * e] = base + off; off += gu; t[3 * e + 1] = base + off; off += gu; t[3 * e + 2] = base + off; off += dn;
+    }
+    a.shared.gate = arenas[k].sub(off, sgu); off += sgu;
+    a.shared.up = arenas[k].sub(off, sgu); off += sgu;
+    a.shared.down = arenas[k].sub(off, sdn);
+    a.weights = w; a.x = x; a.y = y; a.scratch = scratch;
+  }
+  auto once = [&](int gnr, int grsg, int gks, int dnr, int drsg, int dks) {
+    Enc e;
+    e.use_resources(arenas);
+    for (int k = 0; k < copies; k++) {
+      q::MoeDecodeArgs a = args[k];
+      a.gu_nr = gnr; a.gu_rsg = grsg; a.gu_ks = gks; a.d_nr = dnr; a.d_rsg = drsg; a.d_ks = dks;
+      q::encode_moe_decode_table_part(e, a, tbls[k], part);
+      e.barrier();
+    }
+    e.wait();
+    return e.gpu_ms() * 1e3 / copies;
+  };
+  auto run = [&](int gnr, int grsg, int gks, int dnr, int drsg, int dks) {
+    std::vector<double> t;
+    once(gnr, grsg, gks, dnr, drsg, dks);
+    for (int r = 0; r < reps; r++) t.push_back(once(gnr, grsg, gks, dnr, drsg, dks));
+    std::sort(t.begin(), t.end());
+    return t[0];
+  };
+  printf("MoE decode table part %s, %s/%s + %s: %.2f MB per call\n", shared ? "Shared" : "Routed", q::type_name(gu_t),
+         q::type_name(dn_t), q::type_name(sh_t), used / 1e6);
+  for (int w = 0; w < 3; w++) once(0, 0, 0, 0, 0, 0);   // clocks up
+  const double t0 = run(0, 0, 0, 0, 0, 0);
+  printf("default: %.1f us %.1f%%\n", t0, 100.0 * used / t0 / 1e3 / bw);
+  if (getenv("BENCH_NOSWEEP")) return 0;
+  for (int which = 0; which < 2; which++) {
+    std::vector<std::pair<double, std::string>> all;
+    for (int nr : {1, 2, 4}) for (int rsg : {1, 2, 4, 8}) for (int ks : {1, 2, 4, 8}) {
+      if (rsg * ks > 16) continue;
+      const double t = which == 0 ? run(nr, rsg, ks, 0, 0, 0) : run(0, 0, 0, nr, rsg, ks);
+      char b[32]; snprintf(b, sizeof b, "%d/%d/%d", nr, rsg, ks);
+      all.push_back({t, b});
+    }
+    std::sort(all.begin(), all.end());
+    printf("%s sweep (nr/rsg/ks, other part default):", which == 0 ? "gate/up" : "down");
+    for (size_t i = 0; i < std::min<size_t>(8, all.size()); i++)
+      printf("  %s %.1fus %.1f%%", all[i].second.c_str(), all[i].first, 100.0 * used / all[i].first / 1e3 / bw);
+    printf("\n");
+  }
+  return 0;
+}
+
 int main(int argc, char** argv) {
-  bool sweep = false, moe = false, rules = false; int n = 1; int reps = 7; const char* filt = nullptr;
+  bool sweep = false, moe = false, rules = false;
+  std::string moe_sweep; int n = 1; int reps = 7; const char* filt = nullptr;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--sweep")) sweep = true;
     else if (!strcmp(argv[i], "--moe")) moe = true;
     else if (!strcmp(argv[i], "--rules")) rules = true;
+    else if (!strcmp(argv[i], "--moe-sweep") && i + 1 < argc) moe_sweep = argv[++i];
     else if (!strcmp(argv[i], "--reps") && i + 1 < argc) reps = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--n") && i + 1 < argc) n = atoi(argv[++i]);
     else filt = argv[i];
@@ -138,6 +228,7 @@ int main(int argc, char** argv) {
       {QType::Q5_K, 25600, 6144, 1, "coder engram_kv"}, {QType::F32, 192, 5120, 1, "coder router"},
   };
   if (moe) return bench_moe(bw, reps, filt);
+  if (!moe_sweep.empty()) return bench_moe_sweep(bw, reps, moe_sweep);
   printf("%-8s %-15s %-16s %9s %8s %7s  %s\n", "type", "tensor", "shape", "MB", "us", "GB/s", "%BW");
   for (const Shape& s : shapes) {
     std::string lab = std::string(q::type_name(s.t)) + " " + s.what;

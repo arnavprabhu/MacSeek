@@ -71,6 +71,8 @@ struct MoeDecodeArgs {
   // launch shape overrides of the table variants (0 = MACSEEK_MOE_* env / default). Rows per simdgroup (nr) and
   // row-simdgroups per threadgroup (rsg) do not change any row's summation order: results are bit-identical.
   int gu_nr = 0, gu_rsg = 0, d_nr = 0, d_rsg = 0;
+  // K-split simdgroups per row (0 = MACSEEK_MOE_{GU,D}_KS / default): changes the summation grouping (not bit-identical)
+  int gu_ks = 0, d_ks = 0;
 };
 size_t moe_decode_scratch_bytes();
 // Two dispatches (gate+up+swiglu for all experts incl. shared, then down for all experts accumulated into y) with a

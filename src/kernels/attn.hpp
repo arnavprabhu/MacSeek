@@ -30,6 +30,8 @@ struct Options {
   int key_chunk = 16384;   // prefill indexer key chunk (multiple of 64). env MACSEEK_ATTN_KCHUNK
   int dec_rows_split = 64; // decode split-K rows per threadgroup (multiple of 16). env MACSEEK_ATTN_DEC_SPLIT
   int dec_heads_tg = 8;    // heads per sparse-attention threadgroup, decode (8|16). env MACSEEK_ATTN_DEC_HEADS
+  bool dec_prefetch = false;  // decode sparse attention (8 heads): next 16-row chunk loaded into registers during the
+                              // current chunk's math (bit-identical; measured no gain at 262K). env MACSEEK_ATTN_DEC_PF
   bool dec_fast_index = true;  // tensor-op decode scorer + histogram/compaction top-k (0: simdgroup scorer +
                                // single-threadgroup radix select). env MACSEEK_ATTN_DEC_FAST
   int dec_cand_cap = 32768;    // candidate capacity of the decode compaction (overflow -> exact fallback)
