@@ -23,6 +23,8 @@
 #include "store/weights.hpp"
 
 namespace ms::ds41 {
+// ZALL: rows between the routed Z rows [0, 6n) and the shared expert's rows (env MACSEEK_PF_ZGAP, default 64)
+static const size_t kZallGap = (size_t)env_int("MACSEEK_PF_ZGAP", 64);
 
 using q::QType;
 
@@ -206,8 +208,8 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
     P.moe_scr[i] = A(q::moe_prefill_scratch_bytes(std::min(total, 8192), (int)n, o.moe_group), "moe_pf");  // grows on demand
     P.route_dev[i] = A((size_t)total * 4 * 3 + 4096, "route");
   }
-  if (env_int("MACSEEK_PF_ZALL", 1)) {
-    P.zall = A((size_t)7 * n * 5120 * 4, "moe_zall");
+  if (env_int("MACSEEK_PF_ZALL", 0)) {
+    P.zall = A(((size_t)7 * n + kZallGap) * 5120 * 4, "moe_zall");
     P.route_all = A((size_t)total * 4 * 3 + 4096, "route_all");
   }
 
@@ -791,6 +793,13 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     gpu_ms += e->gpu_ms();
     span_next_kind = 0; span(*e);
     for (size_t i = 0; i < P.moe_inflight.size(); i++) { auto& x = P.moe_inflight[i]; x->wait(); moe_gpu_ms += x->gpu_ms(); span_next_kind = 1 + (i > 0); span(*x); }
+    static const bool dbg_xmax = env_int("MACSEEK_DBG_XMAX", 0) != 0;
+    if (dbg_xmax && !dec) {   // debug: largest |MoE input| per layer (half overflow check)
+      const float* xs = (const float*)P.x.cpu();
+      float mx = 0; int mt = -1;
+      for (int t = 0; t < n; t++) for (int c = 0; c < 5120; c++) { float v = fabsf(xs[(size_t)t * 5120 + c]); if (!(v <= mx)) { mx = v; mt = t; } }
+      fprintf(stderr, "xmax: layer %d max|x| %.1f at token %d\n", l, mx, mt);
+    }
     P.moe_inflight.clear();
 
     // ---- MoE ----
@@ -847,7 +856,10 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       // go first (GPU starts while the misses load) and the result stays bit-reproducible.
       const bool zall = (bool)P.zall && n * 6 <= (int)(P.route_all.size / 12);
       static const bool cached_first = env_int("MACSEEK_PF_CACHED_FIRST", 0) != 0;
-      if (zall) {   // ready first, then loading, then absent (stable: id order inside each)
+      static const int pf_order = (int)env_int("MACSEEK_PF_ORDER", 2);   // ZALL group order: 0 id, 1 cached first, 2 ready first
+      if (zall && pf_order == 1) std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
+      else if (zall && pf_order == 0) {}
+      else if (zall) {   // ready first, then loading, then absent (stable: id order inside each)
         std::vector<int> rs(NE, 0);
         for (int x : used) rs[x] = cache_->residency(l, x);
         std::stable_sort(used.begin(), used.end(), [&](int a, int b) { return rs[a] > rs[b]; });
@@ -944,13 +956,13 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
           m.tok = P.route_all.sub((size_t)g0[gi] * 4, (size_t)std::max(total, 1) * 4);
           m.wt = P.route_all.sub(((size_t)n * 6 + g0[gi]) * 4, (size_t)std::max(total, 1) * 4);
           m.z_ext = P.zall.sub((size_t)g0[gi] * rb, (size_t)std::max(total, 1) * rb);
-          m.z_shared_ext = P.zall.sub((size_t)n * 6 * rb, (size_t)n * rb);
+          m.z_shared_ext = P.zall.sub(((size_t)n * 6 + kZallGap) * rb, (size_t)n * rb);
           m.skip_reduce = true;
         }
         q::encode_moe_prefill(eg, m);
         if (zall && gi == ngroups - 1) {   // all groups' Z rows are written (CBs chained): one deterministic reduce
           eg.barrier();
-          q::encode_moe_reduce(eg, P.zall, P.sub, P.route_all.sub((size_t)n * 12 * 4, (size_t)n * 6 * 4), n, n * 6, 6, true);
+          q::encode_moe_reduce(eg, P.zall, P.sub, P.route_all.sub((size_t)n * 12 * 4, (size_t)n * 6 * 4), n, n * 6 + kZallGap, 6, true);
         }
         eg.between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:pchain value:++pval]; });
         leases[gi].release_after(eg.cmdbuf());
