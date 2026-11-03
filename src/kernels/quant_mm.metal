@@ -149,7 +149,9 @@ kernel void q_deq_f16(device const uchar* W [[buffer(0)]], device half* out [[bu
   const ushort sub = g - blk * Q::LPB;
   float4 w[Q::EPL / 4];
   Q::deq(W + (ulong)row * d.z + (ulong)blk * Q::BB, sub, w);
-  device half* o = out + (ulong)row * d.y + blk * Q::QK;
+  // d.w > 0: rows interleaved in blocks of d.w (row r -> (r / d.w) * 2 d.w + r % d.w: gate|up blocks for q_moe_dgu2)
+  const uint orow = d.w ? (row / d.w) * 2 * d.w + row % d.w : row;
+  device half* o = out + (ulong)orow * d.y + blk * Q::QK;
   for (int q = 0; q < Q::EPL / 4; q++) *(device half4*)(o + Q::pos(sub, 4 * q)) = half4(w[q]);
 }
 #define Q_DEQ_INST(Q, name) \

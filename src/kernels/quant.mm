@@ -381,26 +381,32 @@ constexpr int kMoeTN = 64;
 int moe_tm() { static const int v = (int)env_int("MACSEEK_MOEP_TM", 64); return v; }
 // MoE prefill kernel family: 0 = threadgroup dequant tiles (q_moe_mm_*), 1 = per-simdgroup register dequant (q_moe_r*)
 int moe_path() { static const int v = (int)env_int("MACSEEK_MOEP_PATH", 1); return v; }
-struct MoeRKern { int tm, tn, tk, nsg; };
+struct MoeRKern { int tm, tn, tk, nsg, merged = 0, pf = 0; };  // merged: gate|up in one matmul (tn = rows per matrix); pf: raw-word prefetch  // merged: gate|up in one matmul (q_moe_rgu2, tn = rows per matrix)
 // shared expert through pre-dequantized half weights + dense GEMMs (1, default) or the grouped kernels (0)
 bool moe_shared_dense() { static const bool v = env_int("MACSEEK_MOEP_SHDENSE", 1) != 0; return v; }
-// register-path launch shapes (bench_qmatmul --real), "TMxTNkTKsNSG" ("0" = class off). Token-tile classes of 64, 48,
-// 32 and 16 tokens: an expert with m tokens gets ceil(m/64) tiles (one weight dequantization per tile), full 64-token
-// tiles plus the smallest class that holds the remainder (tensor work padded to 16 rows). Defaults per routed type
-// (gate/up K step 64 for IQ1_S / IQ2_XS, 32 for IQ2_XXS / IQ1_M: their dequant needs more registers).
+// register-path launch shapes (bench_qmatmul --real), "TMxTNkTKsNSG[m]" ("0" = class off; trailing m = gate|up merged
+// into one matmul, q_moe_rgu2; without m the two-matmul q_moe_rgu). Token-tile classes of 64, 48, 32 and 16 tokens: an
+// expert with m tokens gets ceil(m/64) tiles (one weight dequantization per tile), full 64-token tiles plus the
+// smallest class that holds the remainder (tensor work padded to 16 rows). Defaults: gate/up merged (the X tile is read
+// once per K step for gate and up: routed gate/up -16..-19%), K step 64 for the 64-token class of IQ1_S / IQ1_M, 32
+// otherwise (IQ2 dequant needs more registers); remainder classes K 32 (flat within +-1%).
 constexpr int kMoeTileCls = 4;
 MoeRKern moe_rk(QType t, bool down, int cls) {
   static const char* envs[2][kMoeTileCls] = {
       {"MACSEEK_MOEP_RGU64", "MACSEEK_MOEP_RGU48", "MACSEEK_MOEP_RGU", "MACSEEK_MOEP_RGU16"},
       {"MACSEEK_MOEP_RD64", "MACSEEK_MOEP_RD48", "MACSEEK_MOEP_RD", "MACSEEK_MOEP_RD16"}};
-  const int tk_gu = (t == QType::IQ1_S || t == QType::IQ2_XS) ? 64 : 32;  // IQ1_M: K 64 spills (-12%)
-  static const MoeRKern dg[kMoeTileCls] = {{64, 16, 0, 4}, {48, 16, 0, 4}, {32, 32, 0, 4}, {16, 32, 0, 4}};
-  static const MoeRKern dd[kMoeTileCls] = {{64, 32, 32, 4}, {48, 32, 32, 4}, {32, 64, 32, 4}, {16, 64, 32, 4}};
+  const int tk64 = (t == QType::IQ1_S || t == QType::IQ1_M) ? 64 : 32;
+  static const MoeRKern dg[kMoeTileCls] = {{64, 16, 32, 4, 1}, {48, 16, 32, 4, 1}, {32, 32, 32, 4, 1}, {16, 32, 32, 4, 1}};
+  static const MoeRKern dd[kMoeTileCls] = {{64, 32, 32, 4, 0}, {48, 32, 32, 4, 0}, {32, 64, 32, 4, 0}, {16, 64, 32, 4, 0}};
   MoeRKern d = down ? dd[cls] : dg[cls];
-  if (!down && d.tm) d.tk = tk_gu;
+  if (!down && cls == 0) d.tk = tk64;
   std::string v = env_str(envs[down][cls], "");
-  if (v == "0") return MoeRKern{0, 0, 0, 0};
-  if (!v.empty()) sscanf(v.c_str(), "%dx%dk%ds%d", &d.tm, &d.tn, &d.tk, &d.nsg);
+  if (v == "0") return MoeRKern{0, 0, 0, 0, 0};
+  if (!v.empty()) {
+    sscanf(v.c_str(), "%dx%dk%ds%d", &d.tm, &d.tn, &d.tk, &d.nsg);
+    const size_t sp = v.find('s');
+    d.merged = !down && sp != std::string::npos && v.find('m', sp) != std::string::npos;
+  }
   return d;
 }
 struct QMoePArgs { uint32_t n, total, dim, inter, rb_gu, rb_d, k_per_token; };
@@ -503,6 +509,12 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
     memcpy(tiles + tw, tl[c].data(), tl[c].size() * 4);
     toff[c] = tw * 4; tw += tl[c].size();
   }
+  static const bool stats = env_int("MACSEEK_MOEP_STATS", 0) != 0;
+  if (stats) {
+    fprintf(stderr, "moep: n=%d total=%d experts=%d tiles:", n, total, ne);
+    for (int c = 0; c < kMoeTileCls; c++) fprintf(stderr, " %dx%d", ntl[c], cls_tm[c]);
+    fprintf(stderr, "\n");
+  }
   const size_t rows = (size_t)total + n;
   const Buffer s_hdr = a.scratch.sub(0, hbytes);
   const Buffer s_xg = a.scratch.sub(hbytes, rows * kExpertDim * 2);
@@ -514,10 +526,11 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
   const Buffer s_z = zext ? a.z_ext : a.scratch.sub(off_z, rows * kExpertDim * 4);
   const size_t off_w16 = off_z + align256(rows * kExpertDim * 4);
   const Buffer s_w16 = a.scratch.sub(off_w16, (size_t)2 * kExpertInter * kExpertDim * 2);
-  auto deq16 = [&](QType t, const Buffer& W, int r, int c, size_t dst_off) {  // whole matrix -> half in s_w16
-    uint32_t d[4] = {(uint32_t)r, (uint32_t)c, (uint32_t)row_bytes(t, c), 0};
+  // whole matrix -> half in s_w16 (il > 0: rows interleaved in blocks of il, see q_deq_f16 / q_moe_dgu2)
+  auto deq16 = [&](QType t, const Buffer& W, int r, int c, size_t dst_off, uint32_t il = 0) {
+    uint32_t d[4] = {(uint32_t)r, (uint32_t)c, (uint32_t)row_bytes(t, c), il};
     e.set_pipeline((std::string("q_deq_f16_") + kname(t)).c_str());
-    e.set_buffer(0, W); e.set_buffer(1, s_w16.sub(dst_off, (size_t)r * c * 2)); e.set_bytes(2, d, 16);
+    e.set_buffer(0, W); e.set_buffer(1, s_w16.sub(dst_off, s_w16.size - dst_off)); e.set_bytes(2, d, 16);
     e.dispatch_threads(c / gpu_epl(t), r, 1, 64, 1);
   };
   const Buffer b_ptrs = s_hdr;
@@ -538,13 +551,23 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
     e.set_buffer(0, a.X); e.set_buffer(1, s_xg); e.set_buffer(2, a.tok.buf ? a.tok : a.scratch); e.set_value(3, args);
     e.dispatch_threads(kExpertDim / 4, (uint32_t)(a.has_shared ? rows : total), 1, 64, 1);
   }
+  // shared gate/up as one interleaved GEMM (q_moe_dgu2, default) or two (q_moe_dgu): MACSEEK_MOEP_DGU2
+  static const bool dgu2 = env_int("MACSEEK_MOEP_DGU2", 1) != 0;
   if (sh_dense && !(skip & 4)) {
-    deq16(a.t_shared, a.shared.gate, kExpertInter, kExpertDim, 0);
-    deq16(a.t_shared, a.shared.up, kExpertInter, kExpertDim, (size_t)kExpertInter * kExpertDim * 2);
+    if (dgu2) {
+      deq16(a.t_shared, a.shared.gate, kExpertInter, kExpertDim, 0, 64);
+      deq16(a.t_shared, a.shared.up, kExpertInter, kExpertDim, (size_t)64 * kExpertDim * 2, 64);
+    } else {
+      deq16(a.t_shared, a.shared.gate, kExpertInter, kExpertDim, 0);
+      deq16(a.t_shared, a.shared.up, kExpertInter, kExpertDim, (size_t)kExpertInter * kExpertDim * 2);
+    }
   }
   e.barrier();
   auto rname = [&](const char* kind, const char* kn, const MoeRKern& k) {
-    return std::string(kind) + kn + "_" + std::to_string(k.tm) + "x" + std::to_string(k.tn) + "k" + std::to_string(k.tk) +
+    const bool g = kind[6] == 'r' && kind[7] == 'g';
+    std::string kk = g ? (k.merged ? (k.pf == 1 ? "q_moe_rgu2p_" : k.pf == 2 ? "q_moe_rgu2w_" : "q_moe_rgu2_") : "q_moe_rgu_")
+                       : (k.pf == 1 ? "q_moe_rdownp_" : k.pf == 2 ? "q_moe_rdownw_" : kind);
+    return kk + kn + "_" + std::to_string(k.tm) + "x" + std::to_string(k.tn) + "k" + std::to_string(k.tk) +
            "s" + std::to_string(k.nsg);
   };
   // 2) gate + up + swiglu -> H (all dispatches of a phase run concurrently)
@@ -565,11 +588,14 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
       e.dispatch_groups(kExpertInter / kMoeTN, nt, 1, 128);
     }
   };
+  static const bool fake = env_int("MACSEEK_MOEP_FAKE", 0) != 0;  // PROFILING ONLY: constant weights (MMA ceiling)
+  static const std::string gu_override = env_str("MACSEEK_MOEP_GUK", "");  // PROFILING ONLY: gate/up kernel type name
+  if (!gu_override.empty()) k_gu = gu_override.c_str();
   if (!(skip & 2))
-    for (int c = 0; c < kMoeTileCls; c++) if (!(skip & (64 << c))) gu(k_gu, a.t_gate_up, b_tl[c], ntl[c], kg[c]);
+    for (int c = 0; c < kMoeTileCls; c++) if (!(skip & (64 << c))) gu(fake ? "fake" : k_gu, a.t_gate_up, b_tl[c], ntl[c], kg[c]);
   if (!(skip & 4)) {
     if (sh_dense) {
-      e.set_pipeline("q_moe_dgu");
+      e.set_pipeline(dgu2 ? "q_moe_dgu2" : "q_moe_dgu");
       e.set_buffer(0, s_xg); e.set_buffer(1, s_h); e.set_value(2, args); e.set_buffer(3, s_w16);
       e.dispatch_groups(kExpertInter / 64, (n + 63) / 64, 1, 128);
     } else {
@@ -596,7 +622,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
     }
   };
   if (!(skip & 8))
-    for (int c = 0; c < kMoeTileCls; c++) if (!(skip & (64 << c))) dn(k_d, a.t_down, b_tl[c], ntl[c], kd[c]);
+    for (int c = 0; c < kMoeTileCls; c++) if (!(skip & (64 << c))) dn(fake ? "fake" : k_d, a.t_down, b_tl[c], ntl[c], kd[c]);
   if (sh_dense) {  // W16 is free once the gate/up phase is done: dequantize down, then the dense GEMM into Z rows
     if (!(skip & 16)) deq16(a.t_shared, a.shared.down, kExpertDim, kExpertInter, 0);
     e.barrier();
