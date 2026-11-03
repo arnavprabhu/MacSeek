@@ -1,5 +1,6 @@
 #pragma once
 // Quantized matrix kernels (quant module): host-side encode functions. See docs/modules/quant.md.
+// Weight buffer offsets must be >= 4-byte aligned (IQ1_M / Q5_K decoders use 32-bit loads).
 // All functions only encode into the given Enc (never commit/wait). Weights are raw GGUF block rows: a [in -> out]
 // matrix is `rows = out` rows of `cols = in` elements. Activations/outputs are F32 unless documented otherwise.
 #include "core/metal.hpp"
@@ -53,13 +54,13 @@ constexpr int kExpertDim = 5120, kExpertInter = 2304, kMaxRouted = 6;
 struct ExpertSlot { Buffer gate, up, down; };
 
 struct MoeDecodeArgs {
-  QType t_gate_up = QType::IQ1_S;   // routed gate/up type (IQ1_S or IQ2_XXS)
-  QType t_down = QType::IQ1_S;      // routed down type (IQ1_S or IQ2_XXS)
+  QType t_gate_up = QType::IQ1_S;   // routed gate/up type: IQ1_S, IQ2_XXS, IQ1_M or IQ2_XS
+  QType t_down = QType::IQ1_S;      // routed down type (same set; independent of t_gate_up)
   int n_routed = 6;                 // 0..6
   ExpertSlot slot[kMaxRouted];
   Buffer weights;                   // F32[n_routed] routing weights (device buffer, may be GPU-written)
   bool has_shared = true;
-  QType t_shared = QType::Q6_K;     // shared expert type (Q6_K or Q8_0), weight 1
+  QType t_shared = QType::Q6_K;     // shared expert type (Q6_K, Q8_0 or Q5_K), weight 1
   ExpertSlot shared;
   Buffer x;                         // F32[5120] (normed FFN input)
   Buffer y;                         // F32[5120], result is ACCUMULATED into y
@@ -93,7 +94,7 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
 //   header | Xg half[(total+n) x 5120] | H half[(total+n) x 2304] | Z f32[(total+n) x 5120] | W16 half[2 x 2304 x 5120]
 // (W16: the shared expert's gate|up, later down, dequantized to half for the dense GEMMs)
 struct MoePrefillArgs {
-  QType t_gate_up = QType::IQ1_S, t_down = QType::IQ1_S;
+  QType t_gate_up = QType::IQ1_S, t_down = QType::IQ1_S;  // routed: IQ1_S / IQ2_XXS / IQ1_M / IQ2_XS, any combination
   int n_tokens = 0;                   // rows of X / Y
   int n_exp = 0;                      // routed experts with >= 1 token
   const ExpertSlot* slots = nullptr;  // host [n_exp]
@@ -103,7 +104,7 @@ struct MoePrefillArgs {
   Buffer slot_of;                     // device int32[n_tokens * k_per_token]
   int k_per_token = 6;
   bool has_shared = true;
-  QType t_shared = QType::Q6_K;
+  QType t_shared = QType::Q6_K;       // Q6_K / Q8_0 / Q5_K
   ExpertSlot shared;
   Buffer X;                           // F32[n_tokens x 5120]
   Buffer Y;                           // F32[n_tokens x 5120], ACCUMULATED

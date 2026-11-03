@@ -18,6 +18,9 @@ int main() {
       {QType::Q6_K, 8192, 4096, 8, 6, false},   {QType::BF16, 512, 5120, 1, 4, false},
       {QType::F32, 24, 20480, 1, 5, false},     {QType::F16, 300, 1280, 1, 16, false},
       {QType::Q6_K, 32768, 1280, 1, 9, false},
+      {QType::IQ1_M, 2304, 5120, 1, 3, false},  {QType::IQ1_M, 5120, 2304, 1, 8, true},
+      {QType::IQ2_XS, 2304, 5120, 1, 4, true},  {QType::IQ2_XS, 5120, 2304, 1, 16, false},
+      {QType::IQ1_M, 5120, 2304, 1, 2, false},  {QType::IQ2_XS, 2304, 5120, 1, 6, false},
   };
   int fails = 0;
   auto& dev = ms::Device::get();

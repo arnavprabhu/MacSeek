@@ -6,6 +6,7 @@
 // half-valued tables (16-byte aligned so one entry = one uint4 load)
 constant uint q_iq1s_gridh[8192] __attribute__((aligned(16))) = {Q_IQ1S_GRID_HALF_VALUES};
 constant uint q_iq2xxs_gridh[1024] __attribute__((aligned(16))) = {Q_IQ2XXS_GRID_HALF_VALUES};
+constant uint q_iq2xs_gridh[2048] __attribute__((aligned(16))) = {Q_IQ2XS_GRID_HALF_VALUES};
 constant uint q_iq2_signh[512] __attribute__((aligned(16))) = {Q_IQ2_SIGNH_VALUES};
 static inline uint4 q_tbl4(constant uint* t, uint i) { return ((constant uint4*)t)[i]; }
 
@@ -14,6 +15,9 @@ static inline uint q_ld32(device const uchar* p) {
   device const ushort* s = (device const ushort*)p;
   return uint(s[0]) | (uint(s[1]) << 16);
 }
+// 32-bit load for fields at a 4-byte multiple of a block whose size is a multiple of 4 (IQ1_M 56 B, Q5_K 176 B):
+// aligned given the documented >= 4-byte aligned weight buffer offsets
+static inline uint q_ld32a(device const uchar* p) { return *(device const uint*)p; }
 static inline ushort q_ld16(device const uchar* p) { return *(device const ushort*)p; }
 static inline float q_ldh(device const uchar* p) { return float(*(device const half*)p); }
 static inline float4 q_u8x4(uint v) { return float4(as_type<uchar4>(v)); }

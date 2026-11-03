@@ -178,7 +178,9 @@ Quant kernels live in `src/kernels/quant.hpp` (namespace `ms::q`, full docs: `do
 7. Attention: indexer scoring (decode: split over positions; prefill: tiled q x k with causal mask), top-k (512 of up to
    200K; candidate-block select), sparse attention decode (64 heads x 512, rows = window ∪ selected, sink), sparse
    attention prefill (per query its own window + its own top-k).
-Supported qtypes: F32, F16, BF16, Q8_0, Q5_K, Q6_K, IQ1_S, IQ2_XXS, IQ4_NL (engram rows, CPU or GPU dequant).
+Supported qtypes: F32, F16, BF16, Q8_0, Q5_K, Q6_K, IQ1_S, IQ2_XXS, IQ1_M, IQ2_XS (all GPU kernel families), IQ4_NL
+(engram rows, CPU or GPU dequant). MoE: routed gate/up and down independently IQ1_S / IQ2_XXS / IQ1_M / IQ2_XS, shared
+Q6_K / Q8_0 / Q5_K (UD-IQ1_S and the ISTA-DASLab GSQ-RCO-Coder GGUF).
 IQ1_S/IQ2_XXS need the iq1s_grid / iq2xxs_grid / ksigns tables: generate them from the published format description
 (the grid values are data, not code — taking the table values is fine) and verify the CPU dequant against llama.cpp's
 `llama-quantize`-free path: `tools/oracle/dequant_check` (links libggml from Homebrew, test-only).

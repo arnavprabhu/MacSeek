@@ -10,6 +10,7 @@ namespace ref {
 
 static const uint64_t kIQ1S[2048] = {Q_IQ1S_GRID_VALUES};
 static const uint64_t kIQ2XXS[256] = {Q_IQ2XXS_GRID_VALUES};
+static const uint64_t kIQ2XS[512] = {Q_IQ2XS_GRID_VALUES};
 static const uint8_t kSigns[128] = {Q_KSIGNS_IQ2XS_VALUES};
 static const int8_t kIQ4NL[16] = {-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113};
 static const int8_t kFP4[16] = {0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12};
@@ -104,6 +105,40 @@ void dequant_row(QType t, const void* srcv, float* y, int64_t n) {
         }
       }
       return;
+    case QType::IQ1_M:  // {qs[32]; qh[16]; u16 scales[4]} 56 B; fp16 d = the top nibbles of the 4 scale words
+      for (int64_t b = 0; b < n / 256; b++, s += 56) {
+        uint16_t sc[4];
+        memcpy(sc, s + 48, 8);
+        const uint16_t du = (sc[0] >> 12) | ((sc[1] >> 8) & 0x00f0) | ((sc[2] >> 4) & 0x0f00) | (sc[3] & 0xf000);
+        const float d = fp16_to_f32(du);
+        const uint8_t *qs = s, *qh = s + 32;
+        for (int ib = 0; ib < 8; ib++, qs += 4, qh += 2) {
+          const float dl1 = d * (2 * ((sc[ib / 2] >> (6 * (ib % 2) + 0)) & 7) + 1);
+          const float dl2 = d * (2 * ((sc[ib / 2] >> (6 * (ib % 2) + 3)) & 7) + 1);
+          for (int l = 0; l < 4; l++, y += 8) {
+            const int hb = qh[l / 2] >> (4 * (l & 1));  // this group's qh nibble: 3 index bits + delta sign
+            const int8_t* g = (const int8_t*)&kIQ1S[qs[l] | ((hb & 7) << 8)];
+            const float delta = (hb & 8) ? -0.125f : 0.125f, dl = l < 2 ? dl1 : dl2;
+            for (int j = 0; j < 8; j++) y[j] = dl * (g[j] + delta);
+          }
+        }
+      }
+      return;
+    case QType::IQ2_XS:  // {half d; u16 qs[32]; scales[8]} 74 B; qs = 9-bit grid index | 7-bit sign index << 9
+      for (int64_t b = 0; b < n / 256; b++, s += 74) {
+        const float d = fp16_to_f32(rd16(s));
+        for (int ib = 0; ib < 8; ib++) {
+          const uint8_t scb = s[66 + ib];
+          const float db[2] = {d * (0.5f + (scb & 0xf)) * 0.25f, d * (0.5f + (scb >> 4)) * 0.25f};
+          for (int l = 0; l < 4; l++, y += 8) {
+            const uint16_t q = rd16(s + 2 + 2 * (4 * ib + l));
+            const uint8_t* g = (const uint8_t*)&kIQ2XS[q & 511];
+            const uint8_t sg = kSigns[q >> 9];
+            for (int j = 0; j < 8; j++) y[j] = db[l / 2] * g[j] * (sg & (1 << j) ? -1.f : 1.f);
+          }
+        }
+      }
+      return;
     case QType::IQ4_NL:
       for (int64_t b = 0; b < n / 32; b++, s += 18, y += 32) {
         const float d = fp16_to_f32(rd16(s));
@@ -148,7 +183,14 @@ std::vector<uint8_t> random_blocks(QType t, int64_t n, uint32_t seed, float scal
       case QType::F32: { float f = nd(rng) * scale * 10; memcpy(p, &f, 4); } break;
       case QType::F16: put16(p, h(nd(rng) * scale * 10)); break;
       case QType::BF16: { float f = nd(rng) * scale * 10; uint32_t u; memcpy(&u, &f, 4); put16(p, (uint16_t)(u >> 16)); } break;
-      case QType::Q8_0: case QType::IQ4_NL: case QType::IQ1_S: case QType::IQ2_XXS:
+      case QType::IQ1_M: {  // fp16 d split over the top nibbles of the 4 scale words
+        const uint16_t du = h(sc);
+        for (int k = 0; k < 4; k++) {
+          uint16_t w; memcpy(&w, p + 48 + 2 * k, 2);
+          put16(p + 48 + 2 * k, (uint16_t)((w & 0x0fff) | (((du >> (4 * k)) & 0xf) << 12)));
+        }
+      } break;
+      case QType::Q8_0: case QType::IQ4_NL: case QType::IQ1_S: case QType::IQ2_XXS: case QType::IQ2_XS:
         put16(p, h(t == QType::Q8_0 ? sc / 16 : sc)); break;
       case QType::Q5_K: put16(p, h(sc / 8)); put16(p + 2, h(sc / 4)); break;
       case QType::Q6_K: put16(p + 208, h(sc / 32)); break;

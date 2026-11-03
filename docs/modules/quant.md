@@ -6,7 +6,7 @@ Branch `mod/quant`. Files:
 |---|---|
 | `src/kernels/quant_types.hpp` | `ms::q::QType` (= ggml type ids), block geometry helpers (plain C++) |
 | `src/kernels/quant.hpp`, `quant.mm` | host encode functions (`ms::q::encode_*`), launch heuristics, env overrides |
-| `src/kernels/quant_grids.h` | GENERATED (`tools/gen_quant_grids.py <ggml-common.h> out`): IQ1_S / IQ2_XXS grid VALUES + derived GPU tables |
+| `src/kernels/quant_grids.h` | GENERATED (`tools/gen_quant_grids.py <ggml-common.h> out`): IQ1_S (= IQ1_M) / IQ2_XXS / IQ2_XS grid VALUES + derived GPU tables |
 | `src/kernels/quant_common.h` | constant tables, unaligned-safe loads, `QMvArgs` |
 | `src/kernels/quant_blocks.h` | per-type block decoders `QB_*` (one static interface, all kernels are templates over it) |
 | `src/kernels/quant_tile.h` | tensor-API includes + `q_tile_deq` (dequantize a TN x 128 weight tile to half in threadgroup memory) |
@@ -15,7 +15,7 @@ Branch `mod/quant`. Files:
 | `src/kernels/quant_mm.metal` | `q_mm_*` prefill matmul (fused dequant tiles), `q_mm_{f16,bf16,f32}_64x128` dense, `q_deq_f16_*`, `q_f32_to_f16`, `q_gemm_f16_*` peak probe |
 | `src/kernels/quant_moe_prefill.metal` | `q_moe_gather`, `q_moe_rgu_*` / `q_moe_rdown_*` (register-dequant grouped GEMM, default), `q_moe_dgu` (dense shared expert), `q_moe_mm_gu_*` / `q_moe_mm_down_*` (previous threadgroup-tile path), `q_moe_reduce` |
 | `src/kernels/quant_bench.metal` | `q_bw_*` bandwidth probes |
-| `tests/ref/dequant.{hpp,cpp}` | CPU reference dequant for F32 F16 BF16 Q8_0 Q5_K Q6_K IQ1_S IQ2_XXS IQ4_NL MXFP4, `matvec_ref`, `random_blocks` |
+| `tests/ref/dequant.{hpp,cpp}` | CPU reference dequant for F32 F16 BF16 Q8_0 Q5_K Q6_K IQ1_S IQ2_XXS IQ1_M IQ2_XS IQ4_NL MXFP4, `matvec_ref`, `random_blocks` |
 | `tests/test_quant_{ref,matvec,matvec_n,matmul,moe,moe_prefill}.mm`, `tests/quant_test_util.hpp` | ctests |
 | `bench/membw.mm`, `bench/qmatvec.mm`, `bench/qmatmul.mm` | microbenchmarks |
 | `docs/dspark_tensors.txt` | tensor table of the dspark draft GGUF (same format as docs/tensors.txt; MXFP4 experts) |
@@ -25,7 +25,8 @@ No changes to `CMakeLists.txt` or `src/core`.
 ## API (namespace `ms::q`, all functions only encode; never commit/wait)
 
 Weights are raw GGUF block rows: a `[in -> out]` tensor is `rows = out` rows of `cols = in` elements. Buffers are
-`ms::Buffer` (buf + byte offset). Weight buffer offsets must be >= 4-byte aligned (GGUF tensor/expert offsets are);
+`ms::Buffer` (buf + byte offset). Weight buffer offsets must be >= 4-byte aligned (GGUF tensor/expert offsets are; the
+IQ1_M and Q5_K decoders rely on it: their fields sit at 4-byte multiples of 56 / 176-byte blocks and use 32-bit loads);
 activation buffers 16-byte aligned. `cols` must be a multiple of the block size (256 for K/IQ/dense types, 32 for Q8_0;
 128 for the matmul paths). All real model shapes satisfy this.
 
@@ -41,6 +42,10 @@ void encode_matmul_h(Enc&, QType, W, rows, cols, X16, Y, int n, bool accumulate=
 // MoE decode: MoeDecodeArgs{t_gate_up, t_down, n_routed<=6, slot[6]{gate,up,down}, weights (device F32[6]),
 //   has_shared, t_shared, shared{gate,up,down}, x, y (accumulated), scratch >= moe_decode_scratch_bytes()}
 void encode_moe_decode(Enc&, const MoeDecodeArgs&);
+// same with routed matrices from a device pointer table (6 x {gate, up, down} uint64), and its pieces
+// (MoePart::SharedGu / AfterSharedGu / Shared / Routed / SharedDown; see quant.hpp for the identities)
+void encode_moe_decode_table(Enc&, const MoeDecodeArgs&, const Buffer& table);
+void encode_moe_decode_table_part(Enc&, const MoeDecodeArgs&, const Buffer& table, MoePart);
 // MoE prefill: MoePrefillArgs{types, n_tokens, n_exp, slots[n_exp] (host), offs[n_exp+1] (host), tok/wt (device,
 //   expert-sorted), slot_of[n*k] (device), shared, X, Y (accumulated), scratch >= moe_prefill_scratch_bytes(total,n,n_exp),
 //   path = -1 (env; 1 register kernels, 0 previous tile kernels), shared_dense = -1 (env; 1 dense shared expert)}
@@ -48,9 +53,13 @@ void encode_moe_decode(Enc&, const MoeDecodeArgs&);
 void encode_moe_prefill(Enc&, const MoePrefillArgs&);
 ```
 
-Supported types: matvec / matvec_n / matmul: F32, F16, BF16, Q8_0, Q5_K, Q6_K, IQ1_S, IQ2_XXS. MoE: routed gate/up and
-down IQ1_S or IQ2_XXS (any combination), shared Q6_K or Q8_0. IQ4_NL / MXFP4: CPU reference only (engram rows are 144 B
-lookups; MXFP4 is only in the dspark draft).
+Supported types: matvec / matvec_n / matmul (incl. `q_deq_f16_*`): F32, F16, BF16, Q8_0, Q5_K, Q6_K, IQ1_S, IQ2_XXS,
+IQ1_M, IQ2_XS. MoE (decode fused + table + parts, prefill register / tile paths, dense and grouped shared expert): routed
+gate/up and down each any of IQ1_S, IQ2_XXS, IQ1_M, IQ2_XS (independently: UD-IQ1_S uses IQ1_S/IQ2_XXS, the
+ISTA-DASLab GSQ-RCO-Coder model mixes IQ1_M/IQ2_XXS/IQ2_XS per layer), shared Q6_K, Q8_0 or Q5_K. MoE decode kernel
+names are `q_moe_{gu,down}[_t]_<routed>_<shared>_r<NR>` (e.g. `q_moe_gu_t_iq1_m_q5_k_r2`), built by `moe_pair()` from the
+two type names (every routed x shared pair and NR 1/2/4 instantiated). `matvec_rmsnorm` excludes the IQ types.
+IQ4_NL / MXFP4: CPU reference only (engram rows are 144 B lookups; MXFP4 is only in the dspark draft).
 
 Barriers: the encoder is concurrent (`MTLDispatchTypeConcurrent`). Functions insert the barriers they need internally
 (MoE between phases; `encode_matmul` around its shared X16 scratch; the n >= 512 pre-dequant path around its shared W16
@@ -83,6 +92,18 @@ X4, pos(), load_x(), dot(), deq()`:
 | Q5_K | 256 / 176 B | 16 x 16 | 8 low-nibble + 8 high-nibble elements of one 64-chunk |
 | IQ1_S | 256 / 50 B | 16 x 16 | 2 grid groups (16 contiguous elements) |
 | IQ2_XXS | 256 / 66 B | 16 x 16 | 2 grid groups |
+| IQ1_M | 256 / 56 B | 16 x 16 (8 x 32 in MoE decode gate/up) | 2 grid groups = one 16-element scale half |
+| IQ2_XS | 256 / 74 B | 16 x 16 | 2 grid groups = one scale nibble |
+
+IQ1_M (`QB_IQ1M_T<L>`): no separate d; the fp16 d is assembled from the top nibbles of the 4 scale words (2 dword
+loads + 5 ALU ops); per 8-element group its own qh nibble (3 index bits + delta sign), per 16 elements a 3-bit scale.
+`dot = d * sum_halves s_h * sum_g (grid_g . x_g + delta_g * sum(x_g))` with per-8 x sums precomputed in load_x. The MoE
+decode gate/up kernels use 8 lanes per block (`QMoeGuDec<QB_IQ1M>`: one sub-block per lane, d/scale loads amortized
+over 32 weights; MoE decode 75.7% -> 83.5% of BW); matvec keeps 16 (8 lanes lose on 2304-column rows: 9 blocks).
+IQ2_XS (`QB_IQ2XS_T<L>`): 9-bit grid index into a 512 x 8 half table (8 KB constant, `Q_IQ2XS_GRID_HALF_VALUES`) and the
+IQ2_XXS sign-mask table (7-bit index). Q5_K (shared expert of the GSQ model): scale/min pairs unpacked branch-free
+from the 12 scale bytes (lanes of one block used to diverge on j < 4) and 32-bit loads (MoE decode with Q5_K shared
++4-5%).
 
 IQ grids: the GPU uses derived **half-valued** tables (IQ1_S: 2048 x 8 halfs = 32 KB constant; IQ2_XXS: 256 x 8 halfs
 plus a 128 x 8 half sign-bit mask table, signs applied with one XOR per 2 elements). One 16-byte constant load gives 8
@@ -125,13 +146,15 @@ matmul's **right-input cooperative tensor** (registers): no threadgroup tiles, n
 simdgroups overlaps the tensor-unit work of others (probe: MMA alone 28 TF on the padded work, dequant adds ~20%).
 Cooperative layout (dumped on M5, guarded by the tests): lane L holds K quad q = (L&1) | ((L>>3)&1)<<1 and row rr =
 ((L>>1)&3) | ((L>>4)&1)<<2; element 4*(RB*g + rb) + c is k = 16g + 4q + c, row rr + 8rb. So each lane decodes runs of 4
-consecutive weights of a row (`QDeqq`: IQ1_S / IQ2_XXS share d/qh/qs per 32-weight sub-block; IQ2_XXS signs by ALU
-(7 bits + parity), its 4 KB grid copied to threadgroup memory; generic `Q::deq4` for Q6_K / Q8_0). gate/up keeps two
+consecutive weights of a row (`QDeqq`: IQ1_S / IQ2_XXS / IQ1_M / IQ2_XS share their loads per 32-weight sub-block; IQ2 signs by ALU
+(7 bits + parity); the IQ2_XXS 4 KB grid is copied to threadgroup memory, the IQ2_XS 8 KB grid is read from the device
+table (the copy cost more than it saved: 97.8 -> 95.9 ms); IQ1_M: d and scale words once per K step, per-lane shifts
+hoisted, FMA dequant; generic `Q::deq4` for Q6_K / Q8_0 / Q5_K). gate/up keeps two
 accumulators (gate, up) per simdgroup; the destination layout gives 4 consecutive rows of one token per 4 elements ->
 one 8-byte H store. Token tiles: an expert with m tokens gets ceil(m/64) tiles (one weight dequantization per tile):
 full 64-token tiles + the smallest of 64/48/32/16 that holds the remainder (padding 1.12x on the real distribution vs
-1.52x for fixed 64). Launch shapes (TMxTN, K step): gate/up 64x16, 48x16, 32x32, 16x32 (K 64 for IQ1_S, 32 for IQ2_XXS:
-registers); down 64x32, 48x32, 32x64, 16x64 (K 32); 4 simdgroups per threadgroup. The config space is flat (+-1%).
+1.52x for fixed 64). Launch shapes (TMxTN, K step): gate/up 64x16, 48x16, 32x32, 16x32 (K 64 for IQ1_S / IQ2_XS, 32 for
+IQ2_XXS / IQ1_M: registers; IQ1_M at K 64 is 12% slower); down 64x32, 48x32, 32x64, 16x64 (K 32); 4 simdgroups per threadgroup. The config space is flat (+-1%).
 
 Shared expert (all n tokens, default): gate and up are dequantized to half into W16 (concurrently with the gather),
 then `q_moe_dgu` (dense 64x64 x2 tiles from device memory + SwiGLU epilogue), then down is dequantized into W16 and
@@ -141,12 +164,12 @@ then `q_moe_dgu` (dense 64x64 x2 tiles from device memory + SwiGLU epilogue), th
 
 | test | what | result |
 |---|---|---|
-| `test_quant_ref` | CPU dequant vs Homebrew libggml `to_float` (dlopen, test-only): 1M random elements per type for all 10 types + real rows pread from the model (IQ1_S gate/down, IQ2_XXS up/down, Q6_K, Q5_K, Q8_0, BF16, F32, IQ4_NL engram table, MXFP4 from dspark) | **bit-exact, all** |
-| `test_quant_matvec` | GPU matvec vs dequant -> double dot, 29 cases = every real shape x type (incl. head 129280 rows, wo_a block-diag, accumulate, odd rows) | max err <= 2.4e-8 x sum\|w x\| (tol 2e-5) |
+| `test_quant_ref` | CPU dequant vs Homebrew libggml `to_float` (dlopen, test-only): 1M random elements per type for all 12 types (IQ1_M / IQ2_XS random only) + real rows pread from the model (IQ1_S gate/down, IQ2_XXS up/down, Q6_K, Q5_K, Q8_0, BF16, F32, IQ4_NL engram table, MXFP4 from dspark) | **bit-exact, all** |
+| `test_quant_matvec` | GPU matvec vs dequant -> double dot, 39 cases = every real shape x type (incl. head 129280 rows, wo_a block-diag, accumulate, odd rows; IQ1_M / IQ2_XS expert shapes + 32768-row synthetic; Q5_K shared expert) | max err <= 2.4e-8 x sum\|w x\| (tol 2e-5) |
 | `test_quant_matvec_n` | n = 2..16, all types, block-diag, accumulate | vs half-x ref <= 3e-8 (n<8); vs F32 <= 6e-5 |
-| `test_quant_matmul` | tensor-API matmul, 11 cases (all types, odd n, accumulate) | vs half-rounded ref <= 3e-7; vs F32 ref <= 7e-5 |
-| `test_quant_moe` | MoE decode, all 4 type combos, 0/3/6 routed, with/without shared, clamp-heavy case, 4-byte-aligned slot offsets in one arena | h err <= 5e-9, y err <= 1.4e-7 |
-| `test_quant_moe_prefill` | grouped GEMM, 8 cases: multi-tile expert; explicit expert sizes 1, 2, 15-17, 31-33, 47-49, 63-65, 100..300 and one with 600 (> 512) tokens; Zipf(0.8) top-6 of 64; 4 type combos, with/without shared, both kernel paths and both shared paths; every case run twice -> bit-identical | vs half-emulating ref <= 1.4e-5; vs F32 ref <= 1.9e-4 |
+| `test_quant_matmul` | tensor-API matmul, 19 cases (all types, odd n, accumulate, n >= 512 pre-dequant for IQ1_M / IQ2_XS / Q5_K / IQ2_XXS) | vs half-rounded ref <= 3e-7; vs F32 ref <= 7e-5 |
+| `test_quant_moe` | MoE decode, 22 combos: UD-IQ1_S combos, all 9 gate/up x down combos of IQ1_M / IQ2_XXS / IQ2_XS with Q5_K shared, mixed old/new; 0/3/6 routed, with/without shared, clamp-heavy cases; 4-byte-aligned slot offsets in one arena. Each also through the table variant: All (== bound kernel, bit-identical), SharedGu+AfterSharedGu (bit-identical to All), Shared+Routed, SharedGu+SharedDown (bit-identical to Shared), +Routed | h err <= 5e-9, y err <= 3.6e-7 (Q5_K shared; 1.4e-7 otherwise) |
+| `test_quant_moe_prefill` | grouped GEMM, 15 cases (7 with the GSQ types: gate/up type != down type, Q5_K shared dense and grouped, both kernel paths): multi-tile expert; explicit expert sizes 1, 2, 15-17, 31-33, 47-49, 63-65, 100..300 and one with 600 (> 512) tokens; Zipf(0.8) top-6 of 64; 4 type combos, with/without shared, both kernel paths and both shared paths; every case run twice -> bit-identical | vs half-emulating ref <= 4.4e-5; vs F32 ref <= 9.4e-4 (Q5_K shared cases; 1.9e-4 otherwise) |
 
 Errors are normalized: |gpu - ref| / sum_c |w_c x_c| (per output). The half staging of the tensor-API paths
 (activations, weights, MoE H) costs ~3e-5..2e-4 of that scale vs the F32 path; the decode paths (n=1, MoE decode) are
@@ -246,12 +269,82 @@ in one 32x64 matmul (slower than two 32x32); half-precision dequant arithmetic (
 IQ1_S grid as 2-bit codes + ALU expansion, or a device-memory instead of constant table (no change); TM 96/128 tiles
 (register spills / TN=8 layout differs); NSG 2 / 8 (+-1%).
 
+### GSQ-RCO-Coder types (IQ1_M / IQ2_XS routed, Q5_K shared; 192 experts)
+
+Measured on an idle machine (no other GPU job), same binary for old and new types, best of 3-5 interleaved runs.
+Decode matvec (`bench_qmatvec`, default launch):
+
+| type | tensor | shape | MB | us | GB/s | %BW |
+|---|---|---|---|---|---|---|
+| IQ1_S | one expert gate/up | 5120->2304 | 2.30 | 14.5 | 159 | 53 |
+| IQ1_M | one expert gate/up | 5120->2304 | 2.58 | 15.9 | 162 | 54 |
+| IQ1_S | one expert down | 2304->5120 | 2.30 | 14.5 | 159 | 53 |
+| IQ1_M | one expert down | 2304->5120 | 2.58 | 16.2 | 159 | 53 |
+| IQ2_XXS | one expert gate/up | 5120->2304 | 3.04 | 17.7 | 172 | 57 |
+| IQ2_XS | one expert gate/up | 5120->2304 | 3.41 | 17.6 | 193 | 64 |
+| IQ2_XXS | one expert down | 2304->5120 | 3.04 | 17.6 | 173 | 57 |
+| IQ2_XS | one expert down | 2304->5120 | 3.41 | 19.7 | 173 | 57 |
+| IQ1_S / IQ1_M | synthetic | 5120->32768 | 32.8 / 36.7 | 148.6 / 166.6 | 221 / 220 | 73 / 73 |
+| IQ2_XXS / IQ2_XS | synthetic | 5120->32768 | 43.3 / 48.5 | 187.5 / 190.0 | 231 / 255 | 76 / 85 |
+| Q5_K | shexp gate/up | 5120->2304 | 8.11 | 33.1 | 245 | 81 |
+| Q5_K | shexp down | 2304->5120 | 8.11 | 31.8 | 255 | 85 |
+
+MoE decode (`bench_qmatvec --moe [gu,down,shared]`, 6 routed + shared; GB/s is the stable measure, %BW is against the
+bandwidth measured in each process, 281-300 GB/s):
+
+| gate/up | down | shared | MB | us | GB/s | %BW |
+|---|---|---|---|---|---|---|
+| IQ1_S | IQ1_S | Q6_K | 70.50 | 294.6 | 239 | 79 |
+| IQ1_S | IQ2_XXS | Q8_0 | 83.50 | 333.0 | 251 | 83 |
+| IQ2_XXS | IQ2_XXS | Q6_K | 83.77 | 343.5 | 244 | 81 |
+| IQ1_M | IQ1_M | Q6_K | 75.48 | 305.5 | 247 | 82 |
+| IQ2_XS | IQ2_XS | Q6_K | 90.41 | 357.5 | 253 | 84 |
+| **IQ1_M** | **IQ1_M** | **Q5_K** | 70.78 | 300.6 | 235 | 78 |
+| **IQ2_XXS** | **IQ2_XXS** | **Q5_K** | 79.07 | 335.3 | 236 | 78 |
+| **IQ2_XS** | **IQ2_XS** | **Q5_K** | 85.71 | 347.1 | 247 | 82 |
+| **IQ1_M** | **IQ2_XXS** | **Q5_K** | 73.54 | 302.1 | 243 | 81 |
+| **IQ2_XS** | **IQ1_M** | **Q5_K** | 80.73 | 342.3 | 236 | 78 |
+
+With the same shared type the new routed types match or beat the old ones (IQ1_M/IQ1_M 247 vs IQ1_S/IQ1_S 239 GB/s;
+IQ2_XS 253 vs IQ2_XXS 244). The Q5_K shared expert streams a little slower than Q6_K (Q5_K matvec 81-85% vs Q6_K 91%),
+so the GSQ combos sit at 235-247 GB/s.
+
+MoE prefill realistic (`bench_qmatmul --moe --real --experts 192 --n 4096 --types gu,down,shared`): top-6 of 192 experts,
+Zipf(0.8) (tokens/expert 29..1933, median 69), 3 calls of 64 experts, shared expert in the first; best of 5.
+
+| routed gate/up, down + shared | ms | effective TFLOPS | % F16 peak (30.8) |
+|---|---|---|---|
+| IQ1_S, IQ1_S + Q6_K | 90.6 | 22.4 | 73 |
+| IQ2_XXS, IQ2_XXS + Q8_0 | 95.0 | 21.4 | 69 |
+| **IQ1_M, IQ1_M + Q5_K** | 93.0 | 21.8 | 71 |
+| **IQ2_XXS, IQ2_XXS + Q5_K** | 94.9 | 21.4 | 69 |
+| **IQ2_XS, IQ2_XS + Q5_K** | 93.9 | 21.6 | 70 |
+| **IQ1_M, IQ2_XXS + Q5_K** | 93.4 | 21.7 | 71 |
+| **IQ2_XS, IQ1_M + Q5_K** | 93.2 | 21.8 | 71 |
+| IQ1_M, IQ1_M + Q5_K, MACSEEK_MOEP_SHDENSE=0 | 104.8 | 19.4 | 63 |
+| (reference: IQ1_S + Q6_K, 384 experts) | 97.3 | 20.9 | 68 |
+
+Per phase (`MACSEEK_MOEP_SKIP`): routed gate/up IQ1_S 51.8 ms, IQ1_M 54.7 (was 70 at K 64, 58.2 before the
+shift/FMA rewrite); routed down IQ1_S 22.6, IQ1_M 22.1; IQ2_XXS gate/up 56.2, IQ2_XS 54.8 (K 64), down 22.5 / 22.8.
+Prefill matmul (`bench_qmatmul`) of the new types equals the old ones within noise (IQ1_M gate/up 7.9 / 16.1 / 24.9 /
+28.5 / 29.4 TF at n = 32 / 128 / 512 / 2048 / 4096; IQ2_XS down 8.0 / 16.8 / 27.2 / 29.7 / 30.7).
+
+Tuning that did not help (measured, reverted): IQ1_M 8 lanes in matvec (down 54% -> 41%: 9 blocks per row) and in MoE
+decode down (no change); IQ1_M MoE prefill gate/up K 64 (+12% time); IQ2_XS grid copied to threadgroup memory in MoE
+prefill (+2%); K-split for IQ2_XS matvec (-20%). 8-lane gate/up in MoE decode would also help IQ1_S (+3%, 239 -> 243 GB/s)
+but changes UD-IQ1_S decode numerics (summation order), so it is not enabled for IQ1_S (`QMoeGuDec` in quant_moe.metal).
+
 matvec_n (verify blocks): measured only while a llama-bench model run was saturating the GPU, so absolute numbers are
 unreliable; relative to n=1 in the same conditions: n=2..4 costs 1.3-1.6x the n=1 time on K-quants (one weight read),
 n>=8 goes to the tile path (~2.5x n=1 for 34 MB matrices at n=8..32). Re-measure on an idle machine:
 `bench_qmatvec --n 4`.
 
 ## Known limits
+
+- Metal bundle: 528 kernels (was 350 before IQ1_M / IQ2_XS / Q5_K-shared); uncached `newLibraryWithSource` 2.3 s
+  (was 1.6 s; pipelines are created lazily).
+- IQ1_M MoE prefill gate/up is ~5% behind IQ1_S per weight (routed gate/up at n = 4096): its dequant
+  needs more registers (K 32 instead of 64; 54.7 vs 51.8 ms). matvec_n n = 2..7 with IQ2_XS is ~8% slower than IQ2_XXS (FP32 bound).
 
 - IQ1_S / IQ2_XXS matvec is ALU-bound (55-60% of BW for one 2.3 MB expert; 78-83% for big matrices; MoE decode 81-85%).
 - Small matrices (attn_kv 2 MB, hc_fn 2 MB, compressor 5 MB) lose 25-40% to launch/ramp; fuse them with neighbours.
@@ -287,4 +380,4 @@ n>=8 goes to the tile path (~2.5x n=1 for 34 MB matrices at n=8..32). Re-measure
    or half FMA (`half4` dots) for n = 5..8.
 5. Prefill matmul (`q_mm`, n < 512): use the MoE register-dequant scheme (right-input cooperative tensors, no barriers)
    instead of the uniform dequant -> barrier -> MMA loop.
-6. Persist pipelines in an MTLBinaryArchive (startup currently compiles the whole bundle; ~170 kernel variants).
+6. Persist pipelines in an MTLBinaryArchive (startup currently compiles the whole bundle; 528 kernels, 2.3 s).

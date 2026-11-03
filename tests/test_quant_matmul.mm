@@ -21,6 +21,11 @@ int main() {
       {QType::IQ2_XXS, 5120, 2304, 37, true, "exp down"}, {QType::IQ1_S, 300, 2304, 129, false, "odd rows"},
       {QType::BF16, 512, 5120, 48, false, "compressor"},  {QType::F16, 256, 1280, 70, false, "f16"},
       {QType::F32, 384, 5120, 36, false, "router f32"},
+      {QType::IQ1_M, 2304, 5120, 50, false, "exp gate"},  {QType::IQ2_XS, 5120, 2304, 37, true, "exp down"},
+      {QType::IQ1_M, 300, 2304, 129, true, "odd rows"},   {QType::IQ2_XS, 2304, 5120, 77, false, "exp up"},
+      // n >= 512: whole-weight pre-dequant (q_deq_f16_*) + dense GEMM
+      {QType::IQ1_M, 200, 2304, 520, false, "predeq"},    {QType::IQ2_XS, 136, 5120, 512, true, "predeq"},
+      {QType::Q5_K, 160, 2304, 515, false, "predeq"},     {QType::IQ2_XXS, 128, 2304, 513, false, "predeq"},
   };
   int fails = 0;
   auto& dev = ms::Device::get();
