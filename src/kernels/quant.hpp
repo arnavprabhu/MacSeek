@@ -114,8 +114,17 @@ struct MoePrefillArgs {
   // pre-dequantization + dense GEMMs (MACSEEK_MOEP_SHDENSE, default), 0 = through the grouped kernels
   int path = -1;
   int shared_dense = -1;
+  // External Z (deterministic multi-group layers): routed Z rows go to z_ext (row i = entry offs-relative i of this
+  // call) and the shared expert's rows to z_shared_ext [n_tokens rows]; with skip_reduce the Y update is left to one
+  // encode_moe_reduce over the whole layer, so the order in which groups run cannot change the result.
+  // Requires the dense shared-expert path (or has_shared == false).
+  Buffer z_ext, z_shared_ext;
+  bool skip_reduce = false;
 };
 size_t moe_prefill_scratch_bytes(int total_entries, int n_tokens, int n_exp = 384);
 void encode_moe_prefill(Enc& e, const MoePrefillArgs& a);
+// Y[t] += Z[total + t] (if has_shared) + sum_k Z[slot_of[t*k + j]] (fixed k order). Z rows are 5120 floats.
+void encode_moe_reduce(Enc& e, const Buffer& Z, const Buffer& Y, const Buffer& slot_of, int n_tokens, int total,
+                       int k_per_token, bool has_shared);
 
 }  // namespace ms::q

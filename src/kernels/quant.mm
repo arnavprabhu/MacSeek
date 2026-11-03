@@ -509,7 +509,9 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
   const size_t off_h = hbytes + align256(rows * kExpertDim * 2);
   const Buffer s_h = a.scratch.sub(off_h, rows * kExpertInter * 2);
   const size_t off_z = off_h + align256(rows * kExpertInter * 2);
-  const Buffer s_z = a.scratch.sub(off_z, rows * kExpertDim * 4);
+  const bool zext = (bool)a.z_ext;
+  if (zext && a.has_shared && !sh_dense) die("moe_prefill: z_ext needs the dense shared path", a.t_gate_up, 0, 0);
+  const Buffer s_z = zext ? a.z_ext : a.scratch.sub(off_z, rows * kExpertDim * 4);
   const size_t off_w16 = off_z + align256(rows * kExpertDim * 4);
   const Buffer s_w16 = a.scratch.sub(off_w16, (size_t)2 * kExpertInter * kExpertDim * 2);
   auto deq16 = [&](QType t, const Buffer& W, int r, int c, size_t dst_off) {  // whole matrix -> half in s_w16
@@ -603,7 +605,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
                  (uint32_t)kExpertInter, (uint32_t)kExpertDim, 0u};
       e.set_pipeline("q_mm_f16_64x128");
       e.set_buffer(0, s_w16); e.set_buffer(1, s_h.sub((size_t)total * kExpertInter * 2, (size_t)n * kExpertInter * 2));
-      e.set_buffer(2, s_z.sub((size_t)total * kExpertDim * 4, (size_t)n * kExpertDim * 4));
+      e.set_buffer(2, zext ? a.z_shared_ext : s_z.sub((size_t)total * kExpertDim * 4, (size_t)n * kExpertDim * 4));
       e.set_value(3, mm);
       e.dispatch_groups(kExpertDim / 128, (n + 63) / 64, 1, 128);
     }
@@ -612,11 +614,21 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
   }
   e.barrier();
   // 4) deterministic reduction into Y
-  if (skip & 32) return;
+  if ((skip & 32) || a.skip_reduce) return;
   uint32_t hs = a.has_shared ? 1u : 0u;
   e.set_pipeline("q_moe_reduce");
   e.set_buffer(0, s_z); e.set_buffer(1, a.Y); e.set_value(2, args);
   e.set_buffer(3, a.slot_of.buf ? a.slot_of : a.scratch); e.set_value(4, hs);
+  e.dispatch_threads(kExpertDim / 4, n, 1, 64, 1);
+}
+
+void encode_moe_reduce(Enc& e, const Buffer& Z, const Buffer& Y, const Buffer& slot_of, int n, int total, int k,
+                       bool has_shared) {
+  QMoePArgs args{(uint32_t)n, (uint32_t)total, (uint32_t)kExpertDim, (uint32_t)kExpertInter, 0, 0, (uint32_t)k};
+  uint32_t hs = has_shared ? 1u : 0u;
+  e.set_pipeline("q_moe_reduce");
+  e.set_buffer(0, Z); e.set_buffer(1, Y); e.set_value(2, args);
+  e.set_buffer(3, slot_of); e.set_value(4, hs);
   e.dispatch_threads(kExpertDim / 4, n, 1, 64, 1);
 }
 

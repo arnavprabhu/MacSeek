@@ -50,6 +50,8 @@ struct Model::Impl {
   Buffer h, x, sub, mixA, mixF, qa, qrn, q, kv, ckv, cgate, iq, iw, aout, aout16, otmp, oa, rlog, rids, rw;
   Buffer embrows, erow, edeq, ekv, logits, amax_i, amax_v, moe_dec_scratch;
   Buffer moe_scr[2], route_dev[2];
+  Buffer zall, route_all;            // prefill ZALL mode: Z rows of the whole layer [6n routed | n shared], global routing
+  std::vector<std::unique_ptr<Enc>> moe_inflight;   // prefill MoE group command buffers not yet waited for
   Buffer pids, pw;                   // (unused)
   Buffer plog;                       // decode: router logits of layers l+1..l+D applied to layer l's FFN input
   Buffer plog_n;
@@ -203,6 +205,10 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
   for (int i = 0; i < 2; i++) {
     P.moe_scr[i] = A(q::moe_prefill_scratch_bytes(std::min(total, 8192), (int)n, o.moe_group), "moe_pf");  // grows on demand
     P.route_dev[i] = A((size_t)total * 4 * 3 + 4096, "route");
+  }
+  if (env_int("MACSEEK_PF_ZALL", 1)) {
+    P.zall = A((size_t)7 * n * 5120 * 4, "moe_zall");
+    P.route_all = A((size_t)total * 4 * 3 + 4096, "route_all");
   }
 
   // expert cache last: it takes what is left
@@ -775,6 +781,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     e->wait();
     wait_ms += tw.ms();
     gpu_ms += e->gpu_ms();
+    for (auto& x : P.moe_inflight) { x->wait(); moe_gpu_ms += x->gpu_ms(); }   // done: the attention CB waited for them
+    P.moe_inflight.clear();
 
     // ---- MoE ----
     Timer tx;
@@ -824,8 +832,12 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       // cached experts first, so the GPU starts while misses load
       // MACSEEK_PF_CACHED_FIRST=1: process cached experts first (GPU starts sooner) - but then the order in which groups
       // accumulate into Y depends on cache timing, so outputs are not bit-reproducible. Default: fixed id order.
+      // MACSEEK_PF_ZALL=1 (default): every group writes its Z rows into one layer-wide buffer and a single reduce adds
+      // them into Y in fixed (token, k) order, so group composition / order cannot change the result: cached experts
+      // go first (GPU starts while the misses load) and the result stays bit-reproducible.
+      const bool zall = (bool)P.zall && n * 6 <= (int)(P.route_all.size / 12);
       static const bool cached_first = env_int("MACSEEK_PF_CACHED_FIRST", 0) != 0;
-      if (cached_first) std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
+      if (cached_first || zall) std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
       const int G = std::max(1, std::min(o_.moe_group, cache_->group_cap(l)));
       const int ngroups = ((int)used.size() + G - 1) / G;
       route_ms += troute.ms();
@@ -835,6 +847,19 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       static uint64_t pval = 0;
       std::vector<std::unique_ptr<Enc>> encs(ngroups);
       auto group_ids = [&](int gi) { return std::vector<int>(used.begin() + gi * G, used.begin() + std::min((int)used.size(), (gi + 1) * G)); };
+      // ZALL: global expert-sorted routing arrays in processing order: tok_all / wt_all [6n], slot_all[entry] = row
+      int* tok_all = zall ? (int*)P.route_all.cpu() : nullptr;
+      float* wt_all = zall ? (float*)(tok_all + n * 6) : nullptr;
+      int* slot_all = zall ? (int*)(wt_all + n * 6) : nullptr;
+      std::vector<int> g0(ngroups + 1, 0);   // first global row of each group
+      if (zall) {
+        int c = 0;
+        for (int gi = 0; gi < ngroups; gi++) {
+          g0[gi] = c;
+          for (int x : group_ids(gi)) for (int ent : toks_of[x]) { tok_all[c] = ent / 6; wt_all[c] = rw[ent]; slot_all[ent] = c; c++; }
+        }
+        g0[ngroups] = c;
+      }
       if (ngroups > 0) leases[0] = cache_->ensure(l, group_ids(0));
       for (int gi = 0; gi < ngroups; gi++) {
         if (gi + 1 < ngroups) leases[gi + 1] = cache_->ensure(l, group_ids(gi + 1));  // overlap I/O with this group
@@ -847,13 +872,14 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         int* tok = (int*)P.route_dev[sb].cpu();
         float* wtp = (float*)(tok + n * 6);
         int* slot_of = (int*)(wtp + n * 6);
-        for (int i = 0; i < n * 6; i++) slot_of[i] = -1;
+        if (!zall) for (int i = 0; i < n * 6; i++) slot_of[i] = -1;
         std::vector<int> offs(gids.size() + 1, 0);
         std::vector<q::ExpertSlot> slots(gids.size());
         int c = 0;
         for (size_t j = 0; j < gids.size(); j++) {
           offs[j] = c;
-          for (int ent : toks_of[gids[j]]) { tok[c] = ent / 6; wtp[c] = rw[ent]; slot_of[ent] = c; c++; }
+          if (zall) c += (int)toks_of[gids[j]].size();
+          else for (int ent : toks_of[gids[j]]) { tok[c] = ent / 6; wtp[c] = rw[ent]; slot_of[ent] = c; c++; }
           auto& v = leases[gi].views[j];
           slots[j] = q::ExpertSlot{v.mat[0], v.mat[1], v.mat[2]};
         }
@@ -883,15 +909,35 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
         m.slot_of = P.route_dev[sb].sub((size_t)n * 6 * 8, (size_t)n * 6 * 4); m.k_per_token = 6;
         m.has_shared = gi == 0; m.t_shared = L.sh_gate.t; m.shared = q::ExpertSlot{L.sh_gate.b, L.sh_up.b, L.sh_down.b};
         m.X = P.x; m.Y = P.sub; m.scratch = P.moe_scr[sb];
+        if (zall) {
+          const size_t rb = (size_t)5120 * 4;
+          m.tok = P.route_all.sub((size_t)g0[gi] * 4, (size_t)std::max(total, 1) * 4);
+          m.wt = P.route_all.sub(((size_t)n * 6 + g0[gi]) * 4, (size_t)std::max(total, 1) * 4);
+          m.z_ext = P.zall.sub((size_t)g0[gi] * rb, (size_t)std::max(total, 1) * rb);
+          m.z_shared_ext = P.zall.sub((size_t)n * 6 * rb, (size_t)n * rb);
+          m.skip_reduce = true;
+        }
         q::encode_moe_prefill(eg, m);
+        if (zall && gi == ngroups - 1) {   // all groups' Z rows are written (CBs chained): one deterministic reduce
+          eg.barrier();
+          q::encode_moe_reduce(eg, P.zall, P.sub, P.route_all.sub((size_t)n * 12 * 4, (size_t)n * 6 * 4), n, n * 6, 6, true);
+        }
         eg.between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeSignalEvent:pchain value:++pval]; });
         leases[gi].release_after(eg.cmdbuf());
         eg.commit();
         (void)total;
       }
-      for (auto& x : encs) if (x) { x->wait(); moe_gpu_ms += x->gpu_ms(); }
-      if (ngroups == 0) { /* impossible: every token routes to 6 experts */ }
+      // MACSEEK_PF_NODRAIN=1 (default): do not wait for this layer's MoE on the CPU; the next layer's attention command
+      // buffer waits for the last group on the GPU (pchain) and is encoded while the MoE runs.
+      static const bool nodrain = env_int("MACSEEK_PF_NODRAIN", 1) != 0;
       e = std::make_unique<Enc>();
+      if (nodrain && ngroups > 0) {
+        const uint64_t v = pval;
+        e->between([&](void* cb) { [(__bridge id<MTLCommandBuffer>)cb encodeWaitForEvent:pchain value:v]; });
+        for (auto& x : encs) if (x) P.moe_inflight.push_back(std::move(x));
+      } else {
+        for (auto& x : encs) if (x) { x->wait(); moe_gpu_ms += x->gpu_ms(); }
+      }
     }
     exp_ms += tx.ms();
   }
@@ -905,6 +951,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   e->wait();
   wait_ms += tw.ms();
   gpu_ms += e->gpu_ms();
+  for (auto& x : P.moe_inflight) { x->wait(); moe_gpu_ms += x->gpu_ms(); }
+  P.moe_inflight.clear();
   next = *(const int32_t*)P.amax_i.cpu();
   if (getenv("MACSEEK_DBG_PF") && !dec) {
     FILE* f = fopen(getenv("MACSEEK_DBG_PF"), "ab");
