@@ -24,9 +24,14 @@ const char* kname(QType t) {
     case QType::F32: return "f32"; case QType::F16: return "f16"; case QType::BF16: return "bf16";
     case QType::Q8_0: return "q8_0"; case QType::Q5_K: return "q5_k"; case QType::Q6_K: return "q6_k";
     case QType::IQ1_S: return "iq1_s"; case QType::IQ2_XXS: return "iq2_xxs";
+    case QType::IQ1_M: return "iq1_m"; case QType::IQ2_XS: return "iq2_xs";
     default: return nullptr;
   }
 }
+// grid-table (IQ) types: ALU-bound decode, routed-expert types of the MoE kernels
+bool is_iq(QType t) { return t == QType::IQ1_S || t == QType::IQ2_XXS || t == QType::IQ1_M || t == QType::IQ2_XS; }
+// shared-expert types of the MoE kernels
+bool is_moe_shared(QType t) { return t == QType::Q6_K || t == QType::Q8_0 || t == QType::Q5_K; }
 
 // GPU block geometry (dense types use a virtual 256-element block)
 int gpu_qk(QType t) { return block_elems(t) == 1 ? 256 : block_elems(t); }
@@ -44,6 +49,8 @@ int gpu_lpb(QType t) {
     default: return 16;
   }
 }
+// elements per lane slice (q_deq_f16 grid width = cols / epl)
+int gpu_epl(QType t) { return gpu_qk(t) / gpu_lpb(t); }
 
 // Launch heuristic (from bench_qmatvec --sweep on M5 Pro): split K until each simdgroup runs ~1-2 block iterations
 // (memory-level parallelism matters more than x reuse), 256-thread threadgroups, more rows per simdgroup only for
@@ -52,7 +59,7 @@ MvCfg auto_cfg(QType t, int rows, int cols) {
   MvCfg c;
   const int bpi = 32 / gpu_lpb(t);
   const int iters = (cols / gpu_qk(t) + bpi - 1) / bpi;
-  if (t == QType::IQ1_S || t == QType::IQ2_XXS) {  // ALU-bound decode: maximize x reuse instead of K split
+  if (is_iq(t)) {  // ALU-bound decode: maximize x reuse instead of K split
     c.nr = rows >= 1024 ? 4 : 1; c.ks = iters >= 8 ? 2 : 1; c.rsg = 2;
     return c;
   }
@@ -107,7 +114,7 @@ MvCfg matvec_cfg(QType t, int rows, int cols) {
 void encode_matvec_rmsnorm(Enc& e, QType t, const Buffer& W, int rows, int cols, const Buffer& x, const Buffer& norm_w,
                            float eps, const Buffer& y, int tiles_per_tg) {
   const char* kn = kname(t);
-  if (!kn || t == QType::IQ1_S || t == QType::IQ2_XXS || cols % gpu_qk(t) != 0 || cols <= 1024)
+  if (!kn || is_iq(t) || cols % gpu_qk(t) != 0 || cols <= 1024)
     die("matvec_rmsnorm", t, rows, cols);
   const MvCfg a = matvec_cfg(t, rows, cols);
   QMvArgs args{(uint32_t)rows, (uint32_t)cols, (uint32_t)row_bytes(t, cols), (uint32_t)rows, (uint32_t)cols, 0u,
@@ -210,8 +217,7 @@ void encode_matmul_h(Enc& e, QType t, const Buffer& W, int rows, int cols, const
     std::string dn = std::string("q_deq_f16_") + kn;
     e.set_pipeline(dn.c_str());
     e.set_buffer(0, W); e.set_buffer(1, w16); e.set_bytes(2, d, 16);
-    const int epl = (t == QType::Q8_0) ? 8 : 16;
-    e.dispatch_threads(cols / epl, rows, 1, 64, 1);
+    e.dispatch_threads(cols / gpu_epl(t), rows, 1, 64, 1);
     e.barrier();
     e.set_pipeline("q_mm_f16_64x128");
     args.row_bytes = (uint32_t)(cols * 2);
@@ -252,12 +258,11 @@ namespace {
 struct QMoeArgs {  // must match quant_moe.metal
   uint32_t n_routed, has_shared, dim, inter, rb_gu_r, rb_d_r, rb_gu_s, rb_d_s, ksplit, tiles;
 };
-const char* moe_pair(QType r, QType s) {
-  if (r == QType::IQ1_S && s == QType::Q6_K) return "iq1_s_q6_k";
-  if (r == QType::IQ1_S && s == QType::Q8_0) return "iq1_s_q8_0";
-  if (r == QType::IQ2_XXS && s == QType::Q6_K) return "iq2_xxs_q6_k";
-  if (r == QType::IQ2_XXS && s == QType::Q8_0) return "iq2_xxs_q8_0";
-  return nullptr;
+// kernel-name suffix "<routed>_<shared>" (e.g. "iq1_m_q5_k"); empty if the pair is not instantiated
+// (quant_moe.metal Q_MOE_PAIRS: routed IQ1_S / IQ2_XXS / IQ1_M / IQ2_XS x shared Q6_K / Q8_0 / Q5_K)
+std::string moe_pair(QType r, QType s) {
+  if (!is_iq(r) || !is_moe_shared(s)) return {};
+  return std::string(kname(r)) + "_" + kname(s);
 }
 }  // namespace
 
@@ -267,9 +272,8 @@ void encode_moe_decode(Enc& e, const MoeDecodeArgs& a) {
   if (a.n_routed < 0 || a.n_routed > kMaxRouted) die("moe_decode n_routed", a.t_gate_up, a.n_routed, 0);
   const int n_exp = a.n_routed + (a.has_shared ? 1 : 0);
   if (n_exp == 0) return;
-  const char* p_gu = moe_pair(a.t_gate_up, a.t_shared);
-  const char* p_d = moe_pair(a.t_down, a.t_shared);
-  if (!p_gu || !p_d) die("moe_decode type combo", a.t_gate_up, 0, 0);
+  const std::string p_gu = moe_pair(a.t_gate_up, a.t_shared), p_d = moe_pair(a.t_down, a.t_shared);
+  if (p_gu.empty() || p_d.empty()) die("moe_decode type combo", a.t_gate_up, 0, 0);
   if (a.scratch.size < moe_decode_scratch_bytes()) die("moe_decode scratch too small", a.t_gate_up, 0, 0);
   static const long env_gu_nr = env_int("MACSEEK_MOE_GU_NR", 2), env_gu_ks = env_int("MACSEEK_MOE_GU_KS", 1),
                     env_gu_rsg = env_int("MACSEEK_MOE_GU_RSG", 4), env_d_nr = env_int("MACSEEK_MOE_D_NR", 4),
@@ -319,9 +323,8 @@ void encode_moe_decode_table(Enc& e, const MoeDecodeArgs& a, const Buffer& table
 }
 
 void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& table, MoePart part) {
-  const char* p_gu = moe_pair(a.t_gate_up, a.t_shared);
-  const char* p_d = moe_pair(a.t_down, a.t_shared);
-  if (!p_gu || !p_d) die("moe_decode_table type combo", a.t_gate_up, 0, 0);
+  const std::string p_gu = moe_pair(a.t_gate_up, a.t_shared), p_d = moe_pair(a.t_down, a.t_shared);
+  if (p_gu.empty() || p_d.empty()) die("moe_decode_table type combo", a.t_gate_up, 0, 0);
   if ((part == MoePart::SharedGu || part == MoePart::Shared || part == MoePart::SharedDown) && !a.has_shared) return;
   static const long env_gu_nr = env_int("MACSEEK_MOE_GU_NR", 2), env_gu_ks = env_int("MACSEEK_MOE_GU_KS", 1),
                     env_gu_rsg = env_int("MACSEEK_MOE_GU_RSG", 4), env_d_nr = env_int("MACSEEK_MOE_D_NR", 4),
@@ -386,7 +389,7 @@ MoeRKern moe_rk(QType t, bool down, int cls) {
   static const char* envs[2][kMoeTileCls] = {
       {"MACSEEK_MOEP_RGU64", "MACSEEK_MOEP_RGU48", "MACSEEK_MOEP_RGU", "MACSEEK_MOEP_RGU16"},
       {"MACSEEK_MOEP_RD64", "MACSEEK_MOEP_RD48", "MACSEEK_MOEP_RD", "MACSEEK_MOEP_RD16"}};
-  const int tk_gu = t == QType::IQ1_S ? 64 : 32;
+  const int tk_gu = (t == QType::IQ1_S || t == QType::IQ1_M) ? 64 : 32;
   static const MoeRKern dg[kMoeTileCls] = {{64, 16, 0, 4}, {48, 16, 0, 4}, {32, 32, 0, 4}, {16, 32, 0, 4}};
   static const MoeRKern dd[kMoeTileCls] = {{64, 32, 32, 4}, {48, 32, 32, 4}, {32, 64, 32, 4}, {16, 64, 32, 4}};
   MoeRKern d = down ? dd[cls] : dg[cls];
@@ -398,25 +401,27 @@ MoeRKern moe_rk(QType t, bool down, int cls) {
 }
 struct QMoePArgs { uint32_t n, total, dim, inter, rb_gu, rb_d, k_per_token; };
 // device copy of the IQ grid tables for the register-path kernels (QMoeTbl in quant_moe_prefill.metal): IQ1_S half
-// grid (8192 uint) | IQ2_XXS half grid (1024) | IQ2 sign masks (512). Filled on the CPU, read-only afterwards.
+// grid (8192 uint) | IQ2_XXS half grid (1024) | IQ2 sign masks (512) | IQ2_XS half grid (2048). Filled on the CPU,
+// read-only afterwards. Offsets must match kQTbl* in quant_moe_prefill.metal.
 const Buffer& moe_tables() {
   static const Buffer b = [] {
-    static const uint32_t g1[] = {Q_IQ1S_GRID_HALF_VALUES}, g2[] = {Q_IQ2XXS_GRID_HALF_VALUES}, s2[] = {Q_IQ2_SIGNH_VALUES};
-    static_assert(sizeof(g1) == 8192 * 4 && sizeof(g2) == 1024 * 4 && sizeof(s2) == 512 * 4, "grid table sizes");
-    Buffer t = Device::get().alloc(sizeof(g1) + sizeof(g2) + sizeof(s2), "quant.moe.tbl");
+    static const uint32_t g1[] = {Q_IQ1S_GRID_HALF_VALUES}, g2[] = {Q_IQ2XXS_GRID_HALF_VALUES}, s2[] = {Q_IQ2_SIGNH_VALUES},
+                          g3[] = {Q_IQ2XS_GRID_HALF_VALUES};
+    static_assert(sizeof(g1) == 8192 * 4 && sizeof(g2) == 1024 * 4 && sizeof(s2) == 512 * 4 && sizeof(g3) == 2048 * 4,
+                  "grid table sizes");
+    Buffer t = Device::get().alloc(sizeof(g1) + sizeof(g2) + sizeof(s2) + sizeof(g3), "quant.moe.tbl");
     uint8_t* p = (uint8_t*)t.cpu();
-    memcpy(p, g1, sizeof(g1)); memcpy(p + sizeof(g1), g2, sizeof(g2)); memcpy(p + sizeof(g1) + sizeof(g2), s2, sizeof(s2));
+    memcpy(p, g1, sizeof(g1)); p += sizeof(g1);
+    memcpy(p, g2, sizeof(g2)); p += sizeof(g2);
+    memcpy(p, s2, sizeof(s2)); p += sizeof(s2);
+    memcpy(p, g3, sizeof(g3));
     return t;
   }();
   return b;
 }
-const char* mm_moe_name(QType t) {
-  switch (t) {
-    case QType::IQ1_S: return "iq1_s"; case QType::IQ2_XXS: return "iq2_xxs";
-    case QType::Q6_K: return "q6_k"; case QType::Q8_0: return "q8_0";
-    default: return nullptr;
-  }
-}
+// threadgroup memory of the register-path kernels: the IQ2 grids are copied there
+size_t moe_tg_bytes(QType t) { return t == QType::IQ2_XXS ? 4096 : t == QType::IQ2_XS ? 8192 : 16; }
+const char* mm_moe_name(QType t) { return is_iq(t) || is_moe_shared(t) ? kname(t) : nullptr; }
 size_t align256(size_t v) { return (v + 255) & ~(size_t)255; }
 size_t moe_header_bytes(int total, int n, int n_exp) {
   const size_t tiles = (size_t)n_exp + total / 16 + n / 16 + 4;  // token tiles of >= 16
@@ -507,7 +512,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
     uint32_t d[4] = {(uint32_t)r, (uint32_t)c, (uint32_t)row_bytes(t, c), 0};
     e.set_pipeline((std::string("q_deq_f16_") + kname(t)).c_str());
     e.set_buffer(0, W); e.set_buffer(1, s_w16.sub(dst_off, (size_t)r * c * 2)); e.set_bytes(2, d, 16);
-    e.dispatch_threads(c / (t == QType::Q8_0 ? 8 : 16), r, 1, 64, 1);
+    e.dispatch_threads(c / gpu_epl(t), r, 1, 64, 1);
   };
   const Buffer b_ptrs = s_hdr;
   const Buffer b_offs = a.scratch.sub(24 * (ne + 1), 4 * (ne + 2));
@@ -544,7 +549,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
     e.set_buffer(4, b_ptrs); e.set_buffer(5, b_offs); e.set_buffer(6, tl);
     if (path == 1) {
       e.set_buffer(7, moe_tables());
-      e.set_threadgroup_memory(0, t == QType::IQ2_XXS ? 4096 : 16);  // IQ2_XXS grid copy
+      e.set_threadgroup_memory(0, moe_tg_bytes(t));  // IQ2 grid copy
       e.set_pipeline(rname("q_moe_rgu_", kn, k).c_str());
       const int per_tg = k.tn * k.nsg;
       e.dispatch_groups((kExpertInter + per_tg - 1) / per_tg, nt, 1, 32 * k.nsg);
@@ -574,7 +579,7 @@ void encode_moe_prefill(Enc& e, const MoePrefillArgs& a) {
     e.set_buffer(4, b_ptrs); e.set_buffer(5, b_offs); e.set_buffer(6, tl);
     if (path == 1) {
       e.set_buffer(7, moe_tables());
-      e.set_threadgroup_memory(0, t == QType::IQ2_XXS ? 4096 : 16);
+      e.set_threadgroup_memory(0, moe_tg_bytes(t));
       e.set_pipeline(rname("q_moe_rdown_", kn, k).c_str());
       const int per_tg = k.tn * k.nsg;
       e.dispatch_groups((kExpertDim + per_tg - 1) / per_tg, nt, 1, 32 * k.nsg);

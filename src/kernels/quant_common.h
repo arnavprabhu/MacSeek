@@ -6,6 +6,7 @@
 // half-valued tables (16-byte aligned so one entry = one uint4 load)
 constant uint q_iq1s_gridh[8192] __attribute__((aligned(16))) = {Q_IQ1S_GRID_HALF_VALUES};
 constant uint q_iq2xxs_gridh[1024] __attribute__((aligned(16))) = {Q_IQ2XXS_GRID_HALF_VALUES};
+constant uint q_iq2xs_gridh[2048] __attribute__((aligned(16))) = {Q_IQ2XS_GRID_HALF_VALUES};
 constant uint q_iq2_signh[512] __attribute__((aligned(16))) = {Q_IQ2_SIGNH_VALUES};
 static inline uint4 q_tbl4(constant uint* t, uint i) { return ((constant uint4*)t)[i]; }
 

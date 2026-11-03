@@ -26,6 +26,11 @@ int main() {
       {QType::BF16, 32, 5120, 1, false, "indexer proj"},     {QType::BF16, 128, 512, 1, false, "indexer k"},
       {QType::F16, 1280, 5120, 1, false, "f16 synthetic"},   {QType::F16, 7, 768, 1, true, "f16 odd rows"},
       {QType::Q6_K, 3, 256, 1, false, "tiny"},
+      {QType::IQ1_M, 2304, 5120, 1, false, "exp gate"},      {QType::IQ1_M, 5120, 2304, 1, true, "exp down acc"},
+      {QType::IQ2_XS, 2304, 5120, 1, false, "exp gate"},     {QType::IQ2_XS, 5120, 2304, 1, false, "exp down"},
+      {QType::IQ1_M, 32768, 5120, 1, false, "big synthetic"}, {QType::IQ2_XS, 32768, 5120, 1, true, "big synth acc"},
+      {QType::IQ1_M, 7, 768, 1, false, "iq1_m odd rows"},    {QType::IQ2_XS, 5, 512, 1, false, "iq2_xs odd rows"},
+      {QType::Q5_K, 2304, 5120, 1, false, "shexp gate"},     {QType::Q5_K, 5120, 2304, 1, true, "shexp down acc"},
   };
   int fails = 0;
   for (const Case& c : cases) {

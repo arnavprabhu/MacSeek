@@ -115,12 +115,18 @@ kernel void q_moe_mm_down(device const half* H [[buffer(0)]], device float* Z [[
 // grid tables used by the cooperative dequant (device copies of the constant tables: divergent per-lane lookups are
 // much cheaper through the regular load path than through constant memory)
 struct QMoeTbl { device const uint2* g1; threadgroup const uint2* g2; };
-// tables: tbl = device copy (IQ1_S half grid 4096 uint2 | IQ2_XXS half grid 512 uint2 | IQ2 sign masks); IQ2_XXS
-// kernels copy their 4 KB grid into threadgroup memory first (lower-latency divergent lookups: -8% MoE time).
+// tables: tbl = device copy (uint2 units: IQ1_S half grid [0, 4096) | IQ2_XXS half grid [4096, 4608) | IQ2 sign masks
+// [4608, 4864) | IQ2_XS half grid [4864, 5888)). g1 = the IQ1_S grid (IQ1_S, IQ1_M); IQ2_XXS / IQ2_XS kernels copy
+// their 4 / 8 KB grid into threadgroup memory first (g2; lower-latency divergent lookups: -8% MoE time).
+constant uint kQTblIQ2XXS = 4096, kQTblIQ2XS = 4864;
 template <typename Q, int NSG>
 static inline QMoeTbl q_moe_tbl(device const uint2* tbl, threadgroup uint2* tgt, ushort sg, ushort lane) {
   if (is_same<Q, QB_IQ2XXS>::value) {
-    for (uint i = sg * 32 + lane; i < 512; i += 32 * NSG) tgt[i] = tbl[4096 + i];
+    for (uint i = sg * 32 + lane; i < 512; i += 32 * NSG) tgt[i] = tbl[kQTblIQ2XXS + i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  } else if (is_same<Q, QB_IQ2XS>::value) {
+    device const uint4* s4 = (device const uint4*)(tbl + kQTblIQ2XS);
+    for (uint i = sg * 32 + lane; i < 512; i += 32 * NSG) ((threadgroup uint4*)tgt)[i] = s4[i];
     threadgroup_barrier(mem_flags::mem_threadgroup);
   }
   return QMoeTbl{tbl, tgt};
@@ -164,6 +170,45 @@ template <int NG> struct QDeqq<QB_IQ2XXS, NG> {
         const uint b = ((s7 | ((popcount(s7) & 1) << 7)) >> (4 * (q & 1))) & 15;
         const uint2 sm = uint2(((b & 1) << 15) | ((b & 2) << 30), ((b & 4) << 13) | ((b & 8) << 28));
         const uint2 e = tb.g2[2 * ((idx >> (8 * gq)) & 0xFF) + (q & 1)] ^ sm;  // threadgroup copy of the grid
+        out[g2 + h] = half4(db * float4(as_type<half4>(e)));
+      }
+    }
+  }
+};
+
+// IQ1_M: a K step (TK | 256) lies in one block: d once; per 32-element sub-block one qs / qh / scale-word load
+template <int NG> struct QDeqq<QB_IQ1M, NG> {
+  static inline void run(device const uchar* row, uint k0, uint q, thread half4* out, thread const QMoeTbl& tb) {
+    device const uchar* b = row + (ulong)(k0 >> 8) * 56;
+    const float d = q_iq1m_d(b);
+    for (int g2 = 0; g2 < NG; g2 += 2) {
+      const uint ib = ((k0 + 16 * g2) >> 5) & 7;
+      const uint qs = q_ld32(b + 4 * ib), qh = q_ld16(b + 32 + 2 * ib);
+      const uint sc = q_ld16(b + 48 + 2 * (ib >> 1)) >> (6 * (ib & 1));
+      for (int h = 0; h < 2 && g2 + h < NG; h++) {
+        const uint gq = 2 * h + (q >> 1), nb = (qh >> (4 * gq)) & 15;
+        const float dl = d * float(2 * ((sc >> (3 * h)) & 7) + 1), delta = (nb & 8) ? -0.125f : 0.125f;
+        const uint2 e = tb.g1[2 * (((qs >> (8 * gq)) & 0xFF) | ((nb & 7) << 8)) + (q & 1)];
+        out[g2 + h] = half4(dl * (float4(as_type<half4>(e)) + delta));
+      }
+    }
+  }
+};
+// IQ2_XS: signs by ALU (7 bits + parity, as IQ2_XXS), grid from the threadgroup copy
+template <int NG> struct QDeqq<QB_IQ2XS, NG> {
+  static inline void run(device const uchar* row, uint k0, uint q, thread half4* out, thread const QMoeTbl& tb) {
+    device const uchar* b = row + (ulong)(k0 >> 8) * 74;
+    const float d = q_ldh(b);
+    for (int g2 = 0; g2 < NG; g2 += 2) {
+      const uint ib = ((k0 + 16 * g2) >> 5) & 7;
+      const uint scb = b[66 + ib];
+      for (int h = 0; h < 2 && g2 + h < NG; h++) {
+        const uint gq = 2 * h + (q >> 1);
+        const uint qv = q_ld16(b + 2 + 2 * (4 * ib + gq)), s7 = qv >> 9;
+        const uint bb = ((s7 | ((popcount(s7) & 1) << 7)) >> (4 * (q & 1))) & 15;
+        const uint2 sm = uint2(((bb & 1) << 15) | ((bb & 2) << 30), ((bb & 4) << 13) | ((bb & 8) << 28));
+        const uint2 e = tb.g2[2 * (qv & 511) + (q & 1)] ^ sm;
+        const float db = d * (0.5f + float((scb >> (4 * h)) & 15)) * 0.25f;
         out[g2 + h] = half4(db * float4(as_type<half4>(e)));
       }
     }
@@ -322,9 +367,12 @@ kernel void q_moe_rdown(device const half* H [[buffer(0)]], device float* Z [[bu
   Q_MOER_DN(Q, name, 16, 64, 32, 4)
 Q_MOER_ALL(QB_IQ1S, "iq1_s")
 Q_MOER_ALL(QB_IQ2XXS, "iq2_xxs")
+Q_MOER_ALL(QB_IQ1M, "iq1_m")
+Q_MOER_ALL(QB_IQ2XS, "iq2_xs")
 // shared expert through the grouped kernels (MACSEEK_MOEP_SHDENSE=0)
 Q_MOER_GU(QB_Q6K, "q6_k", 32, 32, 32, 4) Q_MOER_DN(QB_Q6K, "q6_k", 32, 64, 32, 4)
 Q_MOER_GU(QB_Q8_0, "q8_0", 32, 32, 32, 4) Q_MOER_DN(QB_Q8_0, "q8_0", 32, 64, 32, 4)
+Q_MOER_GU(QB_Q5K, "q5_k", 32, 32, 32, 4) Q_MOER_DN(QB_Q5K, "q5_k", 32, 64, 32, 4)
 
 
 kernel void q_moe_reduce(device const float* Z [[buffer(0)]], device float* Y [[buffer(1)]],
@@ -355,3 +403,6 @@ Q_MOEP_INST(QB_IQ1S, "iq1_s")
 Q_MOEP_INST(QB_IQ2XXS, "iq2_xxs")
 Q_MOEP_INST(QB_Q6K, "q6_k")
 Q_MOEP_INST(QB_Q8_0, "q8_0")
+Q_MOEP_INST(QB_IQ1M, "iq1_m")
+Q_MOEP_INST(QB_IQ2XS, "iq2_xs")
+Q_MOEP_INST(QB_Q5K, "q5_k")

@@ -1,4 +1,4 @@
-// Fused MoE decode (one token): routed experts (IQ1_S / IQ2_XXS) + shared expert (Q6_K / Q8_0).
+// Fused MoE decode (one token): routed experts (IQ1_S / IQ2_XXS / IQ1_M / IQ2_XS) + shared expert (Q6_K / Q8_0 / Q5_K).
 //   q_moe_gu  : h[e][r] = silu(min(gate_e[r].x, 10)) * clamp(up_e[r].x, -10, 10) * w_e    (all experts, one dispatch)
 //   q_moe_down: y[r] += sum_e down_e[r] . h[e]                                            (all experts, one dispatch)
 // Expert e < n_routed uses the routed type QR and buffers gate[e]/up[e]/down[e]; e == n_routed is the shared expert
@@ -161,10 +161,12 @@ kernel void q_moe_down(device const float* h [[buffer(0)]], device float* y [[bu
   Q_MOE_GU_INST(QR, QS, name, 1) Q_MOE_GU_INST(QR, QS, name, 2) Q_MOE_GU_INST(QR, QS, name, 4) \
   Q_MOE_DOWN_INST(QR, QS, name, 1) Q_MOE_DOWN_INST(QR, QS, name, 2) Q_MOE_DOWN_INST(QR, QS, name, 4)
 
-Q_MOE_INST(QB_IQ1S, QB_Q6K, "iq1_s_q6_k")
-Q_MOE_INST(QB_IQ1S, QB_Q8_0, "iq1_s_q8_0")
-Q_MOE_INST(QB_IQ2XXS, QB_Q6K, "iq2_xxs_q6_k")
-Q_MOE_INST(QB_IQ2XXS, QB_Q8_0, "iq2_xxs_q8_0")
+// every routed type x shared type (names "<routed>_<shared>", built by moe_pair in quant.mm)
+#define Q_MOE_SHARED(M, QR, nr) M(QR, QB_Q6K, nr "_q6_k") M(QR, QB_Q8_0, nr "_q8_0") M(QR, QB_Q5K, nr "_q5_k")
+#define Q_MOE_PAIRS(M) \
+  Q_MOE_SHARED(M, QB_IQ1S, "iq1_s") Q_MOE_SHARED(M, QB_IQ2XXS, "iq2_xxs") Q_MOE_SHARED(M, QB_IQ1M, "iq1_m") \
+  Q_MOE_SHARED(M, QB_IQ2XS, "iq2_xs")
+Q_MOE_PAIRS(Q_MOE_INST)
 
 
 // ---- pointer-table variants (decode without host re-binding): routed expert e's matrices come from tbl[e]
@@ -266,7 +268,4 @@ kernel void q_moe_down_t(device const float* h [[buffer(0)]], device float* y [[
       device const float*, device float*, constant QMoeArgs&, device const QDecPtr*, device const uchar*,         \
       threadgroup float*, uint, ushort, ushort, ushort);
 #define Q_MOE_T_ALL(QR, QS, name) Q_MOE_T_INST(QR, QS, name, 1) Q_MOE_T_INST(QR, QS, name, 2) Q_MOE_T_INST(QR, QS, name, 4)
-Q_MOE_T_ALL(QB_IQ1S, QB_Q6K, "iq1_s_q6_k")
-Q_MOE_T_ALL(QB_IQ1S, QB_Q8_0, "iq1_s_q8_0")
-Q_MOE_T_ALL(QB_IQ2XXS, QB_Q6K, "iq2_xxs_q6_k")
-Q_MOE_T_ALL(QB_IQ2XXS, QB_Q8_0, "iq2_xxs_q8_0")
+Q_MOE_PAIRS(Q_MOE_T_ALL)

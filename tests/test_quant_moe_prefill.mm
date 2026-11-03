@@ -60,6 +60,14 @@ int main() {
       {QType::IQ1_S, QType::IQ2_XXS, QType::Q6_K, 256, 6, 64, true, kZipf, -1, -1, 40},
       {QType::IQ1_S, QType::IQ1_S, QType::Q6_K, 80, 2, 5, true, kPopular, 0, 0, 0},  // previous kernels
       {QType::IQ1_S, QType::IQ2_XXS, QType::Q8_0, 256, 6, 64, true, kZipf, 0, 1, 40},
+      // GSQ-RCO model types: gate/up and down types differ, Q5_K shared expert (dense and grouped), both paths
+      {QType::IQ1_M, QType::IQ2_XXS, QType::Q5_K, 600, 6, 20, true, kSizes, -1, 1, 40},
+      {QType::IQ2_XS, QType::IQ1_M, QType::Q5_K, 256, 6, 64, true, kZipf, -1, 0, 40},
+      {QType::IQ2_XXS, QType::IQ2_XS, QType::Q5_K, 80, 2, 5, true, kPopular, 1, 0, 0},
+      {QType::IQ1_M, QType::IQ1_M, QType::Q5_K, 80, 2, 5, true, kPopular, 1, 1, 0},
+      {QType::IQ2_XS, QType::IQ2_XS, QType::Q5_K, 70, 2, 4, true, kPopular, 0, 0, 0},  // previous kernels
+      {QType::IQ1_M, QType::IQ2_XS, QType::Q5_K, 256, 6, 64, true, kZipf, 0, 1, 40},
+      {QType::IQ2_XS, QType::IQ2_XXS, QType::Q6_K, 40, 3, 4, false, kPopular, -1, -1, 0},
   };
   // explicit expert sizes (kSizes): expert 0 takes every token (> 512), the rest straddle the tile classes
   const int sizes[] = {1, 1, 2, 15, 16, 17, 31, 32, 33, 47, 48, 49, 63, 64, 65, 100, 129, 200, 300};

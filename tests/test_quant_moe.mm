@@ -1,5 +1,9 @@
 // encode_moe_decode vs CPU reference: 6 routed experts (+ shared) in one arena buffer at unaligned (4-byte) offsets,
-// all type combinations used by the model, clamp paths exercised with a large-x case.
+// all type combinations used by the models (UD-IQ1_S: IQ1_S/IQ2_XXS + Q6_K/Q8_0; GSQ-RCO: every gate/up x down
+// combination of IQ1_M / IQ2_XXS / IQ2_XS + Q5_K), clamp paths exercised with a large-x case. Also the pointer-table
+// variants: encode_moe_decode_table (All) and the encode_moe_decode_table_part pieces (SharedGu + AfterSharedGu and
+// SharedGu + SharedDown must be bit-identical to All / Shared; Shared + Routed matches the reference).
+#import <Metal/Metal.h>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -19,7 +23,8 @@ static double silu_clamped(double g, double u, double w) {
 
 int main() {
   const int D = mq::kExpertDim, I = mq::kExpertInter;
-  const Case cases[] = {
+  const QType R3[] = {QType::IQ1_M, QType::IQ2_XXS, QType::IQ2_XS};
+  std::vector<Case> cases = {
       {QType::IQ1_S, QType::IQ1_S, QType::Q6_K, 6, true, 1.f},
       {QType::IQ1_S, QType::IQ2_XXS, QType::Q8_0, 6, true, 1.f},
       {QType::IQ1_S, QType::IQ2_XXS, QType::Q6_K, 6, true, 1.f},
@@ -27,7 +32,14 @@ int main() {
       {QType::IQ2_XXS, QType::IQ2_XXS, QType::Q8_0, 3, false, 1.f},
       {QType::IQ1_S, QType::IQ1_S, QType::Q6_K, 0, true, 1.f},
       {QType::IQ1_S, QType::IQ1_S, QType::Q6_K, 6, true, 40.f},  // drives gate/up past the +-10 clamps
+      {QType::IQ1_S, QType::IQ2_XXS, QType::Q5_K, 6, true, 1.f},
+      {QType::IQ1_M, QType::IQ2_XS, QType::Q6_K, 6, true, 1.f},
+      {QType::IQ2_XS, QType::IQ1_M, QType::Q8_0, 3, true, 1.f},
+      {QType::IQ1_M, QType::IQ2_XXS, QType::Q5_K, 0, true, 1.f},
+      {QType::IQ2_XS, QType::IQ2_XS, QType::Q5_K, 3, false, 1.f},
+      {QType::IQ1_M, QType::IQ1_M, QType::Q5_K, 6, true, 40.f},
   };
+  for (QType gu : R3) for (QType dn : R3) cases.push_back({gu, dn, QType::Q5_K, 6, true, 1.f});
   int fails = 0;
   auto& dev = ms::Device::get();
   for (const Case& c : cases) {
@@ -90,12 +102,43 @@ int main() {
       for (int i = 0; i < D; i++) { yref[i] += yd[i]; ymag[i] += ydm[i]; }
     }
     double err = max_norm_err((float*)by.cpu(), yref, ymag, D);
-    bool ok = err <= 5e-5 && h_err <= 2e-5;
-    printf("  gu=%-7s down=%-7s shared=%-4s routed=%d  clamped=%5d  h_err %.2e  y_err %.2e  %s\n",
+    const std::vector<float> y_bound((const float*)by.cpu(), (const float*)by.cpu() + D);
+
+    // pointer-table variants: table[e] = {gate, up, down} device addresses
+    Buffer tbl = dev.alloc(sizeof(uint64_t) * 3 * mq::kMaxRouted, "tbl");
+    auto gaddr = [](const Buffer& b) { return (uint64_t)[(__bridge id<MTLBuffer>)b.buf gpuAddress] + b.off; };
+    for (int e = 0; e < c.n_routed; e++) {
+      uint64_t* t = (uint64_t*)tbl.cpu() + 3 * e;
+      t[0] = gaddr(a.slot[e].gate); t[1] = gaddr(a.slot[e].up); t[2] = gaddr(a.slot[e].down);
+    }
+    using P = mq::MoePart;
+    auto run_parts = [&](std::initializer_list<P> parts) {
+      memcpy(by.cpu(), y0.data(), D * 4);
+      ms::Enc enc;
+      [(__bridge id<MTLComputeCommandEncoder>)enc.encoder() useResource:(__bridge id<MTLBuffer>)arena.buf
+                                                                  usage:MTLResourceUsageRead];
+      bool first = true;
+      for (P p : parts) { if (!first) enc.barrier(); mq::encode_moe_decode_table_part(enc, a, tbl, p); first = false; }
+      enc.wait();
+      return std::vector<float>((const float*)by.cpu(), (const float*)by.cpu() + D);
+    };
+    const auto y_all = run_parts({P::All});
+    const auto y_split = run_parts({P::SharedGu, P::AfterSharedGu});
+    const auto y_sr = run_parts({P::Shared, P::Routed});
+    const auto y_s = run_parts({P::Shared});
+    const auto y_sgd = run_parts({P::SharedGu, P::SharedDown});
+    const auto y_sgdr = run_parts({P::SharedGu, P::SharedDown, P::Routed});
+    const double e_all = max_norm_err(y_all.data(), yref, ymag, D), e_sr = max_norm_err(y_sr.data(), yref, ymag, D),
+                 e_sgdr = max_norm_err(y_sgdr.data(), yref, ymag, D);
+    const bool all_eq_bound = y_all == y_bound, split_eq = y_split == y_all, sgd_eq = y_sgd == y_s;
+    bool ok = err <= 5e-5 && h_err <= 2e-5 && e_all <= 5e-5 && e_sr <= 5e-5 && e_sgdr <= 5e-5 && split_eq && sgd_eq;
+    printf("  gu=%-7s down=%-7s shared=%-4s routed=%d  clamped=%5d  h_err %.2e  y_err %.2e | table: All %.2e%s  "
+           "SharedGu+AfterSharedGu %s  Shared+Routed %.2e  SharedGu+SharedDown %s  +Routed %.2e  %s\n",
            mq::type_name(c.gu), mq::type_name(c.down), c.shared ? mq::type_name(c.sh) : "-", c.n_routed, clamped,
-           h_err, err, ok ? "ok" : "FAIL");
+           h_err, err, e_all, all_eq_bound ? " (== bound)" : "", split_eq ? "bit-identical" : "DIFFERS", e_sr,
+           sgd_eq ? "== Shared" : "DIFFERS", e_sgdr, ok ? "ok" : "FAIL");
     fails += !ok;
-    dev.release(arena); dev.release(bx); dev.release(by); dev.release(bw); dev.release(scratch);
+    dev.release(arena); dev.release(bx); dev.release(by); dev.release(bw); dev.release(scratch); dev.release(tbl);
   }
   printf(fails ? "FAILED (%d)\n" : "all OK\n", fails);
   return fails ? 1 : 0;

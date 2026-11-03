@@ -54,6 +54,8 @@ Q_MV_INST(QB_Q5K, "q5_k")
 Q_MV_INST(QB_Q6K, "q6_k")
 Q_MV_INST(QB_IQ1S, "iq1_s")
 Q_MV_INST(QB_IQ2XXS, "iq2_xxs")
+Q_MV_INST(QB_IQ1M, "iq1_m")
+Q_MV_INST(QB_IQ2XS, "iq2_xs")
 
 // ---------------- decode matvec with the input RMSNorm fused into the x loads ----------------
 // y = W . (x * rsqrt(mean(x^2) + eps) * nw)   (decode q_a_norm -> attn_q_b / indexer q_b).
@@ -216,3 +218,5 @@ Q_MVN_INST(QB_Q5K, "q5_k")
 Q_MVN_INST(QB_Q6K, "q6_k")
 Q_MVN_INST(QB_IQ1S, "iq1_s")
 Q_MVN_INST(QB_IQ2XXS, "iq2_xxs")
+Q_MVN_INST(QB_IQ1M, "iq1_m")
+Q_MVN_INST(QB_IQ2XS, "iq2_xs")

@@ -159,6 +159,8 @@ Q_DEQ_INST(QB_Q5K, "q5_k")
 Q_DEQ_INST(QB_Q6K, "q6_k")
 Q_DEQ_INST(QB_IQ1S, "iq1_s")
 Q_DEQ_INST(QB_IQ2XXS, "iq2_xxs")
+Q_DEQ_INST(QB_IQ1M, "iq1_m")
+Q_DEQ_INST(QB_IQ2XS, "iq2_xs")
 
 #define Q_MM_INST1(Q, name, TM, TN, NSG, NBUF)                                                                   \
   template [[host_name("q_mm_" name "_" #TM "x" #TN "_b" #NBUF)]] kernel void q_mm<Q, TM, TN, NSG, NBUF>(      \
@@ -176,6 +178,8 @@ Q_MM_INST(QB_Q5K, "q5_k")
 Q_MM_INST(QB_Q6K, "q6_k")
 Q_MM_INST(QB_IQ1S, "iq1_s")
 Q_MM_INST(QB_IQ2XXS, "iq2_xxs")
+Q_MM_INST(QB_IQ1M, "iq1_m")
+Q_MM_INST(QB_IQ2XS, "iq2_xs")
 
 #define Q_MMD_INST(WT, name)                                                                                     \
   template [[host_name("q_mm_" name "_64x128")]] kernel void q_mm_dense<WT, 64, 128, 4>(device const WT*,       \
