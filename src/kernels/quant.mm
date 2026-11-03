@@ -430,7 +430,7 @@ const Buffer& moe_tables() {
   return b;
 }
 // threadgroup memory of the register-path kernels: the IQ2_XXS grid is copied there
-size_t moe_tg_bytes(QType t) { return t == QType::IQ2_XXS ? 4096 : 16; }
+size_t moe_tg_bytes(QType t) { return t == QType::IQ2_XXS ? 4096 : t == QType::IQ2_XS ? 8192 : 16; }
 const char* mm_moe_name(QType t) { return is_iq(t) || is_moe_shared(t) ? kname(t) : nullptr; }
 size_t align256(size_t v) { return (v + 255) & ~(size_t)255; }
 size_t moe_header_bytes(int total, int n, int n_exp) {

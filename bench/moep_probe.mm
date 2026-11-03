@@ -3,9 +3,18 @@
 #include <cstring>
 #include <algorithm>
 #include "core/metal.hpp"
+#import <Metal/Metal.h>
 using namespace ms;
 int main(int argc, char** argv) {
   auto& d = Device::get();
+  if (argc > 1 && !strcmp(argv[1], "occ")) {  // pipeline limits (register pressure shows as maxTotalThreadsPerThreadgroup < 1024)
+    for (int i = 2; i < argc; i++) {
+      id<MTLComputePipelineState> p = (__bridge id<MTLComputePipelineState>)d.pipeline(argv[i]);
+      printf("%-40s maxThreads %4lu  width %lu\n", argv[i], (unsigned long)p.maxTotalThreadsPerThreadgroup,
+             (unsigned long)p.threadExecutionWidth);
+    }
+    return 0;
+  }
   if (argc > 1 && !strcmp(argv[1], "tg4")) {  // execution_simdgroups<4> 64x128 destination layout
     Buffer A = d.alloc(128 * 128 * 2), B = d.alloc(128 * 128 * 2), o4 = d.alloc((128 * 256 + 128) * 4);
     Enc e; e.set_pipeline("attn_probe_coop_64x128"); e.set_buffer(0, A); e.set_buffer(1, B); e.set_buffer(2, o4);

@@ -127,6 +127,10 @@ static inline QMoeTbl q_moe_tbl(device const uint2* tbl, threadgroup uint2* tgt,
     for (uint i = sg * 32 + lane; i < 512; i += 32 * NSG) tgt[i] = tbl[kQTblIQ2XXS + i];
     threadgroup_barrier(mem_flags::mem_threadgroup);
   }
+  if (is_same<Q, QB_IQ2XS>::value) {
+    for (uint i = sg * 32 + lane; i < 1024; i += 32 * NSG) tgt[i] = tbl[kQTblIQ2XS + i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
   return QMoeTbl{tbl, tgt};
 }
 template <typename Q, int NG> struct QDeqq {
@@ -208,7 +212,7 @@ template <int NG> struct QDeqq<QB_IQ2XS, NG> {
         const uint qv = q_ld16(b + 2 + 2 * (4 * ib + gq)), s7 = qv >> 9;
         const uint bb = ((s7 | ((popcount(s7) & 1) << 7)) >> (4 * (q & 1))) & 15;
         const uint2 sm = uint2(((bb & 1) << 15) | ((bb & 2) << 30), ((bb & 4) << 13) | ((bb & 8) << 28));
-        const uint2 e = tb.g1[kQTblIQ2XS + 2 * (qv & 511) + (q & 1)] ^ sm;
+        const uint2 e = tb.g2[2 * (qv & 511) + (q & 1)] ^ sm;
         const float db = d * (0.5f + float((scb >> (4 * h)) & 15)) * 0.25f;
         out[g2 + h] = half4(db * float4(as_type<half4>(e)));
       }
