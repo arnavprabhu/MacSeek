@@ -127,6 +127,10 @@ static inline QMoeTbl q_moe_tbl(device const uint2* tbl, threadgroup uint2* tgt,
     for (uint i = sg * 32 + lane; i < 512; i += 32 * NSG) tgt[i] = tbl[kQTblIQ2XXS + i];
     threadgroup_barrier(mem_flags::mem_threadgroup);
   }
+  if (is_same<Q, QB_IQ2XS>::value) {
+    for (uint i = sg * 32 + lane; i < 1024; i += 32 * NSG) tgt[i] = tbl[kQTblIQ2XS + i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
   return QMoeTbl{tbl, tgt};
 }
 template <typename Q, int NG> struct QDeqq {
@@ -208,7 +212,7 @@ template <int NG> struct QDeqq<QB_IQ2XS, NG> {
         const uint qv = q_ld16(b + 2 + 2 * (4 * ib + gq)), s7 = qv >> 9;
         const uint bb = ((s7 | ((popcount(s7) & 1) << 7)) >> (4 * (q & 1))) & 15;
         const uint2 sm = uint2(((bb & 1) << 15) | ((bb & 2) << 30), ((bb & 4) << 13) | ((bb & 8) << 28));
-        const uint2 e = tb.g1[kQTblIQ2XS + 2 * (qv & 511) + (q & 1)] ^ sm;
+        const uint2 e = tb.g2[2 * (qv & 511) + (q & 1)] ^ sm;
         const float db = d * (0.5f + float((scb >> (4 * h)) & 15)) * 0.25f;
         out[g2 + h] = half4(db * float4(as_type<half4>(e)));
       }
@@ -284,6 +288,75 @@ kernel void q_moe_rgu(device const half* Xg [[buffer(0)]], device half* H [[buff
   }
 }
 
+// gate|up merged into ONE matmul per K step (TM tokens x 2*TNH coop rows: rows [0, TNH) = gate rows r0.., rows
+// [TNH, 2*TNH) = up rows r0..): the X tile is read once per K step instead of once per matrix. Destination layout (M5,
+// dumped by bench_moep_probe, guarded below and by the tests): element 8*(NB*tg + cb) + 4*s + c holds row 16*cb + a + c,
+// token 16*tg + t0 + 8*s (NB = TN/16 row blocks), so the up partner of a gate element i sits at i + TNH/2 in the same lane.
+template <typename Q, int TN, int TK, typename CW>
+static inline void q_coop_deq2(thread CW& cw, device const uchar* Wg, device const uchar* Wu, uint row_bytes, uint r0, uint k0,
+                               ushort lane, thread const QMoeTbl& tb) {
+  static_assert(TN % 16 == 0 && TK % 32 == 0, "layout verified for TN in {32, 64}, TK in {32, 64}");
+  constexpr int RB = TN / 8, NG = TK / 16;
+  const uint q = (lane & 1) | ((lane >> 2) & 2), rr = ((lane >> 1) & 3) | ((lane >> 2) & 4);
+  for (int rb = 0; rb < RB; rb++) {
+    half4 v[NG];
+    device const uchar* W = rb < RB / 2 ? Wg : Wu;
+    const int rh = rb < RB / 2 ? rb : rb - RB / 2;
+    QDeqq<Q, NG>::run(W + (ulong)(r0 + rr + 8 * rh) * row_bytes, k0, q, v, tb);
+    for (int g = 0; g < NG; g++) {
+      const int i = 4 * (RB * g + rb);
+      cw[i] = v[g].x; cw[i + 1] = v[g].y; cw[i + 2] = v[g].z; cw[i + 3] = v[g].w;
+    }
+  }
+}
+template <typename Q, int TM, int TNH, int TK, int NSG>
+kernel void q_moe_rgu2(device const half* Xg [[buffer(0)]], device half* H [[buffer(1)]],
+                       constant QMoePArgs& a [[buffer(2)]], device const float* wt [[buffer(3)]],
+                       device const QExpPtr* ptrs [[buffer(4)]], device const uint* offs [[buffer(5)]],
+                       device const uint2* tiles [[buffer(6)]], device const uint2* tbl [[buffer(7)]],
+                       threadgroup uint2* tgt [[threadgroup(0)]], uint2 tg [[threadgroup_position_in_grid]],
+                       ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+  constexpr int TN = 2 * TNH;
+  const QMoeTbl tb = q_moe_tbl<Q, NSG>(tbl, tgt, sg, lane);
+  const uint2 te = tiles[tg.y];
+  const uint e = te.x, base = offs[e] + te.y, m = min(offs[e + 1] - base, (uint)TM);
+  const uint r0 = (tg.x * NSG + sg) * TNH;
+  if (r0 >= a.inter) return;
+  device const uchar* Wg = ptrs[e].g;
+  device const uchar* Wu = ptrs[e].u;
+  tensor<device half, dextents<int32_t, 2>, tensor_inline> tX((device half*)(Xg + (ulong)base * a.dim),
+                                                              dextents<int32_t, 2>(a.dim, m));
+  constexpr auto desc = matmul2d_descriptor(TM, TN, TK, false, true, false, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<desc, execution_simdgroup> op;
+  auto w = op.template get_right_input_cooperative_tensor<half, half, float>();
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tX), decltype(w), float>();
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) if (cT.is_valid_element(i)) cT[i] = 0;
+  for (uint k0 = 0; k0 < a.dim; k0 += TK) {
+    q_coop_deq2<Q, TN, TK>(w, Wg, Wu, a.rb_gu, r0, k0, lane, tb);
+    auto xs = tX.slice(k0, 0);
+    op.run(xs, w, cT);
+  }
+  constexpr int P = TNH / 2;  // up partner offset
+  for (uint16_t i = 0; i < cT.get_capacity(); i += 4) {
+    auto idx = cT.get_multidimensional_index(i);  // [0] = coop row, [1] = token within tile
+    if (idx[0] >= TNH) continue;
+    const uint r = r0 + idx[0], t = idx[1];
+    if (t >= m || r >= a.inter) continue;
+    const float w8 = base + t < a.total ? wt[base + t] : 1.f;
+    auto id3 = cT.get_multidimensional_index(i + 3);
+    auto ip = cT.get_multidimensional_index(i + P);
+    auto ip3 = cT.get_multidimensional_index(i + P + 3);
+    if (id3[0] == idx[0] + 3 && id3[1] == idx[1] && ip[0] == idx[0] + TNH && ip[1] == idx[1] && ip3[0] == idx[0] + TNH + 3 &&
+        ip3[1] == idx[1]) {
+      const float4 g = min(float4(cT[i], cT[i + 1], cT[i + 2], cT[i + 3]), 10.f);
+      const float4 u = clamp(float4(cT[i + P], cT[i + P + 1], cT[i + P + 2], cT[i + P + 3]), -10.f, 10.f);
+      *(device half4*)(H + (ulong)(base + t) * a.inter + r) = half4(g / (1.f + exp(-g)) * u * w8);
+    } else {  // layout guard (never taken on M5): poison the rows so the tests fail loudly
+      for (int c = 0; c < 4; c++) H[(ulong)(base + t) * a.inter + r + c] = half(NAN);
+    }
+  }
+}
+
 // ---- dense shared expert: weights pre-dequantized to half (W16: gate rows, then up rows; or down), tensor-API GEMM
 // straight from device memory (the q_mm_f16 shape, 92-98% of peak). gate/up with the SwiGLU epilogue into H rows
 // [total, total + n); down via q_mm_f16_64x128 into Z rows [total, total + n).
@@ -315,6 +388,46 @@ kernel void q_moe_dgu(device const half* Xg [[buffer(0)]], device half* H [[buff
     if (r >= a.inter || t >= a.n) continue;
     float g = min(cG[i], 10.f), u = clamp(cU[i], -10.f, 10.f);
     H[(ulong)(a.total + t) * a.inter + r] = half(g / (1.f + exp(-g)) * u);
+  }
+}
+
+// dense shared gate/up as ONE 64 x 128 GEMM per tile: W16 holds gate and up interleaved in blocks of 64 rows
+// (block j = gate rows 64j.. then up rows 64j..), so a 128-row slice is [gate | up] of the same 64 H rows. Destination
+// layout of matmul2d(64, 128) on 4 simdgroups (M5, bench_moep_probe tg4; guarded below and by the tests): a thread
+// holds columns {c, c+32, c+64, c+96} (+0..3) of its tokens, the up partner of gate element i at i + 16.
+kernel void q_moe_dgu2(device const half* Xg [[buffer(0)]], device half* H [[buffer(1)]], constant QMoePArgs& a [[buffer(2)]],
+                       device const half* W16 [[buffer(3)]], uint2 tg [[threadgroup_position_in_grid]]) {
+  constexpr int TM = 64, TN = 128, TK = 64;
+  const uint t0 = tg.y * TM, b0 = tg.x * TN;
+  tensor<device half, dextents<int32_t, 2>, tensor_inline> tX((device half*)(Xg + (ulong)a.total * a.dim),
+                                                              dextents<int32_t, 2>(a.dim, a.n));
+  tensor<device half, dextents<int32_t, 2>, tensor_inline> tW((device half*)W16, dextents<int32_t, 2>(a.dim, 2 * a.inter));
+  constexpr auto desc = matmul2d_descriptor(TM, TN, TK, false, true, false, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<desc, execution_simdgroups<4>> op;
+  auto cT = op.template get_destination_cooperative_tensor<decltype(tX), decltype(tW), float>();
+  for (uint16_t i = 0; i < cT.get_capacity(); ++i) if (cT.is_valid_element(i)) cT[i] = 0;
+  for (uint k0 = 0; k0 < a.dim; k0 += TK) {
+    auto xs = tX.slice(k0, t0);
+    auto ws = tW.slice(k0, b0);
+    op.run(xs, ws, cT);
+  }
+  for (uint16_t i = 0; i < cT.get_capacity(); i += 4) {
+    if (!cT.is_valid_element(i)) continue;
+    auto idx = cT.get_multidimensional_index(i);  // [0] = column within the 128 (gate < 64 <= up), [1] = token
+    if (idx[0] >= 64) continue;
+    const uint r = tg.x * 64 + idx[0], t = t0 + idx[1];
+    if (t >= a.n || r >= a.inter) continue;
+    auto id3 = cT.get_multidimensional_index(i + 3);
+    auto ip = cT.get_multidimensional_index(i + 16);
+    auto ip3 = cT.get_multidimensional_index(i + 19);
+    if (id3[0] == idx[0] + 3 && id3[1] == idx[1] && ip[0] == idx[0] + 64 && ip[1] == idx[1] && ip3[0] == idx[0] + 67 &&
+        ip3[1] == idx[1]) {
+      const float4 g = min(float4(cT[i], cT[i + 1], cT[i + 2], cT[i + 3]), 10.f);
+      const float4 u = clamp(float4(cT[i + 16], cT[i + 17], cT[i + 18], cT[i + 19]), -10.f, 10.f);
+      *(device half4*)(H + (ulong)(a.total + t) * a.inter + r) = half4(g / (1.f + exp(-g)) * u);
+    } else {  // layout guard (never taken on M5): poison so the tests fail loudly
+      for (int c = 0; c < 4; c++) H[(ulong)(a.total + t) * a.inter + r + c] = half(NAN);
+    }
   }
 }
 
@@ -358,6 +471,11 @@ kernel void q_moe_rdown(device const half* H [[buffer(0)]], device float* Z [[bu
   q_moe_rdown<Q, TM, TN, TK, NSG>(device const half*, device float*, constant QMoePArgs&, device const QExpPtr*, \
                                      device const uint*, device const uint2*, device const uint2*, threadgroup uint2*,   \
                                      uint2, ushort, ushort);
+#define Q_MOER_GU2(Q, name, TM, TN, TK, NSG)                                                                      \
+  template [[host_name("q_moe_rgu2_" name "_" #TM "x" #TN "k" #TK "s" #NSG)]] kernel void                          \
+  q_moe_rgu2<Q, TM, TN, TK, NSG>(device const half*, device half*, constant QMoePArgs&, device const float*,     \
+                                  device const QExpPtr*, device const uint*, device const uint2*, device const uint2*, \
+                                  threadgroup uint2*, uint2, ushort, ushort);
 #define Q_MOER_GU(Q, name, TM, TN, TK, NSG) Q_MOER_GU1(Q, name, TM, TN, TK, NSG, "")
 #define Q_MOER_DN(Q, name, TM, TN, TK, NSG) Q_MOER_DN1(Q, name, TM, TN, TK, NSG, "")
 #define Q_MOER_ALL(Q, name)                                                                                         \
@@ -365,15 +483,18 @@ kernel void q_moe_rdown(device const half* H [[buffer(0)]], device float* Z [[bu
   Q_MOER_GU(Q, name, 16, 32, 64, 4) Q_MOER_GU(Q, name, 64, 16, 32, 4) Q_MOER_GU(Q, name, 48, 16, 32, 4)              \
   Q_MOER_GU(Q, name, 32, 32, 32, 4) Q_MOER_GU(Q, name, 16, 32, 32, 4)                                               \
   Q_MOER_DN(Q, name, 64, 32, 32, 4) Q_MOER_DN(Q, name, 48, 32, 32, 4) Q_MOER_DN(Q, name, 32, 64, 32, 4)              \
-  Q_MOER_DN(Q, name, 16, 64, 32, 4)
+  Q_MOER_DN(Q, name, 16, 64, 32, 4)                                                                                   \
+  Q_MOER_GU2(Q, name, 64, 16, 32, 4) Q_MOER_GU2(Q, name, 48, 16, 32, 4) Q_MOER_GU2(Q, name, 32, 32, 32, 4)           \
+  Q_MOER_GU2(Q, name, 16, 32, 32, 4) Q_MOER_GU2(Q, name, 64, 16, 64, 4) Q_MOER_GU2(Q, name, 48, 16, 64, 4)           \
+  Q_MOER_GU2(Q, name, 32, 32, 64, 4) Q_MOER_GU2(Q, name, 16, 32, 64, 4)
 Q_MOER_ALL(QB_IQ1S, "iq1_s")
 Q_MOER_ALL(QB_IQ2XXS, "iq2_xxs")
 Q_MOER_ALL(QB_IQ1M, "iq1_m")
 Q_MOER_ALL(QB_IQ2XS, "iq2_xs")
 // shared expert through the grouped kernels (MACSEEK_MOEP_SHDENSE=0)
-Q_MOER_GU(QB_Q6K, "q6_k", 32, 32, 32, 4) Q_MOER_DN(QB_Q6K, "q6_k", 32, 64, 32, 4)
-Q_MOER_GU(QB_Q8_0, "q8_0", 32, 32, 32, 4) Q_MOER_DN(QB_Q8_0, "q8_0", 32, 64, 32, 4)
-Q_MOER_GU(QB_Q5K, "q5_k", 32, 32, 32, 4) Q_MOER_DN(QB_Q5K, "q5_k", 32, 64, 32, 4)
+Q_MOER_GU(QB_Q6K, "q6_k", 32, 32, 32, 4) Q_MOER_GU2(QB_Q6K, "q6_k", 32, 32, 32, 4) Q_MOER_DN(QB_Q6K, "q6_k", 32, 64, 32, 4)
+Q_MOER_GU(QB_Q8_0, "q8_0", 32, 32, 32, 4) Q_MOER_GU2(QB_Q8_0, "q8_0", 32, 32, 32, 4) Q_MOER_DN(QB_Q8_0, "q8_0", 32, 64, 32, 4)
+Q_MOER_GU(QB_Q5K, "q5_k", 32, 32, 32, 4) Q_MOER_GU2(QB_Q5K, "q5_k", 32, 32, 32, 4) Q_MOER_DN(QB_Q5K, "q5_k", 32, 64, 32, 4)
 
 
 kernel void q_moe_reduce(device const float* Z [[buffer(0)]], device float* Y [[buffer(1)]],

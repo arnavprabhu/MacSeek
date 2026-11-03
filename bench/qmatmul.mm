@@ -114,6 +114,7 @@ static void bench_moe(double peak) {
 // Zipf(s) popularity (random expert permutation), experts in id order processed in groups of `group` experts per
 // command buffer (encode_moe_prefill call), shared expert (all n tokens) in the first group. Reports the sum of the
 // groups' GPU times, best of `reps` passes. Expert weights alias over `uniq` distinct matrices (>= 512 MiB streamed).
+static bool g_zall = true;  // --nozall: per-call reduce (old engine mode)
 static void bench_moe_real(double peak, int n, int group, double zs, QType tgu, QType tdn, QType tsh, int reps, int NE) {
   auto& d = Device::get();
   const int D = q::kExpertDim, I = q::kExpertInter, K = 6;
@@ -179,6 +180,20 @@ static void bench_moe_real(double peak, int n, int group, double zs, QType tgu, 
     max_scr = std::max(max_scr, q::moe_prefill_scratch_bytes(g.total, n, (int)g.sl.size()));
   }
   Buffer scratch = d.alloc(max_scr, "scratch");
+  // engine mode (ds41.mm ZALL): every group writes its Z rows into one layer-wide Z (routed rows at the group's global
+  // entry offset, shared rows at n*K), no per-call reduce; one encode_moe_reduce after the last group
+  std::vector<int> g0(ngroups + 1, 0);
+  for (int gi = 0; gi < ngroups; gi++) g0[gi + 1] = g0[gi] + gs[gi].total;
+  Buffer zall, slot_all;
+  if (g_zall) {
+    zall = d.alloc((size_t)(n * K + n) * D * 4, "zall");
+    slot_all = d.alloc((size_t)n * K * 4, "slot_all");
+    int* sa = (int*)slot_all.cpu();
+    for (int gi = 0; gi < ngroups; gi++) {
+      const int* so = (const int*)gs[gi].slot_of.cpu();
+      for (int i = 0; i < n * K; i++) if (so[i] >= 0) sa[i] = g0[gi] + so[i];
+    }
+  }
   double best = 1e30, flops = 0;
   for (auto& g : gs) flops += 2.0 * 3 * D * I * g.total;
   flops += 2.0 * 3 * D * I * n;
@@ -191,7 +206,15 @@ static void bench_moe_real(double peak, int n, int group, double zs, QType tgu, 
       a.n_tokens = n; a.n_exp = (int)g.sl.size(); a.slots = g.sl.data(); a.offs = g.offs.data(); a.tok = g.tok;
       a.wt = g.wt; a.slot_of = g.slot_of; a.k_per_token = K; a.has_shared = gi == 0; a.shared = sh; a.X = X; a.Y = Y;
       a.scratch = scratch;
-      Enc e; q::encode_moe_prefill(e, a); e.wait();
+      if (g_zall) {
+        const size_t rb = (size_t)D * 4;
+        a.z_ext = zall.sub((size_t)g0[gi] * rb, (size_t)std::max(g.total, 1) * rb);
+        a.z_shared_ext = zall.sub((size_t)n * K * rb, (size_t)n * rb);
+        a.skip_reduce = true;
+      }
+      Enc e; q::encode_moe_prefill(e, a);
+      if (g_zall && gi == ngroups - 1) { e.barrier(); q::encode_moe_reduce(e, zall, Y, slot_all, n, n * K, K, true); }
+      e.wait();
       tot += e.gpu_ms();
     }
     best = std::min(best, tot);
@@ -200,6 +223,7 @@ static void bench_moe_real(double peak, int n, int group, double zs, QType tgu, 
          flops / best / 1e9, 100 * flops / best / 1e9 / peak, peak, best * 40 / 1e3, n);
   for (auto& g : gs) { d.release(g.tok); d.release(g.wt); d.release(g.slot_of); }
   for (Buffer* b : {&arena, &X, &Y, &scratch}) d.release(*b);
+  if (g_zall) { d.release(zall); d.release(slot_all); }
 }
 
 int main(int argc, char** argv) {
@@ -215,6 +239,7 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--reps") && i + 1 < argc) reps = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--types") && i + 1 < argc) rtypes = argv[++i];  // all | iq1 | iq2 | gu,down,shared
     else if (!strcmp(argv[i], "--experts") && i + 1 < argc) ne = atoi(argv[++i]);  // experts per layer (192: GSQ-RCO)
+    else if (!strcmp(argv[i], "--nozall")) g_zall = false;  // per-call reduce instead of the engine's layer-wide Z
     else filt = argv[i];
   }
   double peak = (real && getenv("BENCH_PEAK")) ? atof(getenv("BENCH_PEAK")) : peak_f16(true);
