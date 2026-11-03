@@ -103,3 +103,76 @@ The module now uses the fence pair for every mode (no cost).
    16-row gathers in attn_sparse (same arithmetic) or more splits (different numerics).
 3. hc steps (~21 us each incl. stage, 80/token): the single-threadgroup tail (Sinkhorn + x normalization).
 4. Handshake signals (0.72 ms): inherent to the per-layer router round trip.
+
+
+## GSQ-RCO Coder at 262K (branch coder-dec)
+
+`bench_decode_layer` defaults to `--layout coder` (tests/dec_synth.hpp `dsyn::layout()`): the per-layer types of
+docs/tensors_coder.txt (routed gate=up / down per layer from IQ1_M / IQ2_XXS / IQ2_XS, 192 experts, F32 router
+[192][5120], Q5_K shared / head / engram_kv / q_b / o_a / o_b, Q8_0 q_a / kv, Q5_K embedding), attention state at
+position 260000 (max_pos 262144). `--layout ud` = the previous UD-IQ1_S layout (384 experts, pos 200000).
+`--breakdown` also removes the output head (`head`) and prints MB/token and the floor at `--bw` (285 GB/s) per
+component. test_dec_fuse also runs every fusion switch on Coder layers 1, 8, 23 and 12-14 (bit-identical).
+
+Synthetic token (20 tokens/CB, go pre-signaled, under the model lock, best of 5-7):
+**before 35.99 ms (median 36.02) -> after 34.71 ms (median 34.73), -3.6%**. Interleaved A/B (3 rounds, reps 7): before
+35.81-36.34 best, after 34.53-34.76 (FUSE=1 config: 34.17-34.30). Bytes/token 8.03 GB -> floor 28.2 ms. The model
+measured ~36.5 ms of GPU work per token before, matching the synthetic 36.0 ms.
+
+| component | MB/token | floor ms | before delta ms | after delta ms |
+|---|---|---|---|---|
+| hcA | 85.4 | 0.300 | 0.683 | 0.746 |
+| proj | 429.3 | 1.506 | 1.556 | 1.598 |
+| norm | 0.0 | 0.000 | 0.141 | 0.140 |
+| qb | 1237.3 | 4.341 | 4.688 | 4.500 |
+| kvwin | 0.5 | 0.002 | 0.089 | 0.154 |
+| index | 183.2 | 0.643 | 1.460 | 1.468 |
+| sparse | 25.2 | 0.088 | 1.603 | 1.664 |
+| oa | 922.7 | 3.238 | 3.669 | 3.272 |
+| ob | 1153.4 | 4.047 | 4.169 | 4.108 |
+| hcF | 85.2 | 0.299 | 0.667 | 0.711 |
+| router | 157.3 | 0.552 | 0.688 | 0.709 |
+| pred | 40.7 | 0.143 | 0.102 | 0.156 |
+| fill | 0.0 | 0.000 | 0.019 | 0.062 |
+| moe_shared | 973.2 | 3.415 | 4.022 | 3.974 |
+| moe_routed | 2063.6 | 7.241 | 9.477 | 9.022 |
+| barriers | 0.0 | 0.000 | 1.564 | 1.610 |
+| events | 0.0 | 0.000 | 0.346 | 0.321 |
+| engram | 216.3 | 0.759 | 0.714 | 0.757 |
+| head | 456.1 | 1.600 | 1.571 | 1.532 |
+
+(delta = base best minus best without the component; noise ~0.1 ms.)
+
+Changes (each with an env switch to the old path):
+
+| change | env (default) | effect | numerics |
+|---|---|---|---|
+| Q5_K decode-matvec launch rule: 1 row per simdgroup, K split to ~2 block iterations per simdgroup, 1-simdgroup tiles; short rows (q_b, 5 blocks): 4 rows x 2 simdgroups, no split | `MACSEEK_MV_CFG` (1; 0 = old rule) | q_b 87->95%, o_a (g8) 85->95%, o_b 93->97%, head 95.5->99.3%, engram_kv 96.6->99.0%, shexp gu 78->89%, down 84->87% of the in-process BW (302 GB/s; `bench_qmatvec --rules`) | K-split partial sums grouped differently (q_b: no split now) |
+| IQ1_M dot: grid + delta folded into one 64 KB half table (`q_iq1m_gridd`, index = qs, full qh nibble << 8) | `MACSEEK_MOE_DEC_V` (1; 0 = old decoders in the MoE table kernels) | routed table part M/M 202.6 -> 193.3 us per layer | sum (g + delta) x instead of sum g x + delta sum x: same weights, different rounding |
+| IQ2_XXS routed gate/up: 8 lanes per block; 4 rows x 4 simdgroups | `MACSEEK_MOE_DEC_V` (1); shape: `MACSEEK_MOE_GU_NR/RSG` | X/X 250.6 -> 237.5 us, X/M 241.5 -> 233.1 | per-lane grouping (8 vs 16 lanes); the shape is bit-identical |
+| MoE down table kernel walks (expert, block) incrementally (no integer division per iteration) | - | included above | bit-identical |
+| decode sparse attention next-chunk register prefetch | `MACSEEK_ATTN_DEC_PF` (0) | no gain: not default | bit-identical |
+
+Tests: full ctest 24/24 pass; `bench_decode_layer --check base base fuse base` (Coder) and `--layout ud --check base
+base` bit-identical run to run; test_quant_matvec IQ1_M max err <= 1.5e-8; test_quant_moe Q5_K-shared combos y err
+<= 3.6e-7 (All == bound, SharedGu+AfterSharedGu bit-identical as before).
+
+Measured and rejected (Coder, 262K):
+- Q5_K decoder variants (8 lanes with 16-byte loads + x sums precomputed per block, 32 lanes, 2-block unrolled loop):
+  with the tuned launch shape none beats the original 16-lane decoder (per-variant sweeps 93-95% vs 95%); an 8-lane
+  Q5_K shared expert inside the MoE kernels: -1%.
+- MoE decode launch shapes (`bench_qmatvec --moe-sweep gu,down,shared[,shared]`): flat within 1-2% except IQ2_XXS
+  gate/up (taken). The shared-expert part runs at 84-88% for any shape.
+- Routed IQ decode is bound by the table loads more than by FMAs: a probe without decode math (loads only) runs at
+  91% of BW vs 77%; a lane-uniform grid index (no divergence) gains only 2%; a float IQ2_XXS grid (two table loads per
+  8 weights instead of one) is 2x slower. Next lever: fewer table loads per weight (IQ2_XXS sign masks).
+- Sparse attention split size (`MACSEEK_ATTN_DEC_SPLIT` 32/16: +0.9/+2 ms; 128: same; 224/320: +0.5/+1.2 ms), 16
+  heads per threadgroup (+2.6 ms), hc step threadgroup 256/128 and row splits 2/4 (noise or slower). Sparse attention
+  (~40 us/layer) is throughput-limited at 80 threadgroups of ~19 KB threadgroup memory: with 16 threadgroups
+  (layers 0/1) it takes 14.5 us.
+- Indexer at 262K: the tensor-op scorer streams keys at ~60% of BW; its threadgroup memory is full (Q 8 KB + head-sum
+  tile 8 KB + 4096-bin histogram 16 KB) so the tile cannot be double-buffered; summing heads from the cooperative tensor
+  (as the prefill scorer does) would change score rounding and so possibly the top-512 at ties.
+
+Remaining gap to the floor (after): routed MoE +1.8 ms, sparse attention +1.6, barriers 1.6, indexer +0.8, hc steps
++0.85, shared expert +0.55.
