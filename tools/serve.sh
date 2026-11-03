@@ -13,7 +13,7 @@ if [ -n "$M" ] && [ ! -f "$M" ]; then
   echo "  $M" >&2
   echo "Download it (see README: Get the model), or point to where it is:" >&2
   echo "  export HF_HUB_CACHE=/path/to/huggingface/hub        # a Hugging Face cache that has it" >&2
-  echo "  export MACSEEK_MODEL_DIR=/path/to/UD-IQ1_S          # or the folder with the 5 .gguf files" >&2
+  echo "  export MACSEEK_MODEL_DIR=/path/to/IQ2_XXS           # or the folder with the split .gguf files" >&2
   exit 1
 fi
 echo "macseek: loading the model (about 10 s), then open http://${HOST:-127.0.0.1}:${PORT:-8080}"

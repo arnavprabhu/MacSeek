@@ -202,6 +202,7 @@ class ExpertCache {
   void unpin_resident();
   bool contains(int layer, int expert) const;       // present (ready or loading)
   bool is_pinned(int layer, int expert) const;      // present and pinned
+  int residency(int layer, int expert) const;       // 0 absent, 1 loading, 2 ready
   void drain();                                     // wait until no load is in flight
 
   std::unique_ptr<ExpertStream> stream(int layer, const int* ids, int n);

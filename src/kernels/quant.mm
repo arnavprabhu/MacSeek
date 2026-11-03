@@ -55,10 +55,21 @@ int gpu_epl(QType t) { return gpu_qk(t) / gpu_lpb(t); }
 // Launch heuristic (from bench_qmatvec --sweep on M5 Pro): split K until each simdgroup runs ~1-2 block iterations
 // (memory-level parallelism matters more than x reuse), 256-thread threadgroups, more rows per simdgroup only for
 // tall matrices.
-MvCfg auto_cfg(QType t, int rows, int cols) {
+MvCfg auto_cfg(QType t, int rows, int cols, int version) {
   MvCfg c;
   const int bpi = 32 / gpu_lpb(t);
   const int iters = (cols / gpu_qk(t) + bpi - 1) / bpi;
+  if (t == QType::Q5_K && version >= 1) {
+    // Q5_K (GSQ-RCO Coder attention / head / engram / shared expert), bench_qmatvec --sweep: one row per simdgroup and
+    // a K split leaving each simdgroup ~2-3 block iterations (2 blocks each), 1-simdgroup row tiles; short rows
+    // (attn_q_b, 5 blocks): 4 rows per simdgroup, no K split. 95-99% of BW vs 85-95% with the generic rule.
+    const int nb = cols / gpu_qk(t);
+    c.nr = nb <= 8 ? 4 : 1;
+    c.ks = 1;
+    while (c.ks < 16 && 8 * c.ks <= nb) c.ks *= 2;
+    c.rsg = c.ks == 1 ? 2 : 1;
+    return c;
+  }
   if (t == QType::IQ2_XS) {  // sweep: K split and 4 rows/simdgroup on short rows lose 10-20% (register pressure)
     c.nr = rows >= 1024 ? (cols >= 4096 ? 4 : 2) : 1; c.ks = 1; c.rsg = 2;
     return c;
@@ -74,7 +85,12 @@ MvCfg auto_cfg(QType t, int rows, int cols) {
   return c;
 }
 
+// launch-rule version: MACSEEK_MV_CFG (1 = current: Q5_K rule above; 0 = the generic rule for every type)
+int cfg_version() { static const int v = (int)env_int("MACSEEK_MV_CFG", 1); return v; }
+
 }  // namespace
+
+MvCfg matvec_cfg_rule(QType t, int rows, int cols, int version) { return auto_cfg(t, rows, cols, version); }
 
 bool matvec_supported(QType t) { return kname(t) != nullptr; }
 
@@ -82,7 +98,7 @@ void encode_matvec(Enc& e, QType t, const Buffer& W, int rows, int cols, const B
                    bool accumulate, int groups, MvCfg cfg) {
   const char* kn = kname(t);
   if (!kn || cols % gpu_qk(t) != 0 || groups < 1 || rows % groups != 0) die("matvec", t, rows, cols);
-  MvCfg a = auto_cfg(t, rows, cols);
+  MvCfg a = auto_cfg(t, rows, cols, cfg_version());
   if (cfg.nr) a.nr = cfg.nr;
   if (cfg.rsg) a.rsg = cfg.rsg;
   if (cfg.ks) a.ks = cfg.ks;
@@ -106,7 +122,7 @@ void encode_matvec(Enc& e, QType t, const Buffer& W, int rows, int cols, const B
 }
 
 MvCfg matvec_cfg(QType t, int rows, int cols) {
-  MvCfg a = auto_cfg(t, rows, cols);
+  MvCfg a = auto_cfg(t, rows, cols, cfg_version());
   static const long env_nr = env_int("MACSEEK_MV_NR", 0), env_rsg = env_int("MACSEEK_MV_RSG", 0),
                     env_ks = env_int("MACSEEK_MV_KS", 0);
   if (env_nr) a.nr = (int)env_nr;
@@ -268,6 +284,14 @@ std::string moe_pair(QType r, QType s) {
   if (!is_iq(r) || !is_moe_shared(s)) return {};
   return std::string(kname(r)) + "_" + kname(s);
 }
+// table (decode) variants: MACSEEK_MOE_DEC_V=0 selects the previous IQ1_M decoder and 16-lane IQ2_XXS gate/up
+// (instantiated with the Coder's Q5_K shared expert)
+std::string moe_pair_t(QType r, QType s) {
+  static const bool v0 = env_int("MACSEEK_MOE_DEC_V", 1) == 0;
+  if (v0 && r == QType::IQ1_M && s == QType::Q5_K) return "iq1_m0_q5_k";
+  if (v0 && r == QType::IQ2_XXS && s == QType::Q5_K) return "iq2_xxs0_q5_k";
+  return moe_pair(r, s);
+}
 }  // namespace
 
 size_t moe_decode_scratch_bytes() { return sizeof(float) * (kMaxRouted + 1) * kExpertInter; }
@@ -327,7 +351,7 @@ void encode_moe_decode_table(Enc& e, const MoeDecodeArgs& a, const Buffer& table
 }
 
 void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& table, MoePart part) {
-  const std::string p_gu = moe_pair(a.t_gate_up, a.t_shared), p_d = moe_pair(a.t_down, a.t_shared);
+  const std::string p_gu = moe_pair_t(a.t_gate_up, a.t_shared), p_d = moe_pair_t(a.t_down, a.t_shared);
   if (p_gu.empty() || p_d.empty()) die("moe_decode_table type combo", a.t_gate_up, 0, 0);
   if ((part == MoePart::SharedGu || part == MoePart::Shared || part == MoePart::SharedDown) && !a.has_shared) return;
   static const long env_gu_nr = env_int("MACSEEK_MOE_GU_NR", 2), env_gu_ks = env_int("MACSEEK_MOE_GU_KS", 1),
@@ -346,7 +370,11 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
                 (uint32_t)row_bytes(a.t_shared, kExpertDim), (uint32_t)row_bytes(a.t_shared, kExpertInter), 1, 0};
   const int n_gu = (gu_r ? a.n_routed : 0) + (gu_s ? 1 : 0);
   if (n_gu > 0) {
-    const int nr = a.gu_nr ? a.gu_nr : (int)env_gu_nr, ks = (int)env_gu_ks, rsg = a.gu_rsg ? a.gu_rsg : (int)env_gu_rsg;
+    // IQ2_XXS routed gate/up (8-lane decoder): 4 rows per simdgroup x 4 (bench --moe-sweep: -2%; nr/rsg are bit-identical)
+    static const bool env_set = getenv("MACSEEK_MOE_GU_NR") || getenv("MACSEEK_MOE_GU_RSG");
+    const bool x4 = !env_set && gu_r && a.t_gate_up == QType::IQ2_XXS;
+    const int nr = a.gu_nr ? a.gu_nr : x4 ? 4 : (int)env_gu_nr, ks = a.gu_ks ? a.gu_ks : (int)env_gu_ks,
+              rsg = a.gu_rsg ? a.gu_rsg : x4 ? 4 : (int)env_gu_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     args.tiles = (kExpertInter + rows_per_tg - 1) / rows_per_tg;
@@ -363,7 +391,7 @@ void encode_moe_decode_table_part(Enc& e, const MoeDecodeArgs& a, const Buffer& 
   if (!d_r && !d_s) return;
   if (n_gu > 0) e.barrier();
   {
-    const int nr = a.d_nr ? a.d_nr : (int)env_d_nr, ks = (int)env_d_ks, rsg = a.d_rsg ? a.d_rsg : (int)env_d_rsg;
+    const int nr = a.d_nr ? a.d_nr : (int)env_d_nr, ks = a.d_ks ? a.d_ks : (int)env_d_ks, rsg = a.d_rsg ? a.d_rsg : (int)env_d_rsg;
     const int rows_per_tg = nr * rsg;
     args.ksplit = ks;
     std::string fn = std::string("q_moe_down_t_") + p_d + "_r" + std::to_string(nr);

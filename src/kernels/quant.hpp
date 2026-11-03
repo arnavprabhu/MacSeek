@@ -17,6 +17,9 @@ bool matvec_supported(QType t);
 // Launch shape encode_matvec would use for this matrix (auto table + MACSEEK_MV_* overrides): splitting a matrix into
 // row chunks that all use this shape (chunk rows a multiple of nr*rsg) gives bit-identical rows.
 MvCfg matvec_cfg(QType t, int rows, int cols);
+// The auto launch rule without env overrides; version 0 = the generic rule, 1 = with the Q5_K rule (default,
+// MACSEEK_MV_CFG). Benchmarks compare versions in one process.
+MvCfg matvec_cfg_rule(QType t, int rows, int cols, int version);
 
 // Decode matvec with the input RMSNorm fused into the x loads: y = W . (x * rsqrt(mean(x^2) + eps) * norm_w), x has
 // `cols` elements. Bit-identical to arch::encode_rmsnorm(x, norm_w, tmp, 1, cols, eps) -> barrier -> encode_matvec(tmp)
@@ -68,6 +71,8 @@ struct MoeDecodeArgs {
   // launch shape overrides of the table variants (0 = MACSEEK_MOE_* env / default). Rows per simdgroup (nr) and
   // row-simdgroups per threadgroup (rsg) do not change any row's summation order: results are bit-identical.
   int gu_nr = 0, gu_rsg = 0, d_nr = 0, d_rsg = 0;
+  // K-split simdgroups per row (0 = MACSEEK_MOE_{GU,D}_KS / default): changes the summation grouping (not bit-identical)
+  int gu_ks = 0, d_ks = 0;
 };
 size_t moe_decode_scratch_bytes();
 // Two dispatches (gate+up+swiglu for all experts incl. shared, then down for all experts accumulated into y) with a

@@ -39,6 +39,7 @@ Options Options::from_env() {
   o.key_chunk = (int)env_int("MACSEEK_ATTN_KCHUNK", o.key_chunk);
   o.dec_rows_split = (int)env_int("MACSEEK_ATTN_DEC_SPLIT", o.dec_rows_split);
   o.dec_heads_tg = (int)env_int("MACSEEK_ATTN_DEC_HEADS", o.dec_heads_tg);
+  o.dec_prefetch = env_int("MACSEEK_ATTN_DEC_PF", o.dec_prefetch ? 1 : 0) != 0;
   o.pf_heads_tg = (int)env_int("MACSEEK_ATTN_PF_HEADS", o.pf_heads_tg);
   o.dec_fast_index = env_int("MACSEEK_ATTN_DEC_FAST", 1) != 0;
   o.pf_cand_union = env_int("MACSEEK_ATTN_PF_UNION", 1) != 0;
@@ -428,7 +429,9 @@ void encode_sparse(Enc& e, State& s, int L, const Buffer& q, const Buffer& sinks
     SparseArgs a{start, 1, start + 1, ntop, splits, rps, 1.0f / std::sqrt((float)kD)};
     const int hg = s.opt.dec_heads_tg == 16 ? 16 : 8;
     const bool lc = fused_combine && splits > 1;
-    e.set_pipeline(lc ? (hg == 16 ? "attn_sparse_lc_h16" : "attn_sparse_lc_h8") : (hg == 16 ? "attn_sparse_h16" : "attn_sparse_h8"));
+    const bool pf = hg == 8 && s.opt.dec_prefetch;
+    e.set_pipeline(lc ? (hg == 16 ? "attn_sparse_lc_h16" : pf ? "attn_sparse_lc_h8_pf" : "attn_sparse_lc_h8")
+                      : (hg == 16 ? "attn_sparse_h16" : pf ? "attn_sparse_h8_pf" : "attn_sparse_h8"));
     e.set_buffer(0, q); e.set_buffer(1, s.win[L]); e.set_buffer(2, s.win[L]); e.set_buffer(3, ckv);
     e.set_buffer(4, s.topk); e.set_buffer(5, sinks); e.set_buffer(6, tab_of(s, L)); e.set_buffer(7, out);
     e.set_buffer(8, s.part); e.set_buffer(9, s.ml); e.set_value(10, a);

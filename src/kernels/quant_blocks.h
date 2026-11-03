@@ -199,7 +199,7 @@ struct QB_IQ1S_T {
   }
 };
 
-template <int L>
+template <int L, int V = 1>   // V: decoder generation tag only (selects the MoE gate/up lane count, quant_moe.metal)
 struct QB_IQ2XXS_T {
   static constexpr constant int QK = 256, BB = 66, LPB = L, EPL = 256 / L, X4 = 256 / L / 4, G = 256 / L / 8;
   static inline ushort pos(ushort sub, ushort i) { return EPL * sub + i; }
@@ -244,14 +244,16 @@ struct QB_IQ2XXS_T {
 // delta sign = bit 3 of that nibble (qh byte 2ib + gg/2, nibble gg&1); scale 2*(3 bits) + 1 of sc[ib/2] at shift
 // 6*(ib&1) + 3*(gg>>1) (one scale per 16 elements). Same iq1s grid as IQ1_S. L lanes per block (16: one scale and 2
 // groups per lane; 8: one sub-block per lane). dot = dl * sum_g (grid_g . x_g + delta_g * sum(x_g)), per-8 x sums
-// precomputed in load_x (xr[EPL/4] = group sums). ----
+// precomputed in load_x (xr[EPL/4] = group sums). V = 1 (default; MACSEEK_MOE_DEC_V=0 = V 0 in the MoE decode): dot() gathers grid + delta from one
+// 64 KB table (q_iq1m_gridd, index = qs | full qh nibble << 8) instead of adding delta * group sum: same weights,
+// different float rounding (sum of (g + delta) * x instead of sum g * x + delta * sum x); fewer ALU ops per weight. ----
 // fp16 d from the two scale dwords (top nibble of each 16-bit word)
 static inline float q_iq1m_dw(uint s01, uint s23) {
   const uint c = ((s01 >> 12) & 0x000F000Fu) | ((s23 >> 4) & 0x0F000F00u);  // nibbles 0, 2, 1, 3 in bytes 0..3
   return float(as_type<half>(ushort(c | (c >> 12))));
 }
 static inline float q_iq1m_d(device const uchar* b) { return q_iq1m_dw(q_ld32(b + 48), q_ld32(b + 52)); }
-template <int L>
+template <int L, int V = 1>
 struct QB_IQ1M_T {
   static constexpr constant int QK = 256, BB = 56, LPB = L, EPL = 256 / L, X4 = 256 / L / 4 + 1, G = 256 / L / 8;
   static inline ushort pos(ushort sub, ushort i) { return EPL * sub + i; }
@@ -295,9 +297,14 @@ struct QB_IQ1M_T {
     for (int g = 0; g < G; g++) {
       const int gg = g0 + g;
       const uint nb = (qh >> (4 * gg)) & 15;
-      const uint4 e = q_tbl4(q_iq1s_gridh, ((qs >> (8 * g)) & 0xFF) | ((nb & 7) << 8));
-      s[g >> 1] += metal::dot(float4(as_type<half4>(e.xy)), xr[2 * g]) + metal::dot(float4(as_type<half4>(e.zw)), xr[2 * g + 1]) +
-                   ((nb & 8) ? -0.125f : 0.125f) * xr[EPL / 4][g];
+      if (V == 1) {
+        const uint4 e = q_tbl4(q_iq1m_gridd, ((qs >> (8 * g)) & 0xFF) | (nb << 8));
+        s[g >> 1] += metal::dot(float4(as_type<half4>(e.xy)), xr[2 * g]) + metal::dot(float4(as_type<half4>(e.zw)), xr[2 * g + 1]);
+      } else {
+        const uint4 e = q_tbl4(q_iq1s_gridh, ((qs >> (8 * g)) & 0xFF) | ((nb & 7) << 8));
+        s[g >> 1] += metal::dot(float4(as_type<half4>(e.xy)), xr[2 * g]) + metal::dot(float4(as_type<half4>(e.zw)), xr[2 * g + 1]) +
+                     ((nb & 8) ? -0.125f : 0.125f) * xr[EPL / 4][g];
+      }
     }
     float r = float(2 * ((sc >> (3 * (g0 >> 1))) & 7) + 1) * s[0];
     if (G == 4) r += float(2 * ((sc >> 3) & 7) + 1) * s[1];
