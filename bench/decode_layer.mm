@@ -1,18 +1,21 @@
 // Decode token GPU-time benchmark on synthetic weights with the real per-layer shapes/types (tests/dec_synth.hpp):
 // embed + engram prologue + 40 x (encode_dec_attn_side + encode_dec_moe_table) + head, exactly the sequence of
-// Model::forward's table decode path (src/model/dec_layer.*), at context position 200K, T tokens per command buffer.
+// Model::forward's table decode path (src/model/dec_layer.*), T tokens per command buffer. Layout: --layout coder
+// (default: GSQ-RCO Coder, 192 experts, attention state at position 260000 of 262144) or --layout ud (UD-IQ1_S, 384
+// experts, position 200000).
 // The router handshake events are encoded as in the model, with `go` pre-signaled (GPU never waits on the CPU), so the
 // numbers are the pure GPU time of a token incl. the signal/encoder-split costs. docs/modules/dec_gpu.md has results.
 //
-//   bench_decode_layer [--tokens 20] [--reps 7] [--copies 2] [--pos 200000] [--nohead] [--check] [--breakdown]
-//                      [--sync shared|sgu|event|none] [--cpu US] [--layers N] cfg...
+//   bench_decode_layer [--layout coder|ud] [--tokens 20] [--reps 7] [--copies 2] [--pos P] [--nohead] [--check]
+//                      [--breakdown] [--bw GBS] [--sync shared|sgu|event|none] [--cpu US] [--layers N] cfg...
 // --cpu US: real handshake: a CPU thread spins on rdy and sets go US microseconds later (emulates ensure() + table
 //           writes on all-hit layers), instead of a pre-signaled go. Then the GPU time includes the exposed handshake.
 // cfg: "base" (all switches off), "fuse" (MACSEEK_DEC_FUSE=1 defaults), or comma-separated key=value over the base:
 //   fuse reorder normqb(+tpt) combine sgur(0..2) engbg(0..2) hcs(hc row splits) gunr gursg dnr drsg (MoE launch)
 //   probe(extra tiny dispatches) skip(hex/dec DecSkip bits, PROFILING) sync(0..2|-1 none)
 // Configs are run round-robin per rep (interleaved; a model job may share the GPU); best and median per config.
-// --breakdown: base config with each component removed (PROFILING: wrong outputs), delta = component's cost.
+// --breakdown: base config with each component removed (PROFILING: wrong outputs), delta = component's cost; the
+//              table lists each component's bytes read per token and its floor at --bw GB/s (default 285).
 // --check: restore the attention state, run one command buffer per config and compare h / logits / state with cfg 0.
 #import <Metal/Metal.h>
 #include <algorithm>
@@ -43,6 +46,7 @@ struct Cfg {
   std::string name;
   DecOptions o;
   int sync = 2;   // -1 none, 0 event, 1 sgu, 2 shared
+  bool nohead = false;   // breakdown: output head (+ argmax) not encoded
 };
 
 double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
@@ -95,11 +99,12 @@ struct Bench {
   arch::Scratch asc;
   DecBufs B;
   Buffer embrows, erow, logits, amax_i, amax_v, tbl;
+  size_t emb_rb = 0;
   W out_norm, head;
   std::vector<Buffer> arena;
   id<MTLSharedEvent> rdy, go;
   uint64_t evbase = 0;
-  int pos0 = 200000, T = 20, nlayers = 40;
+  int pos0 = -1, T = 20, nlayers = 40;
   bool nohead = false;
   Buffer last_h;        // current hyper-connection state buffer after the last encoded token (ping-pong)
   double cpu_us = -1;   // < 0: go pre-signaled
@@ -112,10 +117,10 @@ struct Bench {
     L.resize(cfg.n_layers); pred.resize(cfg.n_layers);
     for (int l = 0; l < cfg.n_layers; l++) { L[l] = dsyn::make_layer(P, cfg, l, copies); pred[l] = dsyn::make_pred(P, l, copies); }
     out_norm = P.vec("out_norm", 5120, 0, 1.f, 0.1f);
-    if (!nohead) head = P.get("head", QType::Q6_K, 129280, 5120, 0, 0.014f);
+    if (!nohead) head = P.get("head", dsyn::head_type(), 129280, 5120, 0, 0.014f);
     attn::Options ao = attn::Options::from_env();
     ao.max_chunk = 1;
-    ao.max_pos = pos0 + 1024;
+    ao.max_pos = std::max(262144, pos0 + 1024);
     attn::init(S, ao);
     attn::reset(S);
     dsyn::fill_attn_state(S, pos0, 77);
@@ -127,12 +132,13 @@ struct Bench {
     B.qa = A(1280 * 4, "qa"); B.qrn = A(1280 * 4, "qrn"); B.q = A(32768 * 4, "q"); B.kv = A(512 * 4, "kv");
     B.ckv = A(512 * 4, "ckv"); B.cgate = A(512 * 4, "cgate"); B.iq = A(4096 * 4, "iq"); B.iw = A(32 * 4, "iw");
     B.aout = A(32768 * 4, "aout"); B.oa = A(8192 * 4, "oa"); B.rids = A(64, "rids"); B.rw = A(64, "rw");
-    B.plog = A(4 * 384 * 4, "plog");
+    B.plog = A(4 * 384 * 4, "plog");   // >= pred_depth * n_experts
     B.ekv[0] = A(25600 * 4, "ekv0"); B.ekv[1] = A(25600 * 4, "ekv1");
     B.moe_scratch = A(q::moe_decode_scratch_bytes(), "moe_dec");
     B.edeq = A(2 * 6144 * 4, "edeq");
-    embrows = A(4200 + 64, "embrows");
-    dsyn::fill_rows(QType::Q6_K, (uint8_t*)embrows.cpu(), 1, 5120, 999, 1.0f);
+    emb_rb = q::row_bytes(dsyn::head_type(), 5120);
+    embrows = A(emb_rb + 64, "embrows");
+    dsyn::fill_rows(dsyn::head_type(), (uint8_t*)embrows.cpu(), 1, 5120, 999, 1.0f);
     erow = A(2 * 24 * 144, "erow");
     dsyn::fill_rows(QType::IQ4_NL, (uint8_t*)erow.cpu(), 48, 256, 998, 1.0f);
     logits = A(129280 * 4, "logits"); amax_i = A(64, "amax_i"); amax_v = A(64, "amax_v");
@@ -180,7 +186,7 @@ struct Bench {
     DecCtx ctx; ctx.cfg = &cfg; ctx.L = &L; ctx.pred_w = &pred; ctx.B = B; ctx.ast = &S; ctx.asc = &asc; ctx.o = c.o;
     for (int t = 0; t < T; t++) {
       const int pos = pos0 + t;
-      arch::encode_embed_q6k(e, embrows, 4200, B.h, 1, 4);
+      arch::encode_embed(e, (int)dsyn::head_type(), embrows, (uint32_t)emb_rb, B.h, 1, 4);
       encode_dec_prologue(e, ctx, erow);
       DecSync s;
       if (c.sync >= 0) { s.rdy = (__bridge void*)rdy; s.go = (__bridge void*)go; s.mode = c.sync; }
@@ -195,13 +201,47 @@ struct Bench {
       last_h = dec_cur_h(ctx);
       arch::HcStep a; a.h_in = last_h; a.h_out = last_h; a.x_sub = B.sub; a.mix_prev = B.mixF; a.norm_w = out_norm.b; a.x_out = B.x; a.n = 1;
       arch::encode_hc_step(e, a, asc); e.barrier();
-      if (!nohead) {
+      if (!nohead && !c.nohead) {
         q::encode_matvec(e, head.t, head.b, head.rows, head.cols, B.x, logits, false);
         e.barrier();
         arch::encode_argmax(e, logits, 1, 129280, amax_i, amax_v, asc, 0.f, 0);
         e.barrier();
       }
     }
+  }
+
+  // bytes read per token by breakdown component k (weights + attention state), for the bandwidth floor
+  double comp_bytes(int k) const {
+    double b = 0;
+    auto wb = [](const W& w) { return w ? (double)q::row_bytes(w.t, w.cols) * w.rows : 0.0; };
+    const int pos = pos0;
+    for (int l = 0; l < nlayers; l++) {
+      const LayerW& w = L[l];
+      switch (k) {
+        case 0: b += wb(w.hc_attn_fn) + 2 * 20480 * 4 + (cfg.is_engram(l) ? wb(w.engram_gate) : 0); break;
+        case 1: b += wb(w.q_a) + wb(w.kv) + wb(w.c_kv) + wb(w.c_gate) + wb(w.idx_proj); break;
+        case 3: b += wb(w.q_b) + wb(w.idx_qb); break;
+        case 4: b += wb(w.idx_k); break;
+        case 5:
+          if (cfg.is_index_source(l)) {
+            const int r = attn::ratio_of(l);
+            b += attn::uses_cand(l) ? 2048.0 * 8 * attn::kID * 2 : (double)(pos / r) * attn::kID * 2;
+          }
+          break;
+        case 6: b += (attn::kWin + (attn::ratio_of(l) ? attn::kTopk : 0)) * (double)attn::kD * 2; break;
+        case 7: b += wb(w.o_a); break;
+        case 8: b += wb(w.o_b); break;
+        case 9: b += wb(w.hc_ffn_fn) + 2 * 20480 * 4; break;
+        case 10: b += wb(w.gate_inp); break;
+        case 11: if (l + 1 < cfg.n_layers) b += wb(pred[l + 1]); break;
+        case 13: b += wb(w.sh_gate) + wb(w.sh_up) + wb(w.sh_down); break;
+        case 14: b += 6.0 * (2.0 * q::row_bytes(dsyn::exp_gu_type(l), 5120) * 2304 + (double)q::row_bytes(dsyn::exp_down_type(l), 2304) * 5120); break;
+        case 17: if (cfg.is_engram(l)) b += wb(w.engram_kv); break;
+        default: break;
+      }
+    }
+    if (k == 18 && !nohead) b += wb(head) + 129280 * 4.0 * 2;
+    return b;
   }
 
   struct Res { double gpu_ms, wall_ms; EncStats st; };
@@ -274,12 +314,18 @@ struct Bench {
   }
 };
 
+constexpr int kNComp = 19;
+const char* kComp[kNComp] = {"hcA", "proj", "norm", "qb", "kvwin", "index", "sparse", "oa", "ob", "hcF", "router", "pred",
+                             "fill", "moe_shared", "moe_routed", "barriers", "events", "engram", "head"};
+
 double median(std::vector<double> v) { std::sort(v.begin(), v.end()); return v.empty() ? 0 : v[v.size() / 2]; }
 
 }  // namespace
 
 int main(int argc, char** argv) {
   int reps = 7, copies = 2, dsync = 2;
+  double bw = 285.0;
+  std::string lay = "coder";
   bool check = false, breakdown = false;
   Bench b;
   std::vector<std::string> names;
@@ -295,18 +341,23 @@ int main(int argc, char** argv) {
     else if (a == "--cpu") b.cpu_us = std::stod(nx());
     else if (a == "--check") check = true;
     else if (a == "--breakdown") breakdown = true;
+    else if (a == "--layout") lay = nx();
+    else if (a == "--bw") bw = std::stod(nx());
     else if (a == "--sync") { std::string v = nx(); dsync = v == "none" ? -1 : v == "event" ? 0 : v == "sgu" ? 1 : 2; }
     else names.push_back(a);
   }
   if (names.empty()) names.push_back("base");
+  if (lay != "coder" && lay != "ud") { fprintf(stderr, "--layout coder|ud\n"); return 1; }
+  dsyn::layout() = lay == "coder" ? dsyn::Layout::Coder : dsyn::Layout::UD;
+  arch::options().n_experts = dsyn::n_experts();
+  if (b.pos0 < 0) b.pos0 = dsyn::coder() ? 260000 : 200000;
   std::vector<Cfg> cfgs;
   for (auto& n : names) cfgs.push_back(parse_cfg(n, dsync));
   if (breakdown) {
     const Cfg base = cfgs[0];
-    const char* comp[] = {"hcA", "proj", "norm", "qb", "kvwin", "index", "sparse", "oa", "ob", "hcF", "router", "pred",
-                          "fill", "moe_shared", "moe_routed", "barriers", "events", "engram"};
-    for (int k = 0; k < 18; k++) {
-      Cfg c = base; c.o.skip |= 1u << k; c.name = base.name + "-" + comp[k];
+    for (int k = 0; k < kNComp; k++) {
+      Cfg c = base; c.name = base.name + "-" + kComp[k];
+      if (k == 18) c.nohead = true; else c.o.skip |= 1u << k;
       cfgs.push_back(c);
     }
   }
@@ -353,7 +404,7 @@ int main(int argc, char** argv) {
       auto res = b.run(cfgs[i]);
       g[i].push_back(res.gpu_ms / b.T); w[i].push_back(res.wall_ms / b.T); st[i] = res.st;
     }
-  printf("decode token, pos %d, %d tokens/CB, %d reps, sync %d%s, go %s\n", b.pos0, b.T, reps, dsync, b.nohead ? ", no head" : "",
+  printf("decode token, layout %s, pos %d, %d tokens/CB, %d reps, sync %d%s, go %s\n", lay.c_str(), b.pos0, b.T, reps, dsync, b.nohead ? ", no head" : "",
          b.cpu_us < 0 ? "pre-signaled" : ("CPU responder +" + std::to_string((int)b.cpu_us) + " us").c_str());
   printf("%-30s %9s %9s %9s %8s | %6s %6s %6s %4s  per token\n", "config", "best ms", "med ms", "wall med", "d best", "disp", "barr", "stages", "enc");
   const double b0 = *std::min_element(g[0].begin(), g[0].end());
@@ -362,6 +413,21 @@ int main(int argc, char** argv) {
     printf("%-30s %9.3f %9.3f %9.3f %+8.3f | %6.1f %6.1f %6.1f %4.1f\n", cfgs[i].name.c_str(), best, median(g[i]), median(w[i]),
            best - b0, st[i].dispatches / (double)b.T, st[i].barriers / (double)b.T, st[i].stages / (double)b.T,
            st[i].encoders / (double)b.T);
+  }
+  if (breakdown) {
+    printf("\nbreakdown (delta = base best - best without the component; floor = bytes / %.0f GB/s)\n", bw);
+    printf("%-12s %9s %9s %9s %9s %7s\n", "component", "delta ms", "d med ms", "MB/token", "floor ms", "%floor");
+    double tb = 0, tf = 0;
+    const double m0 = median(g[0]);
+    for (int k = 0; k < kNComp; k++) {
+      const size_t i = names.size() + k;
+      const double best = *std::min_element(g[i].begin(), g[i].end());
+      const double by = b.comp_bytes(k), fl = by / bw / 1e6;
+      tb += by; tf += fl;
+      printf("%-12s %9.3f %9.3f %9.1f %9.3f %6.0f%%\n", kComp[k], b0 - best, m0 - median(g[i]), by / 1e6, fl,
+             fl > 0 && b0 - best > 0 ? 100.0 * fl / (b0 - best) : 0.0);
+    }
+    printf("%-12s %9s %9s %9.1f %9.3f   (base best %.3f ms, median %.3f)\n", "total", "", "", tb / 1e6, tf, b0, m0);
   }
   return 0;
 }

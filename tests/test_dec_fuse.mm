@@ -206,17 +206,32 @@ static void test_layers(Env& E, const std::vector<int>& ls, const char* name) {
 
 int main() {
   test_matvec_rmsnorm();
-  Env E;
-  E.setup();
-  printf("synthetic weights %.2f GB\n", E.P.bytes / 1e9);
-  test_layers(E, {1}, "layer 1");
-  test_layers(E, {2}, "layer 2");
-  test_layers(E, {5}, "layer 5");
-  test_layers(E, {20}, "layer 20");
-  test_layers(E, {24}, "layer 24");
-  test_layers(E, {31}, "layer 31");
-  test_layers(E, {0, 1, 2}, "layers 0-2");
-  test_layers(E, {12, 13, 14}, "layers 12-14");
+  {
+    Env E;
+    E.setup();
+    printf("UD-IQ1_S layout: synthetic weights %.2f GB\n", E.P.bytes / 1e9);
+    test_layers(E, {1}, "layer 1");
+    test_layers(E, {2}, "layer 2");
+    test_layers(E, {5}, "layer 5");
+    test_layers(E, {20}, "layer 20");
+    test_layers(E, {24}, "layer 24");
+    test_layers(E, {31}, "layer 31");
+    test_layers(E, {0, 1, 2}, "layers 0-2");
+    test_layers(E, {12, 13, 14}, "layers 12-14");
+  }
+  {  // GSQ-RCO Coder layout: 192 experts, Q5_K / Q8_0 attention, Q5_K shared + engram, IQ1_M / IQ2_XXS / IQ2_XS routed
+    dsyn::layout() = dsyn::Layout::Coder;
+    arch::options().n_experts = dsyn::n_experts();
+    Env E;
+    E.setup();
+    printf("Coder layout: synthetic weights %.2f GB\n", E.P.bytes / 1e9);
+    test_layers(E, {1}, "C layer 1");
+    test_layers(E, {8}, "C layer 8");
+    test_layers(E, {23}, "C layer 23");
+    test_layers(E, {12, 13, 14}, "C layers 12-14");
+    dsyn::layout() = dsyn::Layout::UD;
+    arch::options().n_experts = 384;
+  }
   printf(g_fail ? "FAILED (%d)\n" : "OK\n", g_fail);
   return g_fail ? 1 : 0;
 }

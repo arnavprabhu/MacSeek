@@ -8,6 +8,8 @@ constant uint q_iq1s_gridh[8192] __attribute__((aligned(16))) = {Q_IQ1S_GRID_HAL
 constant uint q_iq2xxs_gridh[1024] __attribute__((aligned(16))) = {Q_IQ2XXS_GRID_HALF_VALUES};
 constant uint q_iq2xs_gridh[2048] __attribute__((aligned(16))) = {Q_IQ2XS_GRID_HALF_VALUES};
 constant uint q_iq2_signh[512] __attribute__((aligned(16))) = {Q_IQ2_SIGNH_VALUES};
+// IQ1_M decode (V1): grid + delta (+1/8 for entries 0..2047, -1/8 for 2048..4095), index = qs | qh nibble << 8
+constant uint q_iq1m_gridd[16384] __attribute__((aligned(16))) = {Q_IQ1M_GRIDD_HALF_VALUES};
 static inline uint4 q_tbl4(constant uint* t, uint i) { return ((constant uint4*)t)[i]; }
 
 // ---- unaligned-safe loads: GGUF blocks are only 2-byte aligned (34/50/66/176/210-byte blocks) ----
