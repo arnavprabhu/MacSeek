@@ -317,11 +317,12 @@ int main() {
   if (ms::Gguf::exists(mp)) {
     ms::Gguf g(mp);
     ms::ExpertLayout L = ms::ExpertLayout::from_gguf(g);
-    ms::ExpertCacheOptions o; o.arena_bytes = 1ull << 30; o.io_threads = 8;
+    ms::ExpertCacheOptions o; o.arena_bytes = 6ull << 30; o.io_threads = 8;   // Coder: more size classes
     ms::ExpertCache c(L, o);
     printf("%s", c.describe().c_str());
-    CHECK(c.classes().size() == 3, "real classes %zu", c.classes().size());
-    struct { int l, e; } want[] = {{0, 0}, {0, 383}, {25, 7}, {33, 100}, {39, 383}};
+    const int NE = L.n_experts;   // Unsloth UD-IQ1_S: 384 experts, 3 size classes; GSQ-RCO Coder: 192, 8 classes
+    CHECK(c.classes().size() == (NE == 384 ? 3u : 8u), "real classes %zu", c.classes().size());
+    struct { int l, e; } want[] = {{0, 0}, {0, NE - 1}, {25, 7}, {33, 100}, {39, NE - 1}};
     for (auto w : want) {
       auto l = c.ensure(w.l, &w.e, 1); l.wait();
       bool ok = true;

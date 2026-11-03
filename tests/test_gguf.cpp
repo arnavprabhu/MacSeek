@@ -33,13 +33,16 @@ int main() {
   ms::Timer t;
   ms::Gguf g(path);
   double ms_parse = t.ms();
-  CHECK(g.n_splits() == 5, "splits %d", g.n_splits());
+  // two supported builds: Unsloth UD-IQ1_S (5 splits, 384 experts) and GSQ-RCO Coder (6 splits, 192 experts)
+  const bool coder = g.n_splits() == 6;
+  const char* table = coder ? "/docs/tensors_coder.txt" : "/docs/tensors.txt";
+  CHECK(g.n_splits() == (coder ? 6 : 5), "splits %d", g.n_splits());
   CHECK(g.tensors().size() == 1043, "tensors %zu", g.tensors().size());
   CHECK(g.alignment() == 32, "align");
 
   // tensor table vs docs/tensors.txt
-  std::ifstream in(repo_root() + "/docs/tensors.txt");
-  CHECK(in.good(), "docs/tensors.txt missing");
+  std::ifstream in(repo_root() + table);
+  CHECK(in.good(), "%s missing", table);
   std::string line; size_t n = 0, ok = 0;
   while (std::getline(in, line)) {
     if (line.empty()) continue;
@@ -66,7 +69,7 @@ int main() {
   // metadata: typed scalars and arrays
   CHECK(g.get_str("general.architecture") == "deepseek41", "arch");
   CHECK(g.get_i64("deepseek41.block_count") == 40, "block_count");
-  CHECK(g.get_i64("deepseek41.expert_count") == 384, "experts");
+  CHECK(g.get_i64("deepseek41.expert_count") == (coder ? 192 : 384), "experts");
   CHECK(g.kv("deepseek41.expert_weights_norm") && g.kv("deepseek41.expert_weights_norm")->type == ms::KvType::BOOL &&
         g.kv("deepseek41.expert_weights_norm")->u == 1, "bool");
   CHECK(g.get_f64("deepseek41.expert_weights_scale") == 1.5, "f32 scalar");
@@ -83,10 +86,10 @@ int main() {
   CHECK(cr.size() == 43 && cr[0] == 0 && cr[2] == 2 && cr[39] == 1, "compress_ratios");
   auto clamp = g.get_arr_f32("deepseek41.swiglu_clamp_exp");
   CHECK(clamp.size() == 40 && clamp[0] == 10.0f, "f32 array");
-  CHECK(g.get_i64("split.count") == 5, "split.count");
+  CHECK(g.get_i64("split.count") == (coder ? 6 : 5), "split.count");
   CHECK(g.get_str("tokenizer.chat_template").size() > 1000, "chat template");
   const auto* pe = g.find("per_layer_token_embd.weight");
-  CHECK(pe && pe->row_bytes() == 144 && pe->ne[1] == 768022850 && pe->offset == 192, "engram table");
+  CHECK(pe && pe->row_bytes() == 144 && pe->ne[1] == 768022850 && pe->offset == (coder ? 416u : 192u), "engram table");
 
   printf("test_gguf: parsed %d splits, %zu tensors, %zu kv in %.1f ms; %zu/%zu tensor rows match docs/tensors.txt; %s\n",
          g.n_splits(), g.tensors().size(), g.keys().size(), ms_parse, ok, n, fails ? "FAILED" : "OK");

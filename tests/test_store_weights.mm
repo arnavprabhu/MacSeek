@@ -49,7 +49,8 @@ int main() {
   }
   CHECK(bad == 0, "%zu/%zu tensors differ", bad, n);
   const ms::WTensor& q = w.at("blk.0.attn_q_b.weight");
-  CHECK(q.type == ms::GType::Q6_K && q.ne[0] == 1280 && q.ne[1] == 32768, "attn_q_b meta");
+  const bool coder = g.n_splits() == 6;   // GSQ-RCO Coder: Q5_K attention / token_embd; Unsloth UD-IQ1_S: Q6_K
+  CHECK(q.type == (coder ? ms::GType::Q5_K : ms::GType::Q6_K) && q.ne[0] == 1280 && q.ne[1] == 32768, "attn_q_b meta");
 
   // repack hook: replace F32 norms with a copy (as a kernel-layout repack would)
   size_t nrep = w.repack([](const ms::WTensor& src, ms::WTensor& out) {
@@ -66,7 +67,7 @@ int main() {
 
   // token_embd rows (pread on demand)
   ms::TokenEmbd te(g, &w);
-  CHECK(te.row_bytes() == 4200 && te.n_rows() == 129280, "token_embd geometry");
+  CHECK(te.row_bytes() == (coder ? 3520u : 4200u) && te.n_rows() == 129280, "token_embd geometry");
   std::vector<int32_t> toks = {0, 1, 129279, 4242, 4242, 77, 100000};
   std::vector<char> rows(toks.size() * te.row_bytes()), r1(te.row_bytes());
   te.fetch(toks.data(), toks.size(), rows.data());
