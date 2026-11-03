@@ -26,6 +26,12 @@ MemStatus mem_status() {
     m.compressed = (uint64_t)vs.compressor_page_count * page;
   }
   m.available = m.free + m.inactive + m.speculative + m.purgeable;
+  // Clean file-backed pages (e.g. a just-finished mmap model run or download) sit in "active" but are reclaimable:
+  // count everything that is not wired, anonymous or compressed as available.
+  {
+    const uint64_t nonfile = ((uint64_t)vs.wire_count + vs.internal_page_count + vs.compressor_page_count) * page;
+    if (m.total > nonfile && m.total - nonfile > m.available) m.available = m.total - nonfile;
+  }
   task_vm_info_data_t ti{}; cnt = TASK_VM_INFO_COUNT;
   if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&ti, &cnt) == KERN_SUCCESS) {
     m.self_rss = ti.resident_size;

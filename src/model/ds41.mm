@@ -218,7 +218,7 @@ Model::Model(const ModelOptions& o) : p_(new Impl), o_(o) {
     if (settled && i >= 3) break;
   }
   uint64_t planned = 2ull << 30;  // prefill transients + slack
-  uint64_t arena = o.arena_gb > 0 ? (uint64_t)(o.arena_gb * 1073741824.0) : recommend_arena_bytes(planned, (uint64_t)(env_f("MACSEEK_HEADROOM_GB", 10) * 1073741824.0), 40ull << 30);
+  uint64_t arena = o.arena_gb > 0 ? (uint64_t)(o.arena_gb * 1073741824.0) : recommend_arena_bytes(planned, (uint64_t)(env_f("MACSEEK_HEADROOM_GB", 10) * 1073741824.0), (uint64_t)(env_f("MACSEEK_ARENA_MAX_GB", 46) * 1073741824.0));
   co.arena_bytes = arena;
   cache_ = std::make_unique<ExpertCache>(layout, co);
   if (o.verbose) {
@@ -812,7 +812,7 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       // accumulate into Y depends on cache timing, so outputs are not bit-reproducible. Default: fixed id order.
       static const bool cached_first = env_int("MACSEEK_PF_CACHED_FIRST", 0) != 0;
       if (cached_first) std::stable_partition(used.begin(), used.end(), [&](int x) { return cache_->contains(l, x); });
-      const int G = std::max(1, o_.moe_group);
+      const int G = std::max(1, std::min(o_.moe_group, cache_->group_cap(l)));
       const int ngroups = ((int)used.size() + G - 1) / G;
       route_ms += troute.ms();
       experts_used += (long)used.size(); groups_run += ngroups;

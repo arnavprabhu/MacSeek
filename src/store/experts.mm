@@ -486,9 +486,13 @@ int ExpertCache::pin_resident(int keep_unpinned) {
       if (x.state == Ready && x.key != ~0u) { cand.push_back({access_[x.key], s}); ready++; }
     }
     std::sort(cand.begin(), cand.end(), [](auto& a, auto& b) { return a.first > b.first; });
+    // streaming room per class: 3 prefill groups (see group_cap) for builds with many small size classes (GSQ-RCO Coder:
+    // 8 classes of 1-14 layers); keep_unpinned applies as given for the 3-class UD-IQ1_S layout
+    const int keep_c = classes_.size() <= 3 ? keep_unpinned
+                     : std::max(3 * std::max(4, classes_[c].n_slots / 3) / 1, keep_unpinned * (int)classes_[c].layers.size() / std::max(1, L_.n_layers));
     int pc = 0;
     for (auto& pr : cand) {
-      if (unpinned <= keep_unpinned) break;
+      if (unpinned <= keep_c) break;
       Slot& x = slots_[pr.second];
       x.pinned = true; x.res_pin = true;
       p_->policy->on_evict(pr.second, x.key);   // leaves the policy's candidate set

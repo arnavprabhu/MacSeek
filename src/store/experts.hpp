@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 // SSD-streamed MoE expert cache.
 //
 // Unit = one (layer, expert): 3 byte ranges (gate, up, down), expert e's matrix being the e-th contiguous slab
@@ -195,6 +196,9 @@ class ExpertCache {
   // geometry
   struct ClassInfo { uint64_t slot_bytes; uint64_t region[3]; int n_slots; std::vector<int> layers; };
   const std::vector<ClassInfo>& classes() const { return classes_; }
+  // largest prefill expert group a layer can stream without starving its size class: two groups are leased at once
+  // (current + next) and the pinned-resident mode keeps 3 groups' worth unpinned, so cap = class slots / 3.
+  int group_cap(int layer) const { return std::max(4, classes_[layer_class_[layer]].n_slots / 3); }
   int layer_class(int layer) const { return layer_class_[layer]; }
   int n_slots() const { return (int)slots_.size(); }
   int n_pinned() const;
