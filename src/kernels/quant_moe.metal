@@ -15,6 +15,11 @@ struct QMoeArgs {
   uint tiles;        // threadgroups per expert (q_moe_gu)
 };
 
+// decoder used for the routed experts' gate/up rows in the fused MoE decode kernels (lane count per block may differ
+// from the matvec choice: gate and up share the x registers, so wider lanes win there; bench_qmatvec --moe)
+template <typename Q> struct QMoeGuDec { typedef Q T; };
+template <> struct QMoeGuDec<QB_IQ1M> { typedef QB_IQ1M_T<8> T; };
+
 template <typename T>
 static inline T q_pick6(uint e, T a0, T a1, T a2, T a3, T a4, T a5) {
   return e == 0 ? a0 : e == 1 ? a1 : e == 2 ? a2 : e == 3 ? a3 : e == 4 ? a4 : a5;
@@ -66,7 +71,7 @@ kernel void q_moe_gu(device const float* x [[buffer(0)]], device float* h [[buff
   float ag[NR], au[NR];
   const bool shared = e >= a.n_routed;
   if (!shared) {
-    q_gu_rows<QR, NR>(q_pick6(e, g0, g1, g2, g3, g4, g5), q_pick6(e, u0, u1, u2, u3, u4, u5), a.rb_gu_r, a.inter, row0,
+    q_gu_rows<typename QMoeGuDec<QR>::T, NR>(q_pick6(e, g0, g1, g2, g3, g4, g5), q_pick6(e, u0, u1, u2, u3, u4, u5), a.rb_gu_r, a.inter, row0,
                       x, a.dim, kk, ks, lane, ag, au);
   } else {
     q_gu_rows<QS, NR>(gs, us, a.rb_gu_s, a.inter, row0, x, a.dim, kk, ks, lane, ag, au);
@@ -187,7 +192,7 @@ kernel void q_moe_gu_t(device const float* x [[buffer(0)]], device float* h [[bu
   const uint row0 = ((tg % a.tiles) * rsg + rs) * NR;
   float ag[NR], au[NR];
   const bool shared = e >= a.n_routed;
-  if (!shared) q_gu_rows<QR, NR>(tbl[e].g, tbl[e].u, a.rb_gu_r, a.inter, row0, x, a.dim, kk, ks, lane, ag, au);
+  if (!shared) q_gu_rows<typename QMoeGuDec<QR>::T, NR>(tbl[e].g, tbl[e].u, a.rb_gu_r, a.inter, row0, x, a.dim, kk, ks, lane, ag, au);
   else q_gu_rows<QS, NR>(gs, us, a.rb_gu_s, a.inter, row0, x, a.dim, kk, ks, lane, ag, au);
   if (ks > 1) {
     if (lane == 0) for (int r = 0; r < NR; r++) {

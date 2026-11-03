@@ -117,18 +117,23 @@ struct QB_Q5K {
     xr[0] = *(device const float4*)(p); xr[1] = *(device const float4*)(p + 4);
     xr[2] = *(device const float4*)(p + 32); xr[3] = *(device const float4*)(p + 36);
   }
+  // Q5_K fields sit at 4-byte multiples inside the 176-byte block: with the documented >= 4-byte aligned weight offsets
+  // plain 32-bit loads are used. The 6-bit scale/min pair of sub-blocks 2j, 2j+1 is unpacked branch-free from the 12
+  // scale bytes (lanes of one block take different j: a branch on j < 2 would diverge).
   static inline void quants(device const uchar* b, ushort sub, thread float4* q, thread float* sm) {
     const int j = sub >> 2, l0 = 8 * (sub & 3);
-    const uint ql0 = q_ld32(b + 48 + 32 * j + l0), ql1 = q_ld32(b + 52 + 32 * j + l0);
-    const uint qh0 = q_ld32(b + 16 + l0) >> (2 * j), qh1 = q_ld32(b + 20 + l0) >> (2 * j);
+    const uint ql0 = q_ld32a(b + 48 + 32 * j + l0), ql1 = q_ld32a(b + 52 + 32 * j + l0);
+    const uint qh0 = q_ld32a(b + 16 + l0) >> (2 * j), qh1 = q_ld32a(b + 20 + l0) >> (2 * j);
     q[0] = q_u8x4((ql0 & 0x0F0F0F0Fu) | ((qh0 & 0x01010101u) << 4));
     q[1] = q_u8x4((ql1 & 0x0F0F0F0Fu) | ((qh1 & 0x01010101u) << 4));
     q[2] = q_u8x4(((ql0 >> 4) & 0x0F0F0F0Fu) | ((qh0 & 0x02020202u) << 3));
     q[3] = q_u8x4(((ql1 >> 4) & 0x0F0F0F0Fu) | ((qh1 & 0x02020202u) << 3));
-    const float d = q_ldh(b), dm = q_ldh(b + 2);
-    float s1, m1, s2, m2;
-    q_scale_min_k4(2 * j, b + 4, s1, m1); q_scale_min_k4(2 * j + 1, b + 4, s2, m2);
-    sm[0] = d * s1; sm[1] = dm * m1; sm[2] = d * s2; sm[3] = dm * m2;
+    const uint dd = q_ld32a(b), sh = 16 * (j & 1);
+    const uint A = q_ld32a(b + 4) >> sh, B = q_ld32a(b + 8) >> sh, C = q_ld32a(b + 12) >> sh;
+    const uint sc = j < 2 ? (A & 0x3F3Fu) : ((C & 0x0F0Fu) | ((A >> 2) & 0x3030u));        // 2 x 6-bit scale
+    const uint mn = j < 2 ? (B & 0x3F3Fu) : (((C >> 4) & 0x0F0Fu) | ((B >> 2) & 0x3030u));  // 2 x 6-bit min
+    const float d = float(as_type<half2>(dd).x), dm = float(as_type<half2>(dd).y);
+    sm[0] = d * float(sc & 0xFF); sm[1] = dm * float(mn & 0xFF); sm[2] = d * float(sc >> 8); sm[3] = dm * float((mn >> 8) & 0xFF);
   }
   static inline void deq(device const uchar* b, ushort sub, thread float4* w) {
     float4 q[4]; float sm[4]; quants(b, sub, q, sm);
@@ -240,11 +245,12 @@ struct QB_IQ2XXS_T {
 // 6*(ib&1) + 3*(gg>>1) (one scale per 16 elements). Same iq1s grid as IQ1_S. L lanes per block (16: one scale and 2
 // groups per lane; 8: one sub-block per lane). dot = dl * sum_g (grid_g . x_g + delta_g * sum(x_g)), per-8 x sums
 // precomputed in load_x (xr[EPL/4] = group sums). ----
-static inline float q_iq1m_d(device const uchar* b) {
-  const uint s01 = q_ld32(b + 48), s23 = q_ld32(b + 52);
-  const uint du = ((s01 >> 12) & 0xFu) | ((s01 >> 24) & 0xF0u) | ((s23 >> 4) & 0xF00u) | ((s23 >> 16) & 0xF000u);
-  return float(as_type<half>(ushort(du)));
+// fp16 d from the two scale dwords (top nibble of each 16-bit word)
+static inline float q_iq1m_dw(uint s01, uint s23) {
+  const uint c = ((s01 >> 12) & 0x000F000Fu) | ((s23 >> 4) & 0x0F000F00u);  // nibbles 0, 2, 1, 3 in bytes 0..3
+  return float(as_type<half>(ushort(c | (c >> 12))));
 }
+static inline float q_iq1m_d(device const uchar* b) { return q_iq1m_dw(q_ld32(b + 48), q_ld32(b + 52)); }
 template <int L>
 struct QB_IQ1M_T {
   static constexpr constant int QK = 256, BB = 56, LPB = L, EPL = 256 / L, X4 = 256 / L / 4 + 1, G = 256 / L / 8;
@@ -258,19 +264,21 @@ struct QB_IQ1M_T {
     }
     xr[EPL / 4] = s;
   }
-  static inline uint qsbytes(device const uchar* b, int ib, int g0) {
-    return G == 4 ? q_ld32(b + 4 * ib) : uint(q_ld16(b + 4 * ib + g0));
-  }
-  // lane geometry: sub-block ib, first group g0; qh nibbles of the sub-block (nibble gg = group gg); scale word
-  static inline void geo(device const uchar* b, ushort sub, thread int& ib, thread int& g0, thread uint& qh,
+  // lane geometry: sub-block ib, first group g0; d; qh nibbles of the sub-block (nibble gg = group gg); qs bytes of
+  // the lane's groups; the sub-block's scale bits (3 bits per 16 elements) at bit 0
+  static inline void geo(device const uchar* b, ushort sub, thread int& g0, thread float& d, thread uint& qh,
                          thread uint& qs, thread uint& sc) {
-    ib = (EPL * sub) >> 5; g0 = ((EPL * sub) & 31) >> 3;
-    qh = q_ld16(b + 32 + 2 * ib); qs = qsbytes(b, ib, g0); sc = q_ld16(b + 48 + 2 * (ib >> 1)) >> (6 * (ib & 1));
+    const int ib = (EPL * sub) >> 5;
+    g0 = ((EPL * sub) & 31) >> 3;
+    const uint s01 = q_ld32a(b + 48), s23 = q_ld32a(b + 52);
+    d = q_iq1m_dw(s01, s23);
+    sc = ((ib & 4) ? s23 : s01) >> (16 * ((ib >> 1) & 1) + 6 * (ib & 1));
+    qh = q_ld16(b + 32 + 2 * ib);
+    qs = G == 4 ? q_ld32a(b + 4 * ib) : uint(q_ld16(b + 4 * ib + g0));
   }
   static inline void deq(device const uchar* b, ushort sub, thread float4* w) {
-    int ib, g0; uint qh, qs, sc;
-    geo(b, sub, ib, g0, qh, qs, sc);
-    const float d = q_iq1m_d(b);
+    int g0; float d; uint qh, qs, sc;
+    geo(b, sub, g0, d, qh, qs, sc);
     for (int g = 0; g < G; g++) {
       const int gg = g0 + g;
       const uint nb = (qh >> (4 * gg)) & 15;
@@ -281,8 +289,8 @@ struct QB_IQ1M_T {
     }
   }
   static inline float dot(device const uchar* b, ushort sub, thread const float4* xr) {
-    int ib, g0; uint qh, qs, sc;
-    geo(b, sub, ib, g0, qh, qs, sc);
+    int g0; float d; uint qh, qs, sc;
+    geo(b, sub, g0, d, qh, qs, sc);
     float s[2] = {0.f, 0.f};  // per scale half (16 elements)
     for (int g = 0; g < G; g++) {
       const int gg = g0 + g;
@@ -293,7 +301,7 @@ struct QB_IQ1M_T {
     }
     float r = float(2 * ((sc >> (3 * (g0 >> 1))) & 7) + 1) * s[0];
     if (G == 4) r += float(2 * ((sc >> 3) & 7) + 1) * s[1];
-    return q_iq1m_d(b) * r;
+    return d * r;
   }
   static inline float4 deq4(device const uchar* b, uint j) {
     const uint ib = j >> 5, gg = (j >> 3) & 3;

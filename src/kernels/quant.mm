@@ -59,6 +59,10 @@ MvCfg auto_cfg(QType t, int rows, int cols) {
   MvCfg c;
   const int bpi = 32 / gpu_lpb(t);
   const int iters = (cols / gpu_qk(t) + bpi - 1) / bpi;
+  if (t == QType::IQ2_XS) {  // sweep: K split and 4 rows/simdgroup on short rows lose 10-20% (register pressure)
+    c.nr = rows >= 1024 ? (cols >= 4096 ? 4 : 2) : 1; c.ks = 1; c.rsg = 2;
+    return c;
+  }
   if (is_iq(t)) {  // ALU-bound decode: maximize x reuse instead of K split
     c.nr = rows >= 1024 ? 4 : 1; c.ks = iters >= 8 ? 2 : 1; c.rsg = 2;
     return c;
@@ -383,13 +387,13 @@ bool moe_shared_dense() { static const bool v = env_int("MACSEEK_MOEP_SHDENSE", 
 // register-path launch shapes (bench_qmatmul --real), "TMxTNkTKsNSG" ("0" = class off). Token-tile classes of 64, 48,
 // 32 and 16 tokens: an expert with m tokens gets ceil(m/64) tiles (one weight dequantization per tile), full 64-token
 // tiles plus the smallest class that holds the remainder (tensor work padded to 16 rows). Defaults per routed type
-// (IQ2_XXS dequant needs more registers: K step 32).
+// (gate/up K step 64 for IQ1_S / IQ2_XS, 32 for IQ2_XXS / IQ1_M: their dequant needs more registers).
 constexpr int kMoeTileCls = 4;
 MoeRKern moe_rk(QType t, bool down, int cls) {
   static const char* envs[2][kMoeTileCls] = {
       {"MACSEEK_MOEP_RGU64", "MACSEEK_MOEP_RGU48", "MACSEEK_MOEP_RGU", "MACSEEK_MOEP_RGU16"},
       {"MACSEEK_MOEP_RD64", "MACSEEK_MOEP_RD48", "MACSEEK_MOEP_RD", "MACSEEK_MOEP_RD16"}};
-  const int tk_gu = (t == QType::IQ1_S || t == QType::IQ1_M) ? 64 : 32;
+  const int tk_gu = (t == QType::IQ1_S || t == QType::IQ2_XS) ? 64 : 32;  // IQ1_M: K 64 spills (-12%)
   static const MoeRKern dg[kMoeTileCls] = {{64, 16, 0, 4}, {48, 16, 0, 4}, {32, 32, 0, 4}, {16, 32, 0, 4}};
   static const MoeRKern dd[kMoeTileCls] = {{64, 32, 32, 4}, {48, 32, 32, 4}, {32, 64, 32, 4}, {16, 64, 32, 4}};
   MoeRKern d = down ? dd[cls] : dg[cls];
@@ -419,8 +423,8 @@ const Buffer& moe_tables() {
   }();
   return b;
 }
-// threadgroup memory of the register-path kernels: the IQ2 grids are copied there
-size_t moe_tg_bytes(QType t) { return t == QType::IQ2_XXS ? 4096 : t == QType::IQ2_XS ? 8192 : 16; }
+// threadgroup memory of the register-path kernels: the IQ2_XXS grid is copied there
+size_t moe_tg_bytes(QType t) { return t == QType::IQ2_XXS ? 4096 : 16; }
 const char* mm_moe_name(QType t) { return is_iq(t) || is_moe_shared(t) ? kname(t) : nullptr; }
 size_t align256(size_t v) { return (v + 255) & ~(size_t)255; }
 size_t moe_header_bytes(int total, int n, int n_exp) {

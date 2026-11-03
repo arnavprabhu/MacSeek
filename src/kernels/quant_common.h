@@ -15,6 +15,9 @@ static inline uint q_ld32(device const uchar* p) {
   device const ushort* s = (device const ushort*)p;
   return uint(s[0]) | (uint(s[1]) << 16);
 }
+// 32-bit load for fields at a 4-byte multiple of a block whose size is a multiple of 4 (IQ1_M 56 B, Q5_K 176 B):
+// aligned given the documented >= 4-byte aligned weight buffer offsets
+static inline uint q_ld32a(device const uchar* p) { return *(device const uint*)p; }
 static inline ushort q_ld16(device const uchar* p) { return *(device const ushort*)p; }
 static inline float q_ldh(device const uchar* p) { return float(*(device const half*)p); }
 static inline float4 q_u8x4(uint v) { return float4(as_type<uchar4>(v)); }

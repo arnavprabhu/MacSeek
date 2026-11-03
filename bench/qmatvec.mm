@@ -31,15 +31,35 @@ static double measure_bw() {
 }
 
 // MoE decode: 6 routed experts + shared, all type combos; arenas rotated over >= 512 MiB.
-static int bench_moe(double bw, int reps) {
+static int bench_moe(double bw, int reps, const char* filt) {
   auto& d = Device::get();
   struct Combo { QType gu, dn, sh; };
-  const Combo combos[] = {{QType::IQ1_S, QType::IQ1_S, QType::Q6_K}, {QType::IQ1_S, QType::IQ2_XXS, QType::Q8_0},
-                          {QType::IQ1_S, QType::IQ2_XXS, QType::Q6_K}, {QType::IQ2_XXS, QType::IQ2_XXS, QType::Q6_K}};
+  std::vector<Combo> combos = {{QType::IQ1_S, QType::IQ1_S, QType::Q6_K}, {QType::IQ1_S, QType::IQ2_XXS, QType::Q8_0},
+                          {QType::IQ1_S, QType::IQ2_XXS, QType::Q6_K}, {QType::IQ2_XXS, QType::IQ2_XXS, QType::Q6_K},
+                          // GSQ-RCO model (Q5_K shared expert)
+                          {QType::IQ1_M, QType::IQ1_M, QType::Q5_K}, {QType::IQ2_XXS, QType::IQ2_XXS, QType::Q5_K},
+                          {QType::IQ2_XS, QType::IQ2_XS, QType::Q5_K}, {QType::IQ1_M, QType::IQ2_XXS, QType::Q5_K},
+                          {QType::IQ2_XS, QType::IQ1_M, QType::Q5_K}, {QType::IQ2_XXS, QType::IQ2_XS, QType::Q5_K}};
+  if (filt && strchr(filt, ',')) {  // explicit combo "gu,down,shared" (lower-case type names)
+    auto parse = [](std::string n) {
+      for (QType t : {QType::IQ1_S, QType::IQ2_XXS, QType::IQ1_M, QType::IQ2_XS, QType::Q6_K, QType::Q8_0, QType::Q5_K}) {
+        std::string tn = q::type_name(t);
+        for (auto& ch : tn) ch = (char)tolower(ch);
+        if (tn == n) return t;
+      }
+      fprintf(stderr, "unknown type %s\n", n.c_str()); exit(2);
+    };
+    std::string f = filt;
+    const size_t c1 = f.find(','), c2 = f.find(',', c1 + 1);
+    combos = {{parse(f.substr(0, c1)), parse(f.substr(c1 + 1, c2 - c1 - 1)), parse(f.substr(c2 + 1))}};
+    filt = nullptr;
+  }
   const int D = q::kExpertDim, I = q::kExpertInter;
   printf("MoE decode (6 routed + shared, 2 dispatches + barrier)\n");
   printf("%-8s %-8s %-6s %9s %8s %7s  %s\n", "gate/up", "down", "shared", "MB", "us", "GB/s", "%BW");
   for (const Combo& c : combos) {
+    const std::string lab = std::string(q::type_name(c.gu)) + "/" + q::type_name(c.dn) + "+" + q::type_name(c.sh);
+    if (filt && lab.find(filt) == std::string::npos) continue;
     const size_t gu = q::row_bytes(c.gu, D) * I, dn = q::row_bytes(c.dn, I) * D;
     const size_t sgu = q::row_bytes(c.sh, D) * I, sdn = q::row_bytes(c.sh, I) * D;
     const size_t per = 6 * (2 * gu + dn) + 2 * sgu + sdn;
@@ -105,8 +125,12 @@ int main(int argc, char** argv) {
       {QType::BF16, 512, 5120, 1, "compressor_kv"},  {QType::BF16, 4096, 1280, 1, "indexer q_b"},
       {QType::F16, 5120, 5120, 1, "f16 synthetic"},
       {QType::IQ1_S, 32768, 5120, 1, "big synthetic"}, {QType::IQ2_XXS, 32768, 5120, 1, "big synthetic"},
+      {QType::IQ1_M, 2304, 5120, 1, "exp gate/up"},  {QType::IQ1_M, 5120, 2304, 1, "exp down"},
+      {QType::IQ2_XS, 2304, 5120, 1, "exp gate/up"}, {QType::IQ2_XS, 5120, 2304, 1, "exp down"},
+      {QType::IQ1_M, 32768, 5120, 1, "big synthetic"}, {QType::IQ2_XS, 32768, 5120, 1, "big synthetic"},
+      {QType::Q5_K, 2304, 5120, 1, "shexp gate/up"}, {QType::Q5_K, 5120, 2304, 1, "shexp down"},
   };
-  if (moe) return bench_moe(bw, reps);
+  if (moe) return bench_moe(bw, reps, filt);
   printf("%-8s %-15s %-16s %9s %8s %7s  %s\n", "type", "tensor", "shape", "MB", "us", "GB/s", "%BW");
   for (const Shape& s : shapes) {
     std::string lab = std::string(q::type_name(s.t)) + " " + s.what;

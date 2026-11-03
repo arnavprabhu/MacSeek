@@ -114,16 +114,16 @@ static void bench_moe(double peak) {
 // Zipf(s) popularity (random expert permutation), experts in id order processed in groups of `group` experts per
 // command buffer (encode_moe_prefill call), shared expert (all n tokens) in the first group. Reports the sum of the
 // groups' GPU times, best of `reps` passes. Expert weights alias over `uniq` distinct matrices (>= 512 MiB streamed).
-static void bench_moe_real(double peak, int n, int group, double zs, QType tgu, QType tdn, QType tsh, int reps) {
+static void bench_moe_real(double peak, int n, int group, double zs, QType tgu, QType tdn, QType tsh, int reps, int NE) {
   auto& d = Device::get();
-  const int D = q::kExpertDim, I = q::kExpertInter, K = 6, NE = 384;
+  const int D = q::kExpertDim, I = q::kExpertInter, K = 6;
   const size_t gu = q::row_bytes(tgu, D) * I, dn = q::row_bytes(tdn, I) * D;
   const size_t sgu = q::row_bytes(tsh, D) * I, sdn = q::row_bytes(tsh, I) * D;
   int uniq = (int)std::min<size_t>(NE, ((size_t)600 << 20) / (2 * gu + dn) + 1);
   Buffer arena = d.alloc((size_t)uniq * (2 * gu + dn) + 2 * sgu + sdn + 64, "arena");
   fill_rand(arena, 9);
   std::vector<q::ExpertSlot> slots(NE);
-  size_t off = 2;  // GGUF expert offsets are only 2/4-byte aligned in the arena
+  size_t off = 4;  // weight offsets only need 4-byte alignment (IQ1_M / Q5_K decoders use 32-bit loads)
   std::vector<q::ExpertSlot> base(uniq);
   for (int j = 0; j < uniq; j++) {
     base[j].gate = arena.sub(off, gu); off += gu; base[j].up = arena.sub(off, gu); off += gu;
@@ -204,7 +204,7 @@ static void bench_moe_real(double peak, int n, int group, double zs, QType tgu, 
 
 int main(int argc, char** argv) {
   bool only_peak = false, moe = false, real = false; const char* filt = nullptr;
-  int rn = 4096, rgroup = 64, reps = 3; double zs = 0.8; std::string rtypes = "all";
+  int rn = 4096, rgroup = 64, reps = 3, ne = 384; double zs = 0.8; std::string rtypes = "all";
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--peak")) only_peak = true;
     else if (!strcmp(argv[i], "--moe")) moe = true;
@@ -213,15 +213,30 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--group") && i + 1 < argc) rgroup = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--zipf") && i + 1 < argc) zs = atof(argv[++i]);
     else if (!strcmp(argv[i], "--reps") && i + 1 < argc) reps = atoi(argv[++i]);
-    else if (!strcmp(argv[i], "--types") && i + 1 < argc) rtypes = argv[++i];  // all | iq1 | iq2
+    else if (!strcmp(argv[i], "--types") && i + 1 < argc) rtypes = argv[++i];  // all | iq1 | iq2 | gu,down,shared
+    else if (!strcmp(argv[i], "--experts") && i + 1 < argc) ne = atoi(argv[++i]);  // experts per layer (192: GSQ-RCO)
     else filt = argv[i];
   }
   double peak = (real && getenv("BENCH_PEAK")) ? atof(getenv("BENCH_PEAK")) : peak_f16(true);
   printf("F16 GEMM peak: %.2f TFLOPS\n", peak);
   if (only_peak) return 0;
-  if (real) {  // bench_qmatmul --moe --real [--n 4096] [--group 64] [--zipf 0.8] [--types all|iq1|iq2] [--reps 3]
-    if (rtypes == "all" || rtypes == "iq1") bench_moe_real(peak, rn, rgroup, zs, QType::IQ1_S, QType::IQ1_S, QType::Q6_K, reps);
-    if (rtypes == "all" || rtypes == "iq2") bench_moe_real(peak, rn, rgroup, zs, QType::IQ2_XXS, QType::IQ2_XXS, QType::Q8_0, reps);
+  if (real) {  // bench_qmatmul --moe --real [--n 4096] [--group 64] [--zipf 0.8] [--experts 384] [--reps 3]
+               //   [--types all|iq1|iq2|gu,down,shared  e.g. iq1_m,iq2_xxs,q5_k]
+    if (rtypes == "all" || rtypes == "iq1") bench_moe_real(peak, rn, rgroup, zs, QType::IQ1_S, QType::IQ1_S, QType::Q6_K, reps, ne);
+    if (rtypes == "all" || rtypes == "iq2") bench_moe_real(peak, rn, rgroup, zs, QType::IQ2_XXS, QType::IQ2_XXS, QType::Q8_0, reps, ne);
+    if (rtypes.find(',') != std::string::npos) {
+      auto parse = [](const std::string& s) {
+        for (QType t : {QType::IQ1_S, QType::IQ2_XXS, QType::IQ1_M, QType::IQ2_XS, QType::Q6_K, QType::Q8_0, QType::Q5_K}) {
+          std::string n = q::type_name(t);
+          for (auto& ch : n) ch = (char)tolower(ch);
+          if (n == s) return t;
+        }
+        fprintf(stderr, "unknown type %s\n", s.c_str()); exit(2);
+      };
+      const size_t c1 = rtypes.find(','), c2 = rtypes.find(',', c1 + 1);
+      bench_moe_real(peak, rn, rgroup, zs, parse(rtypes.substr(0, c1)), parse(rtypes.substr(c1 + 1, c2 - c1 - 1)),
+                     parse(rtypes.substr(c2 + 1)), reps, ne);
+    }
     return 0;
   }
   if (moe) { bench_moe(peak); return 0; }
@@ -231,6 +246,8 @@ int main(int argc, char** argv) {
       {QType::Q5_K, 5120, 8192, "attn_output_b"}, {QType::Q6_K, 1280, 5120, "attn_q_a"},
       {QType::Q8_0, 2304, 5120, "shexp gate/up"}, {QType::IQ1_S, 2304, 5120, "exp gate/up"},
       {QType::IQ2_XXS, 5120, 2304, "exp down"}, {QType::BF16, 4096, 1280, "indexer q_b"},
+      {QType::IQ1_M, 2304, 5120, "exp gate/up"}, {QType::IQ2_XS, 5120, 2304, "exp down"},
+      {QType::IQ2_XS, 2304, 5120, "exp gate/up"}, {QType::Q5_K, 2304, 5120, "shexp gate/up"},
       {QType::F16, 8192, 4096, "f16 synthetic"},
   };
   const int ns[] = {32, 128, 512, 2048, 4096};
