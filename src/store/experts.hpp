@@ -198,7 +198,8 @@ class ExpertCache {
   const std::vector<ClassInfo>& classes() const { return classes_; }
   // largest prefill expert group a layer can stream without starving its size class: two groups are leased at once
   // (current + next) and the pinned-resident mode keeps 3 groups' worth unpinned, so cap = class slots / 3.
-  int group_cap(int layer) const { return std::max(4, classes_[layer_class_[layer]].n_slots / 3); }
+  int group_cap(int layer) const { return class_group(layer_class_[layer]); }
+  int class_group(int c) const { return std::max(8, std::min(64, classes_[c].n_slots / 6)); }
   int layer_class(int layer) const { return layer_class_[layer]; }
   int n_slots() const { return (int)slots_.size(); }
   int n_pinned() const;

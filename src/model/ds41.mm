@@ -404,6 +404,8 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
   // Attention side of layer l for this call: hc boundary (+engram), attention, hc boundary into the FFN, router,
   // and zeroing of `sub` (the MoE accumulates into it). Encodes into E; no commit.
   static const bool dbg_on = getenv("MACSEEK_DBG_DUMP") != nullptr;
+  static const bool pf_split = env_int("MACSEEK_PF_SPLIT", 0) != 0;
+  double pf_split_ms[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   auto dbg_pt = [&](Enc& E, int l, int pt, Buffer src, uint32_t cnt) {   // diagnostics: checkpoint inside layers 0..2
     static const bool dbg_pf_on = getenv("MACSEEK_DBG_PF") != nullptr;
     if (!((dbg_on && n == 1) || (dbg_pf_on && n > 1)) || l > 2) return;
@@ -412,103 +414,115 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     E.set_pipeline(pso_dbg); E.set_buffer(0, src); E.set_buffer(1, P.dbg2.sub(((size_t)l * 8 + pt) * 32768 * 4, (size_t)cnt * 4));
     E.set_value(2, cnt); E.dispatch_threads(cnt, 1, 1, 256); E.barrier();
   };
-  auto encode_attn_side = [&](Enc& E, int l) {
-    if (use_dmod) { encode_dec_attn_side(E, dctx, l, start); return; }
+  auto encode_attn_side = [&](Enc& E_in, int l) {
+    if (use_dmod) { encode_dec_attn_side(E_in, dctx, l, start); return; }
+    Enc* EP = &E_in;
+    // MACSEEK_PF_SPLIT=1 (PROFILING): prefill commits + waits after each stage and sums GPU ms per stage
+    auto cut = [&](int cat) {
+      if (!pf_split || n == 1 || EP != e.get()) return;
+      e->wait(); pf_split_ms[cat] += e->gpu_ms(); e = std::make_unique<Enc>(); EP = e.get();
+    };
     LayerW& L = P.L[l];
     // ---- hyper-connection boundary into attention (+ engram) ----
     if (cfg_.is_engram(l)) {
       if (lazy_ekv) {
         const int se = l == cfg_.engram_layers[0] ? 0 : 1;
-        E.barrier();
-        arch::encode_iq4nl_rows(E, P.erow.sub((size_t)se * n * 24 * 144, (size_t)n * 24 * 144), 144, P.edeq, n * 24);
-        E.barrier();
-        linear(E, L.engram_kv, P.edeq, ekv_l[se], n);
-        E.barrier();
+        EP->barrier();
+        arch::encode_iq4nl_rows(*EP, P.erow.sub((size_t)se * n * 24 * 144, (size_t)n * 24 * 144), 144, P.edeq, n * 24);
+        EP->barrier();
+        linear(*EP, L.engram_kv, P.edeq, ekv_l[se], n);
+        EP->barrier();
       }
       { Buffer kvb0 = l == cfg_.engram_layers[0] ? ekv_l[0] : ekv_l[1];
-        dbg_pt(E, l, 3, kvb0, 25600); dbg_pt(E, l, 4, h, 20480); dbg_pt(E, l, 6, P.mixF, 24); }
+        dbg_pt(*EP, l, 3, kvb0, 25600); dbg_pt(*EP, l, 4, h, 20480); dbg_pt(*EP, l, 6, P.mixF, 24); }
       arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixF; a.n = n;
-      arch::encode_hc_step(E, a, P.asc); E.barrier();
+      arch::encode_hc_step(*EP, a, P.asc); EP->barrier();
       Buffer kvb = l == cfg_.engram_layers[0] ? ekv_l[0] : ekv_l[1];
-      arch::encode_engram_gate(E, h, kvb, L.engram_gate.b, n, P.asc); E.barrier();
+      arch::encode_engram_gate(*EP, h, kvb, L.engram_gate.b, n, P.asc); EP->barrier();
       arch::HcStep c; c.h_in = h; c.h_out = h; c.mix_prev = P.mixF; c.fn = L.hc_attn_fn.b; c.scale = L.hc_attn_scale.b;
       c.base = L.hc_attn_base.b; c.mix_out = P.mixA; c.norm_w = L.attn_norm.b; c.x_out = P.x; c.n = n;
-      arch::encode_hc_step(E, c, P.asc); E.barrier();
+      arch::encode_hc_step(*EP, c, P.asc); EP->barrier();
     } else {
-      if (l == 0) { dbg_pt(E, 0, 3, h, 20480); dbg_pt(E, 0, 4, P.mixF, 24); }
+      if (l == 0) { dbg_pt(*EP, 0, 3, h, 20480); dbg_pt(*EP, 0, 4, P.mixF, 24); }
       arch::HcStep a; a.h_in = h; a.h_out = h; if (l > 0) a.x_sub = P.sub; a.mix_prev = P.mixF;
       a.fn = L.hc_attn_fn.b; a.scale = L.hc_attn_scale.b; a.base = L.hc_attn_base.b; a.mix_out = P.mixA;
       a.norm_w = L.attn_norm.b; a.x_out = P.x; a.n = n;
-      arch::encode_hc_step(E, a, P.asc); E.barrier();
+      arch::encode_hc_step(*EP, a, P.asc); EP->barrier();
     }
-    dbg_pt(E, l, 0, P.x, 5120);
+    dbg_pt(*EP, l, 0, P.x, 5120);
+    cut(0);
     // ---- attention projections ----
-    linear(E, L.q_a, P.x, P.qa, n);
-    linear(E, L.kv, P.x, P.kv, n);
+    linear(*EP, L.q_a, P.x, P.qa, n);
+    linear(*EP, L.kv, P.x, P.kv, n);
     const bool kvsrc = cfg_.is_kv_source(l), idxsrc = cfg_.is_index_source(l);
-    if (kvsrc) { linear(E, L.c_kv, P.x, P.ckv, n); if (L.c_gate) linear(E, L.c_gate, P.x, P.cgate, n); }
-    if (idxsrc) linear(E, L.idx_proj, P.x, P.iw, n);
-    E.barrier();
-    arch::encode_rmsnorm(E, P.qa, L.q_a_norm.b, P.qrn, n, 1280, cfg_.norm_eps); E.barrier();
-    linear(E, L.q_b, P.qrn, P.q, n);
-    if (idxsrc) linear(E, L.idx_qb, P.qrn, P.iq, n);
-    E.barrier();
+    if (kvsrc) { linear(*EP, L.c_kv, P.x, P.ckv, n); if (L.c_gate) linear(*EP, L.c_gate, P.x, P.cgate, n); }
+    if (idxsrc) linear(*EP, L.idx_proj, P.x, P.iw, n);
+    EP->barrier();
+    arch::encode_rmsnorm(*EP, P.qa, L.q_a_norm.b, P.qrn, n, 1280, cfg_.norm_eps); EP->barrier();
+    linear(*EP, L.q_b, P.qrn, P.q, n);
+    if (idxsrc) linear(*EP, L.idx_qb, P.qrn, P.iq, n);
+    EP->barrier();
     attn::LayerIO io; io.layer = l; io.q = P.q; io.kv = P.kv; io.kv_norm = L.kv_norm.b; io.sinks = L.sinks.b; io.out = P.aout;
     if (kvsrc) { io.c_kv = P.ckv; io.c_gate = L.c_gate ? P.cgate : Buffer{}; io.c_norm = L.c_norm.b; io.idx_wk = L.idx_k.b; io.idx_knorm = L.idx_knorm.b; }
     if (idxsrc) { io.idx_q = P.iq; io.idx_w = P.iw; }
-    dbg_pt(E, l, 1, P.q, 32768); dbg_pt(E, l, 2, P.kv, 512);
-    if (idxsrc) { dbg_pt(E, l, 3, P.iq, 4096); dbg_pt(E, l, 4, P.iw, 32); }
-    attn::encode_layer(E, P.ast, io, start, n);
-    dbg_pt(E, l, 5, P.aout, 32768);
-    if (idxsrc || cfg_.is_kv_source(l)) dbg_pt(E, l, 6, P.ast.topk, 512);
-    if (o_.actq_out) { attn::encode_quant_sim(E, P.aout, (uint32_t)(n * 32768), 0); E.barrier(); }
+    cut(1);
+    dbg_pt(*EP, l, 1, P.q, 32768); dbg_pt(*EP, l, 2, P.kv, 512);
+    if (idxsrc) { dbg_pt(*EP, l, 3, P.iq, 4096); dbg_pt(*EP, l, 4, P.iw, 32); }
+    attn::encode_layer(*EP, P.ast, io, start, n);
+    cut(2);
+    dbg_pt(*EP, l, 5, P.aout, 32768);
+    if (idxsrc || cfg_.is_kv_source(l)) dbg_pt(*EP, l, 6, P.ast.topk, 512);
+    if (o_.actq_out) { attn::encode_quant_sim(*EP, P.aout, (uint32_t)(n * 32768), 0); EP->barrier(); }
     // wo_a (block-diagonal, 8 groups) then wo_b
     if (n <= mvn_max()) {
-      if (n == 1) q::encode_matvec(E, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, false, 8);
-      else q::encode_matvec_n(E, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, n, false, 8);
-      E.barrier();
+      if (n == 1) q::encode_matvec(*EP, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, false, 8);
+      else q::encode_matvec_n(*EP, L.o_a.t, L.o_a.b, 8192, 4096, P.aout, P.oa, n, false, 8);
+      EP->barrier();
     } else {
-      q::encode_f32_to_f16(E, P.aout, P.aout16, (size_t)n * 32768); E.barrier();
+      q::encode_f32_to_f16(*EP, P.aout, P.aout16, (size_t)n * 32768); EP->barrier();
       const size_t rb = (size_t)L.o_a.b.size / 8192;  // bytes per weight row
       for (int g = 0; g < 8; g++)
-        q::encode_matmul_h(E, L.o_a.t, L.o_a.b.sub((size_t)g * 1024 * rb, 1024 * rb), 1024, 4096,
+        q::encode_matmul_h(*EP, L.o_a.t, L.o_a.b.sub((size_t)g * 1024 * rb, 1024 * rb), 1024, 4096,
                            P.aout16.sub((size_t)g * 4096 * 2, (size_t)n * 32768 * 2 - (size_t)g * 4096 * 2),
                            P.otmp.sub((size_t)g * n * 1024 * 4, (size_t)n * 1024 * 4), n, false, 32768);
-      E.barrier();
+      EP->barrier();
       uint32_t a4[4] = {(uint32_t)n, 8, 1024 / 4, 0};
       e->set_pipeline("m_ungroup"); e->set_buffer(0, P.otmp); e->set_buffer(1, P.oa); e->set_bytes(2, a4, sizeof a4);
       e->dispatch_threads(1024 / 4, n, 8, 64, 1, 1);
-      E.barrier();
+      EP->barrier();
     }
-    linear(E, L.o_b, P.oa, P.sub, n); E.barrier();
-    dbg_pt(E, l, 7, P.sub, 5120);
+    linear(*EP, L.o_b, P.oa, P.sub, n); EP->barrier();
+    cut(3);
+    dbg_pt(*EP, l, 7, P.sub, 5120);
     // ---- hyper-connection boundary into the FFN ----
     {
       arch::HcStep a; a.h_in = h; a.h_out = h; a.x_sub = P.sub; a.mix_prev = P.mixA;
       a.fn = L.hc_ffn_fn.b; a.scale = L.hc_ffn_scale.b; a.base = L.hc_ffn_base.b; a.mix_out = P.mixF;
       a.norm_w = L.ffn_norm.b; a.x_out = P.x; a.n = n;
-      arch::encode_hc_step(E, a, P.asc); E.barrier();
+      arch::encode_hc_step(*EP, a, P.asc); EP->barrier();
     }
+    cut(4);
     // ---- router ----
     if (dec) {
-      arch::encode_router_fused(E, P.x, L.gate_inp.b, L.bias.b, P.rids, P.rw, P.asc);
+      arch::encode_router_fused(*EP, P.x, L.gate_inp.b, L.bias.b, P.rids, P.rw, P.asc);
       // next-layer expert prediction: layer l+1's router applied to this layer's (normed) FFN input
       // (logits only; the CPU picks the top pred_k by score+bias after the router handoff)
       if (pred_on)
         for (int d = 1; d <= pred_depth && l + d < cfg_.n_layers; d++) {
           static const bool pred_q8 = env_int("MACSEEK_PRED_Q8", 1) != 0;
           const W& g = pred_q8 ? P.pred_w[l + d] : P.L[l + d].gate_inp;
-          q::encode_matvec(E, g.t, g.b, g.rows, g.cols, P.x, P.plog.sub((size_t)(d - 1) * NE * 4, NE * 4));
+          q::encode_matvec(*EP, g.t, g.b, g.rows, g.cols, P.x, P.plog.sub((size_t)(d - 1) * NE * 4, NE * 4));
         }
     }
     else {
-      linear(E, L.gate_inp, P.x, P.rlog, n);
-      if (pf_pred && n >= pf_prefetch_min && l + 1 < cfg_.n_layers) linear(E, P.L[l + 1].gate_inp, P.x, P.plog_n, n);
-      E.barrier();
-      arch::encode_router_topk(E, P.rlog, L.bias.b, P.rids, P.rw, n);
+      linear(*EP, L.gate_inp, P.x, P.rlog, n);
+      if (pf_pred && n >= pf_prefetch_min && l + 1 < cfg_.n_layers) linear(*EP, P.L[l + 1].gate_inp, P.x, P.plog_n, n);
+      EP->barrier();
+      arch::encode_router_topk(*EP, P.rlog, L.bias.b, P.rids, P.rw, n);
     }
-    E.barrier();
-    fill(E, P.sub, (size_t)n * 5120);  // MoE accumulates into sub (sub was consumed by the hc step above)
+    EP->barrier();
+    cut(5);
+    fill(*EP, P.sub, (size_t)n * 5120);  // MoE accumulates into sub (sub was consumed by the hc step above)
   };
 
   const bool pipe = dec && env_int("MACSEEK_DEC_PIPE", 0) != 0;
@@ -910,6 +924,9 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
     pprof_.main_gpu_ms += gpu_ms; pprof_.main_wait_ms += wait_ms; pprof_.moe_ms += exp_ms; pprof_.moe_gpu_ms += moe_gpu_ms;
     pprof_.route_ms += route_ms; pprof_.io_bytes += st1.bytes_read - st0.bytes_read;
     pprof_.experts_used += experts_used; pprof_.groups += groups_run;
+    if (pf_split)
+      fprintf(stderr, "prefill-split: pos %d n %d gpu ms: hc_in %.0f proj %.0f attn %.0f oproj %.0f hc_ffn %.0f router %.0f\n", start, n,
+              pf_split_ms[0], pf_split_ms[1], pf_split_ms[2], pf_split_ms[3], pf_split_ms[4], pf_split_ms[5]);
     if (env_int("MACSEEK_PROF", 0))
       fprintf(stderr, "prefill-prof: pos %d n %d total %.0f ms | engram %.0f | main gpu %.0f wait %.0f | moe %.0f (gpu %.0f) route %.1f | "
               "io %.2f GB | experts %ld groups %ld\n", start, n, tt.ms(), engram_ms, gpu_ms, wait_ms, exp_ms, moe_gpu_ms, route_ms,
