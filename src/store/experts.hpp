@@ -3,15 +3,28 @@
 // SSD-streamed MoE expert cache.
 //
 // Unit = one (layer, expert): 3 byte ranges (gate, up, down), expert e's matrix being the e-th contiguous slab
-// (nbytes/n_experts) of each 3D *_exps tensor. Slots live in a page-aligned anonymous arena wrapped as no-copy shared
-// MTLBuffers. Layers whose 3 matrices have the same aligned sizes form a SIZE CLASS (UD-IQ1_S: 3 classes:
-// 3xIQ1_S 6.94 MB, 2xIQ1_S+IQ2_XXS 7.68 MB, 3xIQ2_XXS 9.16 MB); each class has its own slot pool, so no byte is
-// wasted on padding small experts to the largest size. Inside a slot every matrix sits at (file offset mod 16 KiB)
-// so 16 KiB-aligned reads land directly in place (no copy, no bounce).
+// (nbytes/n_experts) of each 3D *_exps tensor.
+//
+// Memory: REGION POOLS. Every matrix type gets a region size = max over all (layer, expert) matrices of that type of
+// rup(file offset mod 16 KiB + len, 16 KiB); types with equal region sizes share one pool (GSQ-RCO Coder: 3 pools,
+// IQ1_M 2605056 B, IQ2_XXS 3063808 B, IQ2_XS 3440640 B; UD-IQ1_S: IQ1_S + IQ2_XXS). A pool is an array of fixed-size
+// regions in a page-aligned anonymous arena wrapped as no-copy shared MTLBuffers (a region never straddles two
+// buffers). arena_bytes is split across pools in proportion to their total demand (every expert of every layer), so
+// every pool can hold the same fraction of its matrices; with routing statistics the split follows the greedy
+// count/byte selection instead. Inside a region the matrix sits at (file offset mod 16 KiB), so 16 KiB-aligned reads
+// land directly in place (no copy, no bounce).
+//
+// Residency: ENTRIES. A resident (layer, expert) is an entry owning 3 regions (gate, up, down), possibly in different
+// pools. Entries are the unit of the eviction policy, the key map, leases and pinning: the whole arena is ONE
+// eviction / pinning domain (policy class 0). A miss needing region sizes {a, b, c} takes free regions; if some size has
+// none, policy victims that own a region of a missing size are evicted (all 3 of their regions go back to their pools)
+// until all are available.
 //
 // Concurrency model: one mutex for metadata (a few µs per ensure()), an IoPool of preads (F_NOCACHE) doing the I/O.
-// A slot is never evicted while (a) it is loading, (b) a lease holds it (refcount; leases are released explicitly or
-// by a command-buffer completion handler, i.e. after the GPU is done with it), or (c) it is pinned.
+// An entry is never evicted while (a) it is loading, (b) a lease holds it (refcount; leases are released explicitly or
+// by a command-buffer completion handler, i.e. after the GPU is done with it), or (c) it is pinned. A prefetched entry
+// that no demand access has used yet is protected while young (fewer than n_slots() demand accesses since it was
+// issued; env MACSEEK_PF_PROTECT overrides, 0 = off): prefetch() never evicts it, ensure() only as a last resort.
 //
 // GPU sync: every lease that has to wait for I/O gets a monotonically increasing ticket. io_event() (MTLSharedEvent)
 // is signaled with the highest ticket whose lease AND all earlier leases are complete, so a command buffer can
@@ -45,8 +58,9 @@ struct ExpertLayout {
 enum class PolicyKind { LRU, LFU, Static };
 const char* policy_name(PolicyKind k);
 
-// Pluggable eviction policy. All calls happen under the cache mutex. Keys are layer*n_experts+expert.
-// The cache itself handles Empty slots, pinning and in-use protection; victim() only ranks candidates.
+// Pluggable eviction policy. All calls happen under the cache mutex. Keys are layer*n_experts+expert; "slots" are
+// entry ids (one class: the cache uses cls 0 for everything). The cache itself handles empty entries, pinning,
+// in-use protection and region sizes (through evictable()); victim() only ranks candidates.
 class EvictionPolicy {
  public:
   virtual ~EvictionPolicy() = default;
@@ -67,8 +81,8 @@ struct ExpertCacheOptions {
   size_t read_chunk = 1 << 20;      // split each matrix read into chunks (0 = one pread per matrix)
   uint32_t align = 16384;           // round file ranges out to this (power of 2 <= 16384; 1 = exact byte ranges)
   PolicyKind policy = PolicyKind::LRU;
-  std::string stats_path;           // routing statistics file (Static policy; also splits the arena across classes)
-  double pin_fraction = 0.85;       // Static: fraction of each class pool pinned to the most frequent experts
+  std::string stats_path;           // routing statistics file (Static policy; also splits the arena across pools)
+  double pin_fraction = 0.85;       // Static: fraction of every pool pinned to the globally most frequent experts
   bool preload_pinned = true;       // Static: read the pinned set at construction
   double lfu_decay = 0.5;           // LFU: multiply all counts by this every lfu_period demand accesses (aging)
   uint64_t lfu_period = 1 << 14;
@@ -91,7 +105,7 @@ struct ExpertView {
   uint64_t gpu[3] = {};  // GPU virtual addresses (gpuAddress + off) for argument-buffer / pointer-table kernels
   void* host[3] = {};
   GType type[3] = {};
-  int slot = -1;
+  int slot = -1;         // entry id (-1: bulk-stream ring item)
 };
 
 struct LayerStats {
@@ -167,19 +181,27 @@ class ExpertCache {
   ExpertCache(const ExpertCache&) = delete; ExpertCache& operator=(const ExpertCache&) = delete;
 
   // Demand: make experts resident (misses read at high priority, in parallel). Returns immediately; use
-  // lease.wait() (CPU) or lease.ticket / encode_wait (GPU). Blocks only if every slot of a class is in use.
+  // lease.wait() (CPU) or lease.ticket / encode_wait (GPU). Blocks only if a needed region size has nothing evictable
+  // (every region of that size held by leases / pins / loads); aborts with a message after 30 s.
   ExpertLease ensure(int layer, const int* ids, int n);
   ExpertLease ensure(int layer, const std::vector<int>& ids) { return ensure(layer, ids.data(), (int)ids.size()); }
-  // Prefetch: low-priority loads for absent experts (skipped if no evictable slot). Returns number issued.
+  // Prefetch: low-priority loads for absent experts. Never blocks: stops at the first expert that would need an
+  // eviction of a protected entry (leased / pinned / loading / young unused prefetch), or when fewer than `margin`
+  // unpinned regions of a needed size would stay neither leased nor speculative (margin = min(unpinned / 4,
+  // 64 x max regions per entry): room for ~1 prefill group of demand misses). Calling prefetch(l+1, ...) again after
+  // each of layer l's groups tops the next layer up as the current layer's prefetches get used. Returns number issued.
   int prefetch(int layer, const int* ids, int n);
-  // Pin/unpin: pinned slots are never evicted (pin loads absent experts at low priority). Returns slots pinned.
+  // Pin/unpin: pinned entries are never evicted (pin loads absent experts at low priority). Returns entries pinned.
   int pin(int layer, const int* ids, int n);
   void unpin(int layer, const int* ids, int n);
-  // Scan-resistant multi-chunk prefill: pin resident (Ready, unpinned) experts, most-accessed first, leaving at least
-  // keep_unpinned slots per class for streaming. Returns slots pinned. unpin_resident() releases them all.
+  // Scan-resistant multi-chunk prefill: pin resident (Ready, unpinned) experts, most-accessed first, keeping
+  // keep_unpinned entries' worth of every region size unpinned for streaming: pool p keeps at least
+  // ceil(keep_unpinned * max(1, mean regions of p per entry over all layers)) regions unpinned (see reserve_regions).
+  // Returns entries pinned. unpin_resident() releases them all.
   int pin_resident(int keep_unpinned);
   void unpin_resident();
   bool contains(int layer, int expert) const;       // present (ready or loading)
+  bool is_pinned(int layer, int expert) const;      // present and pinned
   void drain();                                     // wait until no load is in flight
 
   std::unique_ptr<ExpertStream> stream(int layer, const int* ids, int n);
@@ -194,14 +216,25 @@ class ExpertCache {
   static bool read_routing_stats(const std::string& path, int n_layers, int n_experts, std::vector<double>& out);
 
   // geometry
-  struct ClassInfo { uint64_t slot_bytes; uint64_t region[3]; int n_slots; std::vector<int> layers; };
-  const std::vector<ClassInfo>& classes() const { return classes_; }
-  // largest prefill expert group a layer can stream without starving its size class: two groups are leased at once
-  // (current + next) and the pinned-resident mode keeps 3 groups' worth unpinned, so cap = class slots / 3.
-  int group_cap(int layer) const { return class_group(layer_class_[layer]); }
-  int class_group(int c) const { return std::max(8, std::min(64, classes_[c].n_slots / 6)); }
-  int layer_class(int layer) const { return layer_class_[layer]; }
-  int n_slots() const { return (int)slots_.size(); }
+  struct PoolInfo {
+    uint64_t region = 0;          // bytes per region (multiple of 16 KiB)
+    int n_regions = 0;            // regions allocated
+    uint64_t demand = 0;          // regions needed to hold every expert of every layer
+    double mean_use = 0;          // regions of this pool per entry, averaged over layers
+    int max_use = 0;              // max regions of this pool one entry needs (0..3)
+    std::vector<GType> types;     // matrix types stored in this pool
+  };
+  const std::vector<PoolInfo>& pools() const { return pools_; }
+  int layer_pool(int layer, int k) const { return layer_pool_[(size_t)layer * 3 + k]; }   // k: 0 gate, 1 up, 2 down
+  uint64_t entry_bytes(int layer) const;            // arena bytes one resident expert of this layer occupies
+  double cached_fraction() const;                   // fraction of all experts the arena can hold (min over pools)
+  // largest prefill expert group a layer can stream safely right now: two groups are leased at once (current + next)
+  // and next-layer prefetches only take what is evictable, so cap = min(64, unpinned capacity for this layer / 3)
+  // where unpinned capacity = min over the layer's pools of unpinned regions / regions needed per entry.
+  int group_cap(int layer) const;
+  int unpinned_capacity(int layer) const;           // entries of this layer that fit in unpinned regions
+  int reserve_regions(int pool, int keep_unpinned) const;   // pin_resident's unpinned floor for a pool
+  int n_slots() const { return (int)slots_.size(); }   // entry ids (upper bound on resident experts)
   int n_pinned() const;
   uint64_t arena_bytes() const { return arena_bytes_; }
   std::vector<Buffer> buffers() const;              // all arena + ring MTLBuffers (residency set)
@@ -215,16 +248,23 @@ class ExpertCache {
   friend class ExpertStream;
   struct Impl;
   enum State : uint8_t { Empty, Loading, Ready };
-  struct Slot {
-    int cls = 0; uint32_t key = ~0u; State state = Empty;
-    int ref = 0; bool pinned = false, prefetched = false, used = false, res_pin = false;
-    char* host = nullptr; Buffer buf; uint64_t gpu = 0;   // slot base
-    std::vector<uint64_t> waiters;                       // lease tickets waiting for this slot
+  struct Region { char* host = nullptr; Buffer buf; uint64_t gpu = 0; };   // buf = whole region (sub of an arena buffer)
+  struct Slot {   // entry: one resident (layer, expert)
+    uint32_t key = ~0u; State state = Empty;
+    int ref = 0; bool pinned = false, prefetched = false, used = false, res_pin = false, spec = false;
+    int reg[3] = {-1, -1, -1};                           // region ids (gate, up, down)
+    std::vector<uint64_t> waiters;                       // lease tickets waiting for this entry
     IoRequest* req = nullptr;                            // in-flight request (for promotion)
-    uint32_t data_off[3] = {};                           // matrix data offset within the slot
+    uint32_t data_off[3] = {};                           // matrix data offset within its region
+    uint64_t pf_tick = 0;                                // demand-access tick when prefetched
   };
-  int take_slot_locked(int cls, bool block, std::unique_lock<std::mutex>& lk);
+  enum TakeMode { kDemand, kPrefetch, kPin };
+  int take_entry_locked(int layer, TakeMode mode, std::unique_lock<std::mutex>& lk);
   void evict_locked(int s);
+  void set_pinned_locked(int s, bool pinned);
+  void set_spec_locked(int s, bool spec);
+  bool can_pin_locked(int layer, const std::vector<int>& budget) const;
+  int unpinned_capacity_locked(int layer) const;
   void load_locked(int s, uint32_t key, int prio);
   void flush_submits();             // submit requests queued by load_locked (call after dropping mu_)
   void on_loaded(int s, uint64_t bytes);
@@ -236,15 +276,23 @@ class ExpertCache {
 
   ExpertLayout L_;
   ExpertCacheOptions o_;
-  std::vector<ClassInfo> classes_;
-  std::vector<int> layer_class_;
+  std::vector<PoolInfo> pools_;
+  std::vector<int> layer_pool_;           // [layer*3 + k] -> pool
+  std::vector<uint8_t> layer_use_;        // [layer*P + p] -> regions of pool p one entry of the layer needs
+  std::vector<uint32_t> layer_mask_;      // pools a layer's entry uses (bit mask)
+  std::vector<Region> regions_;
+  std::vector<int> region_pool_;
+  std::vector<std::vector<int>> free_reg_;   // per pool free regions
+  std::vector<int> pinned_reg_;           // per pool regions owned by pinned entries
+  std::vector<int> spec_reg_;             // per pool regions owned by unpinned unused prefetches
+  std::vector<int> ref_reg_;              // per pool regions owned by unpinned leased (ref > 0) entries
   std::vector<Slot> slots_;
-  std::vector<int> map_;                  // key -> slot (-1)
-  std::vector<std::vector<int>> free_;    // per class free (Empty) slots
+  std::vector<int> free_slots_;           // empty entry ids
+  std::vector<int> map_;                  // key -> entry (-1)
   std::vector<LayerStats> stats_;
   std::vector<double> access_;            // demand access counts per key (routing stats output)
   mutable std::mutex mu_;
-  std::condition_variable cv_;            // slot became ready / released
+  std::condition_variable cv_;            // entry became ready / released
   int inflight_ = 0;
   std::vector<std::shared_ptr<IoRequest>> to_submit_;   // built under mu_, submitted after unlock (one wake-up)
   uint64_t arena_bytes_ = 0;

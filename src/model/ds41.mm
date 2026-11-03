@@ -251,9 +251,10 @@ int32_t Model::prefill(const int32_t* toks, int n, float* logits_all, float* log
     next = forward(toks + i, m, logits_all ? logits_all + (size_t)i * cfg_.vocab : nullptr, last ? logits_last : nullptr, 0.f, 0);
     // Scan-resistant expert cache across chunks (MACSEEK_PF_PIN=1): a chunk streams ~all 15K experts through an arena
     // that holds a fraction of them, so LRU keeps nothing for the next chunk. Instead pin what is resident (most used
-    // first), keeping MACSEEK_PF_PIN_FREE slots per class unpinned for streaming. Released at the next decode.
+    // first), keeping MACSEEK_PF_PIN_FREE entries' worth of every region size unpinned for streaming (one domain for
+    // the whole arena; ~3 layers of misses at 192 experts/layer). Released at the next decode.
     static const bool pf_pin = env_int("MACSEEK_PF_PIN", 1) != 0;
-    static const int pf_pin_free = (int)env_int("MACSEEK_PF_PIN_FREE", 1200);
+    static const int pf_pin_free = (int)env_int("MACSEEK_PF_PIN_FREE", 256);
     if (pf_pin && m >= 1024) pinned_ += cache_->pin_resident(pf_pin_free);
     if (progress_) progress_(i + m, n);
   }
@@ -863,6 +864,9 @@ int32_t Model::forward(const int32_t* toks, int n, float* logits_all, float* log
       if (ngroups > 0) leases[0] = cache_->ensure(l, group_ids(0));
       for (int gi = 0; gi < ngroups; gi++) {
         if (gi + 1 < ngroups) leases[gi + 1] = cache_->ensure(l, group_ids(gi + 1));  // overlap I/O with this group
+        // top the next layer's prefetch up as this layer's prefetches get used (the cache caps speculation so a demand
+        // group always has room; already present / in-flight experts are skipped)
+        if (!pf_pred && n >= pf_prefetch_min && l + 1 < cfg_.n_layers) cache_->prefetch(l + 1, all_ids.data(), NE);
         if (gi >= 2) { encs[gi - 2]->wait(); moe_gpu_ms += encs[gi - 2]->gpu_ms(); encs[gi - 2].reset(); }  // scratch reuse
         std::vector<int> gids = group_ids(gi);
         const int sb = gi & 1;

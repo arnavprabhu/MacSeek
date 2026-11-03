@@ -1,6 +1,7 @@
-// Eviction policies for ExpertCache: LRU (O(1) intrusive list per class), LFU with exponential aging (scan of the
-// class's resident slots, ~1-3 µs for ~2000 slots), Static = LRU for the dynamic part (the frequency-pinned set is
-// handled by the cache's pin flags).
+// Eviction policies for ExpertCache: LRU (O(1) intrusive list per class), LFU with exponential aging (sampled or full
+// scan of the class's entries), Static = LRU for the dynamic part (the frequency-pinned set is handled by the cache's
+// pin flags). The cache uses a single class (the whole arena is one domain); its evictable() predicate also encodes
+// which region sizes a victim must free, so victim() may skip entries of other sizes.
 #include "store/experts.hpp"
 
 #include <cmath>
